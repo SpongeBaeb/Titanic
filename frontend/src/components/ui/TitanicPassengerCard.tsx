@@ -82,7 +82,8 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
 
   const saveImageConfigToDB = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/api/admin/image-config', {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
+      const res = await fetch(`${API_BASE}/api/admin/image-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ character: activeData.name, config: portraitConfig })

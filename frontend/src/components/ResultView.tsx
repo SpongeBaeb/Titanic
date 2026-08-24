@@ -52,10 +52,13 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
     const fetchResult = async () => {
       try {
         let res;
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
+        
         if (sharedResultId) {
-          res = await fetch(`http://127.0.0.1:5000/api/quiz/result/${sharedResultId}`);
+          // Fetch existing result
+          res = await fetch(`${API_BASE}/api/quiz/result/${sharedResultId}`);
         } else {
-          res = await fetch('http://127.0.0.1:5000/api/quiz/submit', {
+          res = await fetch(`${API_BASE}/api/quiz/submit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(answers),
