@@ -20,7 +20,7 @@ export default function AnswerOption({ id, label, description, onClick, isObscur
     onClick();
   };
 
-  const shakeAnimation = {
+  const shakeAnimation: any = {
     x: [0, -1.5, 1.5, -2.5, 2.5, -1, 1, 0],
     y: [0, 1, -1, 1.5, -1.5, 1, -1, 0],
     transition: {
