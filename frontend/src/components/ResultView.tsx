@@ -126,7 +126,7 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
       }, sharedResultId ? 2500 : 5000);
       return () => clearTimeout(timer);
     }
-  }, [stage, sharedResultId, resultData]);
+  }, [stage, sharedResultId]);
 
   const handleCopyLink = () => {
     if (!resultData?.id) return;
