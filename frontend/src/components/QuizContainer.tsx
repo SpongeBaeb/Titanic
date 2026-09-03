@@ -34,19 +34,66 @@ export default function QuizContainer() {
   };
 
   const [isFlashing, setIsFlashing] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const handleAnswer = (key: string, value: string, next: any) => {
+  const getAssetsForStep = (step: string, currentAnswers: any): string[] => {
+    const assets: string[] = [];
+    const q = questionsData[step];
+    
+    if (q?.bgImage) {
+      assets.push(typeof q.bgImage === 'function' ? q.bgImage(currentAnswers) : q.bgImage);
+    }
+    
+    if (step === 'Q1') {
+      assets.push('/telegraph/base.png', '/telegraph/rbase.png', '/telegraph/lever.png', '/telegraph/arrow.png');
+      q?.options.forEach(opt => {
+        if (opt.bgImage) assets.push(typeof opt.bgImage === 'function' ? opt.bgImage(currentAnswers) : opt.bgImage);
+      });
+    } else if (step === 'Q2') {
+      q?.options.forEach(opt => {
+        if (opt.bgImage) assets.push(typeof opt.bgImage === 'function' ? opt.bgImage(currentAnswers) : opt.bgImage);
+      });
+      assets.push('/camera-lens.png');
+    } else if (step === 'Q3') {
+      assets.push('/bg/3.png', '/bg/4.png', '/bg/5.png');
+    } else if (step === 'Q4') {
+      assets.push(
+        '/spend/target.png', '/spend/bucket.png', '/spend/titanic_duck.png',
+        '/spend/label.png', '/spend/my_bag.png', '/spend/my_bag_open.png',
+        '/spend/bill.png', '/spend/duckhead.png', '/spend/duckbody.png',
+        '/spend/duckbody_thumbsup.png', '/spend/icon_pool.png', '/spend/icon_massage.png',
+        '/spend/icon_souvenir.png', '/spend/icon_gamble.png', '/spend/icon_bath.png',
+        '/spend/icon_barber.png', '/spend/icon_telegraph.png'
+      );
+    } else if (step === 'RESULT') {
+      assets.push('/bg/collasping.png');
+    }
+    return assets.filter(Boolean);
+  };
+
+  const handleAnswer = async (key: string, value: string, next: any) => {
+    const tempAnswers = { ...answers, [key]: value };
+
     if (key === 'companion') {
       setIsFlashing(true);
-      setTimeout(() => {
+      setTimeout(async () => {
+        setIsTransitioning(true);
+        const assets = getAssetsForStep(next, tempAnswers);
+        await preloadImages(assets);
         setAnswer(key as any, value);
         nextStep(next);
+        setIsTransitioning(false);
         setIsFlashing(false);
       }, 500);
       return;
     }
+
+    setIsTransitioning(true);
+    const assets = getAssetsForStep(next, tempAnswers);
+    await preloadImages(assets);
     setAnswer(key as any, value);
     nextStep(next);
+    setIsTransitioning(false);
   };
 
   const stepKeys: Record<string, string> = {
@@ -183,6 +230,25 @@ export default function QuizContainer() {
             exit={{ opacity: 0, transition: { duration: 4.0, ease: "easeIn" } }}
             className="fixed inset-0 bg-white z-[9999] pointer-events-none"
           />
+        )}
+      </AnimatePresence>
+
+      {/* Global Loading Transition Overlay */}
+      <AnimatePresence>
+        {isTransitioning && (
+          <motion.div
+            key="global-loader"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm pointer-events-auto"
+          >
+            <div className="w-12 h-12 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin mb-4" />
+            <div className="text-amber-500/80 font-serif tracking-widest text-sm animate-pulse">
+              LOADING...
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
