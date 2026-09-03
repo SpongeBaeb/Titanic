@@ -17,15 +17,31 @@ import { preloadImages } from '@/lib/preloadImages';
 export default function QuizContainer() {
   const { currentStep, nextStep, setAnswer, answers } = useQuizStore();
   const [mounted, setMounted] = useState(false);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
-    setMounted(true);
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('result')) {
-      nextStep('RESULT');
-    }
+    const init = async () => {
+      // Preload the most essential startup images
+      const initialAssets = [
+        '/bg/bg-titanic.png',
+        '/bg/male.png',
+        '/bg/female.png',
+        '/map/map_cherbourg.png',
+        '/map/map_queenstown.png',
+        '/map/map_southampton.png'
+      ];
+      await preloadImages(initialAssets);
+      setInitialLoaded(true);
+      setMounted(true);
+      
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('result')) {
+        nextStep('RESULT');
+      }
+    };
+    init();
   }, []);
 
   const handlePrologue = (embarked: string) => {
@@ -127,6 +143,17 @@ export default function QuizContainer() {
       }
     }
   }, [currentStep, answers, nextSteps]);
+
+  if (!initialLoaded) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950">
+        <div className="w-12 h-12 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin mb-4" />
+        <div className="text-amber-500/80 font-serif tracking-widest text-sm animate-pulse">
+          BOARDING TITANIC...
+        </div>
+      </div>
+    );
+  }
 
   if (!mounted) return null;
 
