@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, useMotionValue, useAnimationFrame, animate } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useAnimationFrame, animate, PanInfo } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Question } from '@/data/questions';
 import ProgressLine from '@/components/ui/ProgressLine';
@@ -87,7 +87,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const [hasScissors, setHasScissors] = useState(false);
   const [hairs, setHairs] = useState<{ id: number, xPercent: number, width: number, height: number, cutY: number, src: string, isMagic: boolean }[]>([]);
   const [fallingHairs, setFallingHairs] = useState<{ id: number, xPercent: number, width: number, height: number, cutY: number, originalHeight: number, src: string }[]>([]);
-  const [souvenirItems, setSouvenirItems] = useState<{ id: number, img: string, targetX: number, targetY: number, rotation: number, isHit?: boolean, isThrown?: boolean, isStuck?: boolean, startX?: number, startY?: number }[]>([]);
+  const [souvenirItems, setSouvenirItems] = useState<{ id: number, img: string, targetX: number, targetY: number, rotation: number, isHit?: boolean, isThrown?: boolean, isStuck?: boolean, startX?: number, startY?: number, stuckX?: number, stuckY?: number }[]>([]);
   const [mousePos, setMousePos] = useState({ x: -1000, y: -1000 });
   const [isScissorClosed, setIsScissorClosed] = useState(false);
   const [targetHit, setTargetHit] = useState(false);
