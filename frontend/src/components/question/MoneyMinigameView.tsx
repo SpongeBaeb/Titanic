@@ -359,7 +359,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     const duration = Date.now() - morsePressStartTime.current;
     morsePressStartTime.current = 0; // Reset
     
-    const type = duration < 200 ? 'dot' : 'dash';
+    const type: 'dot' | 'dash' = duration < 200 ? 'dot' : 'dash';
     const newSignal = { id: Date.now() + Math.random(), type };
     
     setMorseSignals(prev => [...prev, newSignal]);
