@@ -213,7 +213,7 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
         style={{ transformStyle: 'preserve-3d' }}
         initial={{ rotateY: 360 }}
         animate={{ rotateY: isFlipped ? 180 : 0 }}
-        transition={{ duration: 1.5, ease: "easeOut" }}
+        transition={{ duration: 0.6, ease: "easeInOut" }}
         onClick={() => setIsFlipped(!isFlipped)}
       >
         

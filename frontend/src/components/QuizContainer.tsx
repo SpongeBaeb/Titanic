@@ -63,11 +63,11 @@ export default function QuizContainer() {
     if (step === 'Q1') {
       assets.push('/telegraph/base.png', '/telegraph/rbase.png', '/telegraph/lever.png', '/telegraph/arrow.png');
       q?.options.forEach(opt => {
-        if (opt.bgImage) assets.push(typeof opt.bgImage === 'function' ? opt.bgImage(currentAnswers) : opt.bgImage);
+        if (opt.bgImage) assets.push(opt.bgImage);
       });
     } else if (step === 'Q2') {
       q?.options.forEach(opt => {
-        if (opt.bgImage) assets.push(typeof opt.bgImage === 'function' ? opt.bgImage(currentAnswers) : opt.bgImage);
+        if (opt.bgImage) assets.push(opt.bgImage);
       });
       assets.push('/camera-lens.png');
     } else if (step === 'Q3') {
