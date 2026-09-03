@@ -10,7 +10,7 @@ if os.path.exists(configs_path):
         except Exception:
             pass
 
-with open(r'C:\Users\samsung\.gemini\antigravity-ide\brain\b753ffbc-cb86-45f4-a2e3-cf6b4dd0ef04\titanic_character_cards.md', 'r', encoding='utf-8') as f:
+with open(r'c:\Titanic\recovered_cards.md', 'r', encoding='utf-8') as f:
     text = f.read()
 
 chars = {}
