@@ -9,6 +9,7 @@ import html2canvas from 'html2canvas';
 import TitanicPassengerCard from '@/components/ui/TitanicPassengerCard';
 import { characterDB } from '@/data/characterDB';
 import { questionsData } from '@/data/questions';
+import { preloadImages } from '@/lib/preloadImages';
 
 type RevealStage = 'LOADING' | 'STAGE1_STAT' | 'STAGE2_ADJUST' | 'STAGE3_MATCH';
 
@@ -70,6 +71,23 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
         const data: QuizResultResponse = await res.json();
         setResultData(data);
         
+        if (data) {
+          const assetsToPreload = [];
+          if (data.historical_match) {
+            assetsToPreload.push(`/bg/${data.historical_match.survived ? 'survived' : 'perished'}.png`);
+            assetsToPreload.push(`/result/${encodeURIComponent(data.historical_match.name)}.png`);
+          }
+          if (data.worst_match) {
+            assetsToPreload.push(`/bg/${data.worst_match.survived ? 'survived' : 'perished'}.png`);
+            assetsToPreload.push(`/result/${encodeURIComponent(data.worst_match.name)}.png`);
+          }
+          if (data.opposite_match) {
+            assetsToPreload.push(`/bg/${data.opposite_match.survived ? 'survived' : 'perished'}.png`);
+            assetsToPreload.push(`/result/${encodeURIComponent(data.opposite_match.name)}.png`);
+          }
+          preloadImages(assetsToPreload);
+        }
+        
         // 1초 뒤 Stage 1 표시
         setTimeout(() => {
           setStage('STAGE1_STAT');
@@ -96,13 +114,19 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
     }
     
     if (stage === 'STAGE2_ADJUST') {
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
+        if (resultData?.historical_match) {
+          await preloadImages([
+            `/bg/${resultData.historical_match.survived ? 'survived' : 'perished'}.png`,
+            `/result/${encodeURIComponent(resultData.historical_match.name)}.png`
+          ]);
+        }
         setStage('STAGE3_MATCH');
         soundManager.playThud();
       }, sharedResultId ? 2500 : 5000);
       return () => clearTimeout(timer);
     }
-  }, [stage, sharedResultId]);
+  }, [stage, sharedResultId, resultData]);
 
   const handleCopyLink = () => {
     if (!resultData?.id) return;
@@ -261,10 +285,10 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
                   className="fixed inset-0 -z-10"
                 >
                   {/* 기존 배경을 완전히 가리는 검은색 바탕 */}
-                  <div className="absolute inset-0 bg-slate-950" />
+                  <div className="absolute -inset-[100px] bg-slate-950" />
                   {/* 생존/사망 배경 이미지 */}
                   <div 
-                    className="absolute inset-0 bg-cover bg-center opacity-70"
+                    className="absolute -inset-[100px] bg-cover bg-center opacity-70"
                     style={{ backgroundImage: `url(/bg/${currentMatchObj.survived ? 'survived' : 'perished'}.png)` }}
                   />
                   {/* 결과 카드를 돋보이게 하는 하단 그라데이션 */}
