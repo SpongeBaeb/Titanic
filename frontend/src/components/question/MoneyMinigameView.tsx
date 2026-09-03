@@ -24,9 +24,9 @@ const FACILITIES = [
 
 export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyMinigameViewProps) {
   // State
-  const [billsAvailable, setBillsAvailable] = useState(3);
+  const [billsAvailable, setBillsAvailable] = useState(5);
   const [billsInBag, setBillsInBag] = useState(0);
-  const [totalEarnedBills, setTotalEarnedBills] = useState(3);
+  const [totalEarnedBills, setTotalEarnedBills] = useState(5);
   
   const [activeEffect, setActiveEffect] = useState<string | null>(null);
   const [hasGiantBubble, setHasGiantBubble] = useState(false);
