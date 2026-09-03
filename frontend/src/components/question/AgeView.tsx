@@ -258,6 +258,9 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         >
           {question.title}
         </motion.h2>
+        <p className="text-sm text-amber-200/60 mb-2 font-sans animate-pulse">
+          (레버를 좌우로 드래그해서 나이를 선택하세요)
+        </p>
         <div className="h-8">
           <motion.div
             key={activeIndex}

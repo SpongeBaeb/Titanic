@@ -32,7 +32,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
 
   // 줌 오리진 보정 최종 고정값 (피사체 중심점으로부터의 offset %)
   const FOCUS_OFFSETS: Record<string, { x: number, y: number }> = {
-    alone:   { x: 50, y: 0 },
+    alone:   { x: 20, y: 0 },
     partner: { x: -100, y: 0 },
     friends: { x: 0, y: 0 },
     family:  { x: 0, y: 0 },

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer 
 } from 'recharts';
+import { motion } from 'framer-motion';
 import { characterDB } from '@/data/characterDB';
 import { Quote, Settings, X } from 'lucide-react';
 
@@ -207,13 +208,12 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
 
 
       {/* 3D Flipping Container */}
-      <div 
+      <motion.div 
         className="relative w-full max-w-md h-[740px] cursor-pointer group"
-        style={{ 
-          transformStyle: 'preserve-3d', 
-          transition: 'transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1)',
-          transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
-        }}
+        style={{ transformStyle: 'preserve-3d' }}
+        initial={{ rotateY: 360 }}
+        animate={{ rotateY: isFlipped ? 180 : 0 }}
+        transition={{ duration: 1.5, ease: "easeOut" }}
         onClick={() => setIsFlipped(!isFlipped)}
       >
         
@@ -438,7 +438,7 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
           </div>
         </div>
         
-      </div>
+      </motion.div>
     </div>
   );
 };
