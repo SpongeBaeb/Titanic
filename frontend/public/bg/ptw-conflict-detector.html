@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>혼재작업 위험 조합 사전 탐지 · 프로토타입</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: #E7EAE5; }
+  button { font: inherit; }
+  /* 사용하는 유틸리티만 직접 정의 — 외부 CSS 의존 없음 */
+  .flex { display: flex; }
+  .flex-wrap { flex-wrap: wrap; }
+  .flex-1 { flex: 1 1 0%; }
+  .items-center { align-items: center; }
+  .items-baseline { align-items: baseline; }
+  .gap-1 { gap: 4px; }
+  .gap-2 { gap: 8px; }
+  .gap-3 { gap: 12px; }
+  .w-full { width: 100%; }
+  .relative { position: relative; }
+  .absolute { position: absolute; }
+  .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+  .top-0 { top: 0; }
+  .bottom-0 { bottom: 0; }
+  .pointer-events-none { pointer-events: none; }
+  .text-left { text-align: left; }
+  button:focus-visible, textarea:focus-visible, input:focus-visible {
+    outline: 2px solid #1B5E8C; outline-offset: 1px;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useMemo } = React;
+
+/* ============================================================
+   색채 — 산업안전보건표지 색채 규격을 인쇄 잉크 톤으로 조정
+   ============================================================ */
+const C = {
+  ink: "#1A1D1A", paper: "#E7EAE5", sheet: "#F3F5F1",
+  rule: "#B2BAAF", ruleFaint: "#D2D8CF", steel: "#5C665F",
+  fire: "#B23127", warn: "#C8900A", inst: "#1B5E8C",
+  safe: "#2C7A55", paint: "#7A4E8C",
+};
+const MONO = "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace";
+const SANS = "'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif";
+
+/* ============================================================
+   1단계 — 블록 코드 파서
+   ============================================================ */
+const ZONE = { F:"선수", A:"선미", B:"선저", D:"상갑판", E:"엔진룸", H:"선실", S:"외판" };
+const SIDE = { P:"좌현", S:"우현", C:"중앙" };
+
+function parseBlock(code) {
+  const m = /^([FABDEHS])(\d)(\d)([PSC])$/.exec(code);
+  if (!m) return null;
+  return { code, zone:m[1], zoneName:ZONE[m[1]], vertical:+m[2], horizontal:+m[3], side:m[4], sideName:SIDE[m[4]] };
+}
+
+function spatialRelation(a, b) {
+  const x = parseBlock(a), y = parseBlock(b);
+  if (!x || !y) return { kind:"unknown", label:"판정 불가" };
+  if (x.code === y.code) return { kind:"same", label:"동일 블록" };
+  if (x.zone !== y.zone) return { kind:"unrelated", label:"공간적 무관" };
+  if (x.side !== y.side) return { kind:"unrelated", label:"현측 상이" };
+  if (x.horizontal === y.horizontal && Math.abs(x.vertical - y.vertical) === 1) {
+    return { kind:"vertical", label:"수직 인접",
+      upper: x.vertical > y.vertical ? x.code : y.code,
+      lower: x.vertical > y.vertical ? y.code : x.code };
+  }
+  if (x.vertical === y.vertical && Math.abs(x.horizontal - y.horizontal) === 1)
+    return { kind:"horizontal", label:"수평 인접" };
+  return { kind:"unrelated", label:"공간적 무관" };
+}
+
+const toMin = (s) => { const [h,m] = s.split(":").map(Number); return h*60+m; };
+const toHHMM = (m) => String(Math.floor(m/60)).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
+
+/* 보충작업허가 6종 — C-C-49-2026 5.1(3)
+   본작업 허가기간과 별개로 보충작업별 허가기간이 양식에 따로 있음(<별지양식1>) */
+const SUB_TYPES = ["밀폐공간","정전","굴착","방사선","고소","중장비"];
+
+/* 허가서의 유효 구간 목록: 본작업 1건 + 보충작업 n건 */
+function intervals(p) {
+  const out = [{ kind:"본작업", start:p.start, end:p.end }];
+  (p.sub || []).forEach(s => out.push({ kind:s.type, start:s.start || p.start, end:s.end || p.end }));
+  return out;
+}
+const hasSub = (p, t) => (p.sub || []).some(s => s.type === t);
+
+function timeRelation(p, q) {
+  const s = Math.max(toMin(p.start), toMin(q.start));
+  const e = Math.min(toMin(p.end), toMin(q.end));
+  if (e > s) return { kind:"overlap", minutes:e-s, from:s, to:e };
+  return toMin(q.start) >= toMin(p.end)
+    ? { kind:"sequential", gap: toMin(q.start)-toMin(p.end), first:p, second:q }
+    : { kind:"sequential", gap: toMin(p.start)-toMin(q.end), first:q, second:p };
+}
+
+/* ============================================================
+   허가서 대장 — 호선 2401 / 블록 5개 / 합성 데이터
+   ============================================================ */
+const PERMITS = [
+  { id:"A-0412", block:"E21P", vendor:"대성기공", vtype:"사내협력사", cat:"화기작업",
+    start:"10:00", end:"15:00", workers:3, watcher:true, permitClass:"화기작업",
+    sub:[{ type:"고소", start:"10:00", end:"13:00" }],
+    text:"E/R 2층 SEAM부 가우징 후 사상 마무리", tags:["화기","분진","고소"] },
+  { id:"B-0388", block:"E11P", vendor:"한별도장", vtype:"사내협력사", cat:"도장작업",
+    start:"09:00", end:"18:00", workers:2, watcher:false, permitClass:"일반위험작업",
+    sub:[{ type:"밀폐공간", start:"09:00", end:"18:00" }],
+    text:"E/R 하부 밸러스트 탱크 내 2차 도장, 에어리스 사용", tags:["도장","유증기","밀폐"] },
+  { id:"C-0501", block:"E12P", vendor:"한별도장", vtype:"사내협력사", cat:"도장작업",
+    start:"08:00", end:"12:00", workers:3, watcher:true, permitClass:"일반위험작업",
+    sub:[{ type:"밀폐공간", start:"08:00", end:"12:00" }],
+    text:"E/R 선미측 탱크 내부 프라이머 도장", tags:["도장","유증기","밀폐"] },
+  { id:"C-0512", block:"E12P", vendor:"정우철구", vtype:"물량팀", cat:"화기작업",
+    start:"12:30", end:"17:00", workers:4, watcher:true, permitClass:"화기작업",
+    sub:[{ type:"밀폐공간", start:"12:30", end:"17:00" }],
+    text:"동 탱크 내 서포트 취부 및 본용접", tags:["화기","밀폐"] },
+  { id:"C-0530", block:"E12P", vendor:"한국검사", vtype:"사내협력사", cat:"검사",
+    start:"16:00", end:"18:00", workers:2, watcher:true, permitClass:"일반위험작업",
+    sub:[{ type:"방사선", start:"16:00", end:"18:00" }, { type:"밀폐공간", start:"16:00", end:"18:00" }],
+    text:"용접부 RT 촬영, 이리듐 선원 사용", tags:["방사선","밀폐","검사"] },
+  { id:"D-0233", block:"E11P", vendor:"삼우테크", vtype:"물량팀", cat:"사상작업",
+    start:"13:00", end:"17:30", workers:1, watcher:false, permitClass:"일반위험작업",
+    sub:[{ type:"밀폐공간", start:"13:00", end:"17:30" }],
+    text:"탱크 내 잔여 비드 사상, 단독 진행", tags:["분진","밀폐","단독작업"] },
+  { id:"E-0177", block:"E31P", vendor:"대성기공", vtype:"사내협력사", cat:"연삭작업",
+    start:"13:00", end:"17:00", workers:2, watcher:true, permitClass:"화기작업",
+    sub:[{ type:"고소", start:"13:00", end:"17:00" }],
+    text:"E/R 3층 상부 거더 그라인딩", tags:["분진","화기","고소"] },
+  { id:"E-0180", block:"E21P", vendor:"동남의장", vtype:"사내협력사", cat:"의장작업",
+    start:"14:00", end:"18:00", workers:5, watcher:false, permitClass:"일반위험작업",
+    sub:[{ type:"중장비", start:"14:00", end:"16:00" }],
+    text:"2층 통로부 배관 스풀 설치 및 서포트 체결", tags:["통행/하부작업","중량물"] },
+  { id:"F-0044", block:"D21S", vendor:"우진산업", vtype:"사내협력사", cat:"사상작업",
+    start:"09:00", end:"16:00", workers:2, watcher:true, permitClass:"일반위험작업",
+    sub:[{ type:"고소", start:"09:00", end:"16:00" }, { type:"중장비", start:"09:00", end:"16:00" }],
+    text:"화물창 내벽 곤돌라 탑승 사상 작업", tags:["고소","분진","곤돌라"] },
+  { id:"F-0051", block:"D21S", vendor:"신원가설", vtype:"물량팀", cat:"가설작업",
+    start:"08:00", end:"11:00", workers:3, watcher:false, permitClass:"일반위험작업",
+    sub:[{ type:"고소", start:"08:00", end:"11:00" }],
+    text:"화물창 상부 족장 추가 설치 (검사 대응)", tags:["가설물변경","고소","간섭"] },
+  { id:"G-0090", block:"E31P", vendor:"동남의장", vtype:"사내협력사", cat:"전기작업",
+    start:"08:30", end:"11:30", workers:2, watcher:true, permitClass:"일반위험작업",
+    sub:[{ type:"정전", start:"08:30", end:"11:30" }],
+    isolation:"MCC-3F-07",
+    text:"3층 케이블 트레이 포설 및 관통구 정리", tags:["전기","고소"] },
+  { id:"G-0095", block:"E31P", vendor:"세신전기", vtype:"물량팀", cat:"전기작업",
+    start:"09:00", end:"15:00", workers:2, watcher:true, permitClass:"일반위험작업",
+    sub:[{ type:"정전", start:"09:00", end:"15:00" }],
+    isolation:"MCC-3F-07",
+    text:"동일 MCC 계통 배전반 내부 결선 작업", tags:["전기"] },
+  { id:"G-0102", block:"E21P", vendor:"정우철구", vtype:"물량팀", cat:"조립작업",
+    start:"08:00", end:"09:30", workers:4, watcher:true, permitClass:"화기작업",
+    sub:[{ type:"중장비", start:"08:00", end:"09:30" }],
+    text:"2층 보강재 취부, 가용접까지", tags:["화기","중량물"] },
+  { id:"H-0311", block:"D21S", vendor:"우진산업", vtype:"사내협력사", cat:"검사",
+    start:"16:30", end:"18:00", workers:1, watcher:true, permitClass:"일반위험작업",
+    text:"화물창 도장 전 표면 상태 검사", tags:["검사"] },
+  { id:"H-0320", block:"E12P", vendor:"삼우테크", vtype:"물량팀", cat:"청소",
+    start:"17:30", end:"19:00", workers:2, watcher:true, permitClass:"일반위험작업",
+    sub:[{ type:"밀폐공간", start:"17:30", end:"19:00" }],
+    text:"탱크 내 잔재 및 그리트 진공 청소", tags:["분진","밀폐"] },
+];
+
+/* ============================================================
+   2단계 — 위험 조합 매트릭스 (KOSHA GUIDE B-5-2011 도출)
+   ============================================================ */
+const has = (p, t) => p.tags.indexOf(t) !== -1;
+
+const RULES = [
+  { id:1, name:"화기 × 도장/유증기", severity:"높음",
+    basis:"별표9 도장작업 9 · 별표13 기관실작업 10",
+    test: (p,q,sp,tm) => {
+      if (tm.kind !== "overlap") return null;
+      if (!(sp.kind === "same" || sp.kind === "vertical")) return null;
+      const fire = has(p,"화기") ? p : has(q,"화기") ? q : null;
+      const paint = has(p,"유증기") ? p : has(q,"유증기") ? q : null;
+      if (!fire || !paint || fire.id === paint.id) return null;
+      if (sp.kind === "vertical" && sp.lower !== paint.block) return null;
+      return { why: sp.kind === "same"
+        ? "동일 블록 내 화기작업과 도장작업이 동시에 진행됩니다."
+        : "하부 " + paint.block + "의 도장 유증기가 상부 " + fire.block + "의 화기작업으로 상승할 수 있습니다." };
+    }},
+  { id:2, name:"도장 → 화기 (환기 시간 미확보)", severity:"높음",
+    basis:"별표18 화기작업 3",
+    test: (p,q,sp,tm) => {
+      if (sp.kind !== "same") return null;
+      if (tm.kind !== "sequential" || tm.gap >= 120) return null;
+      if (!has(tm.first,"유증기") || !has(tm.second,"화기")) return null;
+      if (!has(tm.first,"밀폐") && !has(tm.second,"밀폐")) return null;
+      return { why: "도장 종료 후 " + tm.gap + "분 만에 밀폐구역 내 화기작업이 착수됩니다. 잔류 유증기 배출 시간이 부족합니다." };
+    }},
+  { id:3, name:"밀폐구역 × 단독작업", severity:"높음",
+    basis:"C-C-49-2026 7.3(1)(바)③ 안전 대기조(2인 1조) · B-5 별표11 밀폐장소작업 2 (안전보건규칙 제623조)",
+    test: (p,q,sp,tm) => {
+      if (tm.kind !== "overlap" || sp.kind !== "same") return null;
+      const solo = [p,q].filter(x => has(x,"밀폐") && (x.workers < 2 || !x.watcher))[0];
+      if (!solo) return null;
+      const other = solo.id === p.id ? q : p;
+      const reason = solo.workers < 2 ? "1인 작업" : "감시인 미배정";
+      return { why: solo.id + "이(가) 밀폐구역에서 " + reason + " 상태로 진행됩니다. " + other.id + "과(와) 동일 구역에서 시간이 겹칩니다." };
+    }},
+  { id:4, name:"상부 화기·연삭 × 하부 통행·작업", severity:"중간",
+    basis:"별표18 화기작업 7 · 별표10 블록작업 7",
+    test: (p,q,sp,tm) => {
+      if (tm.kind !== "overlap" || sp.kind !== "vertical") return null;
+      const up = [p,q].filter(x => x.block === sp.upper)[0];
+      const low = [p,q].filter(x => x.block === sp.lower)[0];
+      if (!up || !low) return null;
+      if (!(has(up,"분진") || has(up,"화기"))) return null;
+      if (!(has(low,"통행/하부작업") || has(low,"중량물"))) return null;
+      return { why: "상부 " + up.block + "의 비산·낙하물이 하부 " + low.block + " 작업자에게 도달할 수 있습니다. 불받이 설치 및 사전 동의 여부 확인이 필요합니다." };
+    }},
+  { id:5, name:"구조물 간섭 (가설물 변경 × 장비 작업)", severity:"높음",
+    basis:"C-C-49-2026 7.3(6)(다)② 시야간섭·신호수 · <별지양식1> 중장비 간섭 항목 · B-5 별표16 비계관리 16",
+    test: (p,q,sp,tm) => {
+      if (!(sp.kind === "same" || sp.kind === "vertical")) return null;
+      const chg = [p,q].filter(x => has(x,"가설물변경"))[0];
+      if (!chg) return null;
+      const eq = [p,q].filter(x => x.id !== chg.id && (has(x,"곤돌라") || has(x,"중량물")))[0];
+      if (!eq) return null;
+      if (tm.kind === "overlap")
+        return { why: chg.id + "의 가설물 설치가 " + eq.id + "의 장비 운행 구간과 동시에 진행됩니다. 설치 후 운행 반경이 변경되었는지 재평가가 필요합니다." };
+      if (tm.kind === "sequential" && tm.first.id === chg.id && tm.gap < 480)
+        return { why: chg.id + "에서 족장이 추가 설치된 뒤 " + eq.id + "의 장비 작업이 이어집니다. 설치로 인해 운행 반경 내 간섭물이 생겼는지 확인되지 않았습니다." };
+      return null;
+    }},
+  { id:6, name:"방사선 검사 × 출입제한구역 내 타 작업", severity:"높음",
+    basis:"C-C-49-2026 7.1(2)(라) · 7.3(4)(다)② 출입제한",
+    test: (p,q,sp,tm) => {
+      if (tm.kind !== "overlap") return null;
+      if (!(sp.kind === "same" || sp.kind === "vertical")) return null;
+      const rt = hasSub(p,"방사선") ? p : hasSub(q,"방사선") ? q : null;
+      if (!rt) return null;
+      const other = rt.id === p.id ? q : p;
+      if (hasSub(other,"방사선")) return null;
+      return { why: rt.id + "의 방사선 사용 구간에는 출입·통행 제한이 걸립니다. " + other.id
+        + "이(가) 같은 구역에서 " + tm.minutes + "분 겹칩니다. 화기작업 후 RT 검사 순서 조정이 필요합니다." };
+    }},
+  { id:7, name:"공통 격리(정전) 조기 해제", severity:"높음",
+    basis:"C-C-49-2026 <별지양식4> 15 · 7.3(2)(다)⑤ 통전 절차",
+    test: (p,q,sp,tm) => {
+      if (sp.kind !== "same") return null;
+      if (!p.isolation || !q.isolation || p.isolation !== q.isolation) return null;
+      if (tm.kind !== "overlap") return null;
+      const early = toMin(p.end) < toMin(q.end) ? p : q;
+      const late = early.id === p.id ? q : p;
+      return { why: "두 허가서가 동일 격리계통(" + p.isolation + ")을 공유합니다. " + early.id
+        + "이(가) " + early.end + "에 먼저 종료되며, 이때 통전이 이루어지면 " + late.end
+        + "까지 진행되는 " + late.id + "이(가) 활선 상태에 노출됩니다." };
+    }},
+];
+
+function resolutions(c) {
+  const a = c.a, b = c.b, rule = c.rule, time = c.time;
+  const out = [];
+  if (rule.id === 1 || rule.id === 4) {
+    const later = toMin(a.start) > toMin(b.start) ? a : b;
+    const earlier = later.id === a.id ? b : a;
+    out.push({ k:"시간 조정", v: later.id + " 착수를 " + toHHMM(toMin(earlier.end)) + " 이후로 이동 → 중첩 0분" });
+    out.push({ k:"공간 조정", v: later.id + "을 인접 블록으로 이동해 수직 관계 해소 (탑재 일정 확인 필요)" });
+    out.push({ k:"조건부 승인", v:"양 작업 유지 시 국소배기 가동 확인 · 비산불티차단막 설치 · 가스농도 측정 후 착수 (HC 0%, O₂ 18~23.5%)" });
+  }
+  if (rule.id === 2) {
+    out.push({ k:"시간 조정", v: time.second.id + " 착수를 " + toHHMM(toMin(time.first.end)+120) + " 이후로 이동 (환기 2시간 확보)" });
+    out.push({ k:"조건부 승인", v:"강제 환기 후 가스농도 재측정값을 허가서에 기록 시 조기 착수 검토 (HC 0%, O₂ 18~23.5%, CO 30ppm 미만)" });
+  }
+  if (rule.id === 3) {
+    const solo = [a,b].filter(x => has(x,"밀폐") && (x.workers < 2 || !x.watcher))[0];
+    out.push({ k:"인원 조정", v: solo.id + "에 감시인 1명 배정 (안전보건규칙 제623조)" });
+    out.push({ k:"시간 조정", v: solo.id + "을 감시인 배정 가능한 시간대로 이동" });
+  }
+  if (rule.id === 6) {
+    const rt = hasSub(a,"방사선") ? a : b;
+    const other = rt.id === a.id ? b : a;
+    out.push({ k:"시간 조정", v: rt.id + " 촬영을 " + other.end + " 이후로 이동 → 출입제한구역 내 타 작업 0건" });
+    out.push({ k:"구역 조정", v: other.id + "을 방사선 방사점 도면상 제한반경 밖으로 이동" });
+    out.push({ k:"조건부 승인", v:"불가 시 출입제한 표지·점멸등 설치 및 " + other.id + " 일시 철수 후 촬영" });
+  }
+  if (rule.id === 7) {
+    const early = toMin(a.end) < toMin(b.end) ? a : b;
+    const late = early.id === a.id ? b : a;
+    out.push({ k:"격리 관리", v:"통전은 " + late.id + " 완료 및 양 허가서 반납 서명 후에만 시행 (요청자·복구시간·확인자 기재)" });
+    out.push({ k:"시간 조정", v: early.id + " 종료를 " + late.end + "로 맞춰 격리 해제 시점 일치" });
+  }
+  if (rule.id === 5) {
+    const chg = [a,b].filter(x => has(x,"가설물변경"))[0];
+    const eq = [a,b].filter(x => x.id !== chg.id)[0];
+    out.push({ k:"재평가 요구", v: chg.id + " 완료 시점에 " + eq.id + "의 수시 위험성평가 재실시 → 과상승 방지장치 재조정 또는 장비 위치 변경" });
+    out.push({ k:"시간 조정", v: eq.id + "을 가설물 설치 완료 및 재평가 이후로 이동" });
+  }
+  return out;
+}
+
+function detect(permits) {
+  const found = [];
+  for (let i = 0; i < permits.length; i++) {
+    for (let j = i+1; j < permits.length; j++) {
+      const a = permits[i], b = permits[j];
+      const sp = spatialRelation(a.block, b.block);
+      if (sp.kind === "unrelated" || sp.kind === "unknown") continue;
+      const tm = timeRelation(a, b);
+      RULES.forEach(rule => {
+        const hit = rule.test(a, b, sp, tm);
+        if (hit) found.push({ a, b, rule, space:sp, time:tm, why:hit.why });
+      });
+    }
+  }
+  return found;
+}
+
+/* ============================================================
+   블록 입면 격자
+   ============================================================ */
+const T0 = 8*60, T1 = 19*60, SPAN = T1 - T0;
+const pct = (m) => ((m - T0) / SPAN) * 100;
+const ROW_H = 58;
+const CAT_COLOR = {
+  화기작업:C.fire, 연삭작업:C.fire, 조립작업:C.fire, 도장작업:C.paint,
+  사상작업:C.warn, 가설작업:C.inst, 의장작업:C.steel, 전기작업:C.inst,
+  검사:C.safe, 청소:C.steel,
+};
+
+function Elevation({ permits, conflicts, onPick }) {
+  const rows = useMemo(() => {
+    const seen = {}, codes = [];
+    permits.forEach(p => { if (!seen[p.block]) { seen[p.block] = 1; codes.push(p.block); } });
+    return codes.map(parseBlock).sort((x,y) =>
+      x.zone === y.zone ? (y.vertical - x.vertical) || (x.horizontal - y.horizontal) : x.zone.localeCompare(y.zone));
+  }, [permits]);
+
+  const idx = {}; rows.forEach((r,i) => idx[r.code] = i);
+  const ticks = []; for (let t = T0; t <= T1; t += 60) ticks.push(t);
+
+  return (
+    <div>
+      <div className="flex" style={{ marginLeft:108 }}>
+        <div className="relative w-full" style={{ height:22 }}>
+          {ticks.map(t => (
+            <div key={t} className="absolute" style={{ left:pct(t)+"%", transform:"translateX(-50%)" }}>
+              <div style={{ fontFamily:MONO, fontSize:10, color:C.steel }}>{toHHMM(t)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="relative" style={{ borderTop:"1px solid "+C.rule }}>
+        {rows.map((r,i) => {
+          const newZone = i > 0 && rows[i-1].zone !== r.zone;
+          return (
+            <div key={r.code} className="flex"
+              style={{ height:ROW_H, borderTop:(newZone ? "1px solid "+C.rule : "1px solid "+C.ruleFaint) }}>
+              <div style={{ width:108, flexShrink:0, paddingTop:8, paddingRight:10 }}>
+                <div style={{ fontFamily:MONO, fontSize:15, letterSpacing:"0.06em" }}>{r.code}</div>
+                <div style={{ fontSize:10, color:C.steel, marginTop:1 }}>
+                  {r.zoneName} · {r.vertical}층 · {r.sideName}
+                </div>
+              </div>
+              <div className="relative flex-1" style={{ borderLeft:"1px solid "+C.rule }}>
+                {ticks.map(t => (
+                  <div key={t} className="absolute top-0 bottom-0"
+                    style={{ left:pct(t)+"%", width:1, background:C.ruleFaint }} />
+                ))}
+                {permits.filter(p => p.block === r.code).map((p,k) => (
+                  <button key={p.id} onClick={() => onPick(p)} className="absolute text-left"
+                    title={p.id + " " + p.cat + " " + p.start + "~" + p.end}
+                    style={{
+                      left: pct(toMin(p.start))+"%",
+                      width: (pct(toMin(p.end)) - pct(toMin(p.start)))+"%",
+                      top: 8 + (k % 2) * 22, height:20,
+                      background: CAT_COLOR[p.cat] || C.steel, color:"#fff",
+                      fontFamily:MONO, fontSize:10, paddingLeft:5, paddingRight:5,
+                      overflow:"hidden", whiteSpace:"nowrap", border:"none", cursor:"pointer",
+                    }}>{p.id}</button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        <div className="absolute inset-0 pointer-events-none" style={{ marginLeft:108 }}>
+          {conflicts.map((c,n) => {
+            const ia = idx[c.a.block], ib = idx[c.b.block];
+            if (ia === undefined || ib === undefined) return null;
+            const top = Math.min(ia,ib) * ROW_H + ROW_H/2;
+            const h = Math.abs(ia-ib) * ROW_H || 16;
+            const mid = c.time.kind === "overlap" ? (c.time.from + c.time.to)/2 : toMin(c.time.first.end);
+            return (
+              <div key={n} className="absolute" style={{ left:pct(mid)+"%", top:top, height:h }}>
+                <div style={{ width:2, height:"100%", background:C.fire, opacity:0.85 }} />
+                <div style={{
+                  position:"absolute", top:"50%", left:4, transform:"translateY(-50%)",
+                  background:C.fire, color:"#fff", fontFamily:MONO, fontSize:9,
+                  padding:"1px 4px", whiteSpace:"nowrap",
+                }}>R{c.rule.id}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   3단계 실습 — LLM 태깅
+   ============================================================ */
+/* 태그 이원화
+   축1(규정축) : C-C-49-2026이 정한 허가 구분. 허가서 체크박스에서 그대로 읽히므로 AI 불필요.
+   축2(조선축) : 자유서술 안에만 존재하는 조선업 고유 위험요소. AI가 필요한 지점은 여기뿐. */
+const AXIS_REG  = ["화기작업","일반위험작업","밀폐공간","정전","굴착","방사선","고소","중장비"];
+const AXIS_YARD = ["유증기","도장","분진","가설물변경","단독작업","통행/하부작업","곤돌라","간섭","잔류가스","검사"];
+const TAXONOMY  = AXIS_REG.concat(AXIS_YARD);
+
+const PROMPT_TEMPLATE = `당신은 조선소 작업허가서의 자유서술 작업내용을 표준 위험요소 태그로 변환합니다.
+
+태그는 두 축으로 나뉩니다.
+축1(규정축) — KOSHA GUIDE C-C-49-2026이 정한 허가 구분. 허가서 체크박스에 이미 표시되어 있는
+경우가 많습니다: 화기작업, 일반위험작업, 밀폐공간, 정전, 굴착, 방사선, 고소, 중장비
+축2(조선축) — 자유서술 안에만 존재하는 조선업 고유 위험요소. 이 축을 뽑아내는 것이 핵심입니다:
+유증기, 도장, 분진, 가설물변경, 단독작업, 통행/하부작업, 곤돌라, 간섭, 잔류가스, 검사
+
+현장 약어: E/R=엔진룸, PE=선행탑재, S/G=스티어링기어, B/S=보선스토어, SEAM=용접이음부,
+사상=표면 그라인딩 마무리, 취부=부재 맞춤 고정, 가우징=아크로 홈파기, 블라스팅=연마재 분사,
+족장=임시 작업발판, 그리트=연마재, RT=방사선투과검사, MCC=전동기제어반
+
+주의사항:
+- "도장 완료 후"와 "도장 예정"은 위험 구간이 정반대입니다. 시간 관계를 반드시 구분하세요.
+- 한 문장에 두 개 이상의 작업이 들어 있으면 각각 분리하세요.
+- 족장·비계의 추가 설치는 다른 작업의 전제를 바꾸므로 가설물변경으로 태깅하세요.
+- 축1은 허가서 양식에서 확인 가능한 범위만, 축2는 서술에서 읽히는 것을 모두 뽑으세요.
+
+작업내용: "{{작업내용}}"
+
+아래 JSON만 출력하세요. 마크다운 코드펜스나 설명은 붙이지 마세요.
+{"작업분리":[{"작업":"...","규정축":["..."],"조선축":["..."]}],"시간관계":"동시 | 선후 | 불명",
+ "판단근거":"한 문장","규칙기반이_놓칠_지점":"한 문장"}`;
+
+/* 위 프롬프트로 사전 실행한 결과. 배포본은 API를 호출하지 않는다. */
+const RUNS = [
+  {
+    input: "E/R 2층 SEAM부 가우징 후 사상, 하부 PE 도장 예정",
+    시간관계: "선후",
+    작업분리: [
+      { 작업:"E/R 2층 용접이음부 가우징 및 표면 사상",
+        규정축:["화기작업"], 조선축:["분진"] },
+      { 작업:"하부 선행탑재 구역 도장 (예정)",
+        규정축:["일반위험작업"], 조선축:["도장","유증기","통행/하부작업"] },
+    ],
+    판단근거: "가우징·사상이 선행하고 하부 도장은 아직 착수 전이므로 상부 화기 → 하부 유증기 순서다.",
+    규칙기반이_놓칠_지점: "'도장'이라는 키워드만 잡으면 이미 도장이 진행 중인 것으로 오판하여 위험 구간을 반대로 잡는다.",
+  },
+  {
+    input: "화물창 상부 족장 추가 설치 (검사 대응)",
+    시간관계: "불명",
+    작업분리: [
+      { 작업:"화물창 상부 임시 작업발판 추가 설치",
+        규정축:["일반위험작업","고소"], 조선축:["가설물변경","간섭"] },
+    ],
+    판단근거: "족장 설치 자체는 단독 작업이나, 상부 구조물이 늘어나 하부 진행 작업의 공간 전제를 바꾼다.",
+    규칙기반이_놓칠_지점: "'설치'는 위험 키워드 사전에 없어 무해한 준비 작업으로 분류되며, 다른 허가서와의 관계가 끊긴다.",
+  },
+  {
+    input: "탱크 내 도장 완료 후 진행하는 서포트 취부",
+    시간관계: "선후",
+    작업분리: [
+      { 작업:"탱크 내 서포트 취부",
+        규정축:["화기작업","밀폐공간"], 조선축:["잔류가스"] },
+    ],
+    판단근거: "도장은 이미 종료된 선행 공정이며 현 허가 대상은 취부다. 다만 밀폐공간 내 잔류 유증기가 남는다.",
+    규칙기반이_놓칠_지점: "사례 1과 문자열이 거의 같지만 시간 관계가 정반대다. 키워드 매칭으로는 두 문장이 구분되지 않는다.",
+  },
+  {
+    input: "카고탱크 블라스팅 종료 후 잔재 정리, 2인 교대",
+    시간관계: "선후",
+    작업분리: [
+      { 작업:"카고탱크 내 블라스팅 잔재 정리",
+        규정축:["일반위험작업","밀폐공간"], 조선축:["분진"] },
+    ],
+    판단근거: "블라스팅은 종료되었고 잔재 정리만 남았으나 밀폐공간 내 연마재 분진은 계속 부유한다.",
+    규칙기반이_놓칠_지점: "'2인 교대'는 감시인 배정이 아니라 작업자 2명의 교대를 뜻할 수 있어, 단독작업 판정이 뒤집힌다.",
+  },
+];
+
+function TagLab() {
+  const [i, setI] = useState(0);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const r = RUNS[i];
+
+  return (
+    <div>
+      <p style={{ fontSize:13, color:C.steel, marginBottom:14, lineHeight:1.7 }}>
+        허가서의 <b style={{ color:C.ink }}>작업종류</b> 필드와 보충작업허가 체크박스는 규정이 정한 대분류만 담습니다
+        (<span style={{ fontFamily:MONO, fontSize:11 }}>규정축</span>). 실제 조합 위험을 결정하는 정보는 자유서술 칸에
+        현장 용어와 약어로 섞여 들어갑니다 (<span style={{ fontFamily:MONO, fontSize:11, color:C.fire }}>조선축</span>).
+        규칙 기반으로 처리되지 않는 지점은 두 번째 축뿐이며, 이 탭은 그 변환만을 보여줍니다.
+      </p>
+
+      <div style={{ background:C.sheet, border:"1px solid "+C.rule, padding:"9px 12px", marginBottom:14 }}>
+        <div style={{ fontFamily:MONO, fontSize:10, color:C.steel, letterSpacing:"0.08em", marginBottom:3 }}>
+          배포본 안내
+        </div>
+        <div style={{ fontSize:12, lineHeight:1.7 }}>
+          이 파일은 외부 API를 호출하지 않습니다. 아래는 동일 프롬프트로 사전에 실행한 결과를 그대로 담아 둔 것입니다.
+          프롬프트 설계와 출력 스키마는 실제 구현본과 같습니다.
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2" style={{ marginBottom:12 }}>
+        {RUNS.map((x,k) => (
+          <button key={k} onClick={() => setI(k)} style={{
+            fontFamily:MONO, fontSize:10, padding:"4px 8px",
+            border:"1px solid "+C.rule, background: i===k ? C.ink : "transparent",
+            color: i===k ? C.sheet : C.steel, cursor:"pointer",
+          }}>사례 {k+1}</button>
+        ))}
+        <button onClick={() => setShowPrompt(!showPrompt)} style={{
+          fontFamily:MONO, fontSize:10, padding:"4px 8px", marginLeft:"auto",
+          border:"1px solid "+C.steel, background:"transparent", color:C.steel, cursor:"pointer",
+        }}>{showPrompt ? "프롬프트 닫기" : "프롬프트 보기"}</button>
+      </div>
+
+      {showPrompt && (
+        <pre style={{ fontFamily:MONO, fontSize:10.5, lineHeight:1.65, background:"#fff",
+          border:"1px solid "+C.rule, padding:12, marginBottom:14, whiteSpace:"pre-wrap",
+          color:C.steel, maxHeight:280, overflowY:"auto" }}>{PROMPT_TEMPLATE}</pre>
+      )}
+
+      <div style={{ background:"#fff", border:"1px solid "+C.rule, padding:12, marginBottom:12 }}>
+        <div style={{ fontFamily:MONO, fontSize:9, color:C.steel, letterSpacing:"0.1em", marginBottom:4 }}>
+          입력 · 허가서 작업내용
+        </div>
+        <div style={{ fontSize:14, lineHeight:1.6 }}>{r.input}</div>
+      </div>
+
+      <div style={{ background:"#fff", border:"1px solid "+C.rule }}>
+        <div style={{ padding:"8px 14px", borderBottom:"1px solid "+C.ruleFaint, background:C.sheet }}>
+          <span style={{ fontFamily:MONO, fontSize:10, color:C.steel, letterSpacing:"0.1em" }}>
+            태깅 결과 · 시간관계 {r.시간관계}
+          </span>
+        </div>
+        <div style={{ padding:14 }}>
+          {r.작업분리.map((w,k) => (
+            <div key={k} style={{ marginBottom:12 }}>
+              <div style={{ fontSize:13, marginBottom:5 }}>{w.작업}</div>
+              <div className="flex flex-wrap gap-1" style={{ marginBottom:4 }}>
+                <span style={{ fontFamily:MONO, fontSize:9, color:C.steel, paddingTop:3, marginRight:2 }}>규정축</span>
+                {w.규정축.map(t => (
+                  <span key={t} style={{ fontFamily:MONO, fontSize:10, padding:"2px 7px",
+                    background:"transparent", border:"1px solid "+C.steel, color:C.steel }}>{t}</span>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <span style={{ fontFamily:MONO, fontSize:9, color:C.fire, paddingTop:3, marginRight:2 }}>조선축</span>
+                {w.조선축.map(t => (
+                  <span key={t} style={{ fontFamily:MONO, fontSize:10, padding:"2px 7px",
+                    background:C.ink, color:C.sheet }}>{t}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{ borderTop:"1px solid "+C.ruleFaint, paddingTop:10, marginTop:4 }}>
+            <Line label="판단근거" v={r.판단근거} />
+            <Line label="규칙 기반이 놓칠 지점" v={r.규칙기반이_놓칠_지점} accent />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Line({ label, v, accent }) {
+  if (!v) return null;
+  return (
+    <div style={{ marginBottom:7 }}>
+      <div style={{ fontFamily:MONO, fontSize:9, color:C.steel, letterSpacing:"0.08em", marginBottom:2 }}>
+        {label}
+      </div>
+      <div style={{ fontSize:12.5, color: accent ? C.fire : C.ink, lineHeight:1.6 }}>{v}</div>
+    </div>
+  );
+}
+
+/* ============================================================
+   보조 컴포넌트
+   ============================================================ */
+function Head({ t, d }) {
+  return (
+    <div style={{ marginBottom:16 }}>
+      <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>{t}</div>
+      {d ? <div style={{ fontSize:12.5, color:C.steel, lineHeight:1.7, maxWidth:720 }}>{d}</div> : null}
+    </div>
+  );
+}
+
+function ConflictCard({ c }) {
+  const a = c.a, b = c.b, rule = c.rule, space = c.space, time = c.time;
+  const sev = rule.severity === "높음" ? C.fire : C.warn;
+  return (
+    <div style={{ background:"#fff", border:"1px solid "+C.rule, borderLeft:"4px solid "+sev, marginBottom:12 }}>
+      <div className="flex flex-wrap items-center gap-2"
+        style={{ padding:"9px 14px", borderBottom:"1px solid "+C.ruleFaint }}>
+        <span style={{ fontFamily:MONO, fontSize:10, background:sev, color:"#fff", padding:"2px 6px" }}>R{rule.id}</span>
+        <span style={{ fontSize:13.5, fontWeight:600 }}>{rule.name}</span>
+        <span style={{ marginLeft:"auto", fontFamily:MONO, fontSize:10, color:C.steel }}>{rule.basis}</span>
+      </div>
+
+      <div className="flex flex-wrap" style={{ borderBottom:"1px solid "+C.ruleFaint }}>
+        {[a,b].map((p,i) => (
+          <div key={p.id} style={{ flex:"1 1 260px", padding:14,
+            borderLeft: i ? "1px solid "+C.ruleFaint : "none" }}>
+            <div className="flex items-baseline gap-2">
+              <span style={{ fontFamily:MONO, fontSize:13 }}>{p.id}</span>
+              <span style={{ fontSize:11.5, color:C.steel }}>{p.vendor}</span>
+              <span style={{ fontFamily:MONO, fontSize:10, color:"#fff", background:C.steel, padding:"1px 5px" }}>{p.vtype}</span>
+            </div>
+            <div style={{ fontFamily:MONO, fontSize:11, color:C.steel, marginTop:4 }}>
+              {p.block} · {p.start}–{p.end} · {p.workers}명 · 감시인 {p.watcher ? "배정" : "미배정"}
+            </div>
+            <div className="flex flex-wrap gap-1" style={{ marginTop:5 }}>
+              <span style={{ fontFamily:MONO, fontSize:9, padding:"1px 5px",
+                border:"1px solid "+C.ink, color:C.ink }}>{p.permitClass}</span>
+              {(p.sub || []).map(sb => (
+                <span key={sb.type} style={{ fontFamily:MONO, fontSize:9, padding:"1px 5px",
+                  border:"1px dashed "+C.steel, color:C.steel }}>
+                  +{sb.type} {sb.start}–{sb.end}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize:12.5, marginTop:6, lineHeight:1.6 }}>{p.text}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding:14, background:C.sheet, borderBottom:"1px solid "+C.ruleFaint }}>
+        <div style={{ fontFamily:MONO, fontSize:10, color:C.steel, letterSpacing:"0.08em", marginBottom:5 }}>
+          공간 {space.label} · {time.kind === "overlap"
+            ? "시간 중첩 " + (Math.round(time.minutes/60*10)/10) + "시간 (" + toHHMM(time.from) + "–" + toHHMM(time.to) + ")"
+            : "선후 간격 " + time.gap + "분"}
+        </div>
+        <div style={{ fontSize:13, lineHeight:1.7 }}>{c.why}</div>
+      </div>
+
+      <div style={{ padding:14 }}>
+        <div style={{ fontFamily:MONO, fontSize:10, color:C.safe, letterSpacing:"0.08em", marginBottom:8 }}>해소 방안</div>
+        {resolutions(c).map((r,i) => (
+          <div key={i} className="flex gap-3" style={{ marginBottom:6 }}>
+            <span style={{ fontFamily:MONO, fontSize:10, color:C.safe, border:"1px solid "+C.safe,
+              padding:"1px 6px", flexShrink:0, height:"fit-content", whiteSpace:"nowrap" }}>{r.k}</span>
+            <span style={{ fontSize:12.5, lineHeight:1.6 }}>{r.v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PermitTable() {
+  return (
+    <div style={{ overflowX:"auto" }}>
+      <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+        <thead>
+          <tr style={{ borderBottom:"1.5px solid "+C.ink }}>
+            {["허가번호","블록","시공업체","구분","허가구분","보충작업허가","작업종류","시간","인원","감시인","작업내용"].map(h => (
+              <th key={h} style={{ textAlign:"left", padding:"7px 9px", fontFamily:MONO,
+                fontSize:10, color:C.steel, letterSpacing:"0.06em", whiteSpace:"nowrap" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {PERMITS.map(p => (
+            <tr key={p.id} style={{ borderBottom:"1px solid "+C.ruleFaint }}>
+              <td style={{ padding:"7px 9px", fontFamily:MONO }}>{p.id}</td>
+              <td style={{ padding:"7px 9px", fontFamily:MONO }}>{p.block}</td>
+              <td style={{ padding:"7px 9px", whiteSpace:"nowrap" }}>{p.vendor}</td>
+              <td style={{ padding:"7px 9px", fontSize:11, color:C.steel, whiteSpace:"nowrap" }}>{p.vtype}</td>
+              <td style={{ padding:"7px 9px", fontSize:11, whiteSpace:"nowrap" }}>{p.permitClass}</td>
+              <td style={{ padding:"7px 9px", fontFamily:MONO, fontSize:10, color:C.steel, whiteSpace:"nowrap" }}>
+                {(p.sub || []).map(sb => sb.type).join(" · ") || "—"}
+              </td>
+              <td style={{ padding:"7px 9px", whiteSpace:"nowrap" }}>
+                <span style={{ borderBottom:"2px solid "+(CAT_COLOR[p.cat] || C.steel) }}>{p.cat}</span>
+              </td>
+              <td style={{ padding:"7px 9px", fontFamily:MONO, fontSize:11, whiteSpace:"nowrap" }}>{p.start}–{p.end}</td>
+              <td style={{ padding:"7px 9px", fontFamily:MONO, fontSize:11 }}>{p.workers}</td>
+              <td style={{ padding:"7px 9px", fontFamily:MONO, fontSize:11, color: p.watcher ? C.steel : C.fire }}>
+                {p.watcher ? "배정" : "미배정"}
+              </td>
+              <td style={{ padding:"7px 9px", minWidth:220 }}>{p.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* ============================================================
+   메인
+   ============================================================ */
+function App() {
+  const [tab, setTab] = useState("elev");
+  const [picked, setPicked] = useState(null);
+  const conflicts = useMemo(() => detect(PERMITS), []);
+  const tabs = [["elev","블록 입면 × 시간"], ["conf","충돌 "+conflicts.length], ["list","허가서 대장"], ["tag","태깅 실습"]];
+
+  return (
+    <div style={{ background:C.paper, color:C.ink, fontFamily:SANS, minHeight:"100vh", padding:20 }}>
+      <div style={{ maxWidth:1080, margin:"0 auto" }}>
+
+        <div style={{ border:"1.5px solid "+C.ink, background:C.sheet, marginBottom:18 }}>
+          <div className="flex flex-wrap" style={{ borderBottom:"1px solid "+C.ink }}>
+            <div style={{ padding:"12px 16px", flex:"1 1 320px" }}>
+              <div style={{ fontFamily:MONO, fontSize:10, color:C.steel, letterSpacing:"0.16em" }}>
+                PTW CONFLICT DETECTION · 프로토타입
+              </div>
+              <div style={{ fontSize:19, fontWeight:700, marginTop:3, letterSpacing:"-0.01em" }}>
+                혼재작업 위험 조합 사전 탐지
+              </div>
+            </div>
+            {[["호선","2401"],["작업일","2026-09-14"],["허가서",PERMITS.length+"건"],["검출",conflicts.length+"건"]].map(kv => (
+              <div key={kv[0]} style={{ padding:"12px 16px", borderLeft:"1px solid "+C.rule, minWidth:92 }}>
+                <div style={{ fontFamily:MONO, fontSize:9, color:C.steel, letterSpacing:"0.1em" }}>{kv[0]}</div>
+                <div style={{ fontFamily:MONO, fontSize:15, marginTop:2,
+                  color: kv[0]==="검출" ? C.fire : C.ink }}>{kv[1]}</div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap">
+            {tabs.map(t => (
+              <button key={t[0]} onClick={() => setTab(t[0])} style={{
+                padding:"9px 16px", border:"none", cursor:"pointer",
+                background: tab===t[0] ? C.ink : "transparent",
+                color: tab===t[0] ? C.sheet : C.steel,
+                fontSize:12.5, fontWeight: tab===t[0] ? 600 : 400, fontFamily:SANS,
+              }}>{t[1]}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ background:C.sheet, border:"1px solid "+C.rule, padding:18 }}>
+          {tab === "elev" && (
+            <React.Fragment>
+              <Head t="블록 입면 × 시간"
+                d="세로축은 선체 구조의 실제 수직 순서입니다. 위아래로 인접한 행이 곧 수직 인접 블록이며, 붉은 선은 그 사이에서 검출된 위험 조합입니다." />
+              <Elevation permits={PERMITS} conflicts={conflicts} onPick={setPicked} />
+              {picked && (
+                <div style={{ marginTop:16, background:"#fff", border:"1px solid "+C.rule, padding:14 }}>
+                  <div className="flex items-baseline gap-3" style={{ marginBottom:6 }}>
+                    <span style={{ fontFamily:MONO, fontSize:14 }}>{picked.id}</span>
+                    <span style={{ fontSize:12, color:C.steel }}>{picked.vendor} · {picked.vtype}</span>
+                  </div>
+                  <div style={{ fontSize:13, marginBottom:8 }}>{picked.text}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {picked.tags.map(t => (
+                      <span key={t} style={{ fontFamily:MONO, fontSize:10, padding:"2px 7px",
+                        background:C.ink, color:C.sheet }}>{t}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </React.Fragment>
+          )}
+
+          {tab === "conf" && (
+            <React.Fragment>
+              <Head t="검출된 위험 조합"
+                d="각 판정은 KOSHA GUIDE B-5-2011의 점검항목에서 도출된 규칙에 근거합니다. 경보만으로는 공정이 밀리므로 해소안까지 제시합니다." />
+              {conflicts.map((c,i) => <ConflictCard key={i} c={c} />)}
+            </React.Fragment>
+          )}
+
+          {tab === "list" && (
+            <React.Fragment>
+              <Head t="허가서 대장"
+                d="시공업체가 서로 다르면 허가서도 따로 발행되고 따로 심사됩니다. 이 목록만 보고 조합 위험을 찾는 것이 현재의 방식입니다." />
+              <PermitTable />
+            </React.Fragment>
+          )}
+
+          {tab === "tag" && (
+            <React.Fragment>
+              <Head t="비정형 작업 서술 → 위험요소 태그" d="" />
+              <TagLab />
+            </React.Fragment>
+          )}
+        </div>
+
+        <div style={{ marginTop:12, fontSize:11, color:C.steel, lineHeight:1.7 }}>
+          허가서 데이터는 합성 자료입니다. 실제 작업허가서는 사내 대외비이므로 확보하지 않았습니다.
+          블록 넘버링은 공개 문헌의 표준 체계를 따랐으며, 사업장별 코드가 다르면 파서 계층에서 흡수합니다.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

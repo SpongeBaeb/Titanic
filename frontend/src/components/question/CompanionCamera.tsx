@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { motion, useMotionValue, useSpring, AnimatePresence } from 'framer-motion';
+import { motion, useSpring, AnimatePresence } from 'framer-motion';
 import { Question } from '@/data/questions';
+import ProgressLine from '@/components/ui/ProgressLine';
 
 interface CompanionCameraProps {
   question: Question;
@@ -41,7 +42,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
   const BG_CONFIG = {
     scale: 130,
     offsetX: -5,
-    offsetY: -12,
+    offsetY: 2,
     parallaxX: 35,
     parallaxY: 15,
     limitYDown: -3,
@@ -213,8 +214,10 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
 
       {/* 3. UI 레이어 (자막 등) */}
       <div className="absolute inset-0 z-20 pointer-events-none">
-        {/* 상단 질문 텍스트 (다크 그라데이션 적용) */}
         <div className="absolute top-0 inset-x-0 pt-12 pb-24 flex flex-col items-center bg-gradient-to-b from-slate-950/90 via-slate-950/50 to-transparent">
+          <div className="w-full max-w-xl px-6 mb-6 mt-4">
+            <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+          </div>
           <div className="text-center flex flex-col gap-2 w-full px-4">
             <h2 className="text-2xl md:text-3xl font-serif text-white/90 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
               {question.title}

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence, useMotionValue, useSpring, MotionValue } from 'framer-motion';
 import { Question } from '@/data/questions';
+import ProgressLine from '@/components/ui/ProgressLine';
 
 interface StaircaseViewProps {
   question: Question;
@@ -113,12 +114,14 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
     mouseY.set(e.clientY - 4);
   };
   
-  // Hardcoded Hotspot Regions
-  const hotspots: Record<string, { x: number, y: number, w: number, h: number }> = {
-    '1': { x: 25, y: 40, w: 15, h: 48 }, // UP (Option 1)
+  const [isEditMode, setIsEditMode] = useState(false);
+  
+  // Hotspot Regions
+  const [config, setConfig] = useState<Record<string, { x: number, y: number, w: number, h: number }>>({
+    '1': { x: 30, y: 45, w: 6, h: 11 }, // UP (Option 1)
     '2': { x: 51, y: 55, w: 5,  h: 15 }, // CORRIDOR (Option 2)
-    '3': { x: 71, y: 75, w: 20, h: 20 }, // DOWN (Option 3)
-  };
+    '3': { x: 76, y: 76, w: 6, h: 11 }, // DOWN (Option 3)
+  });
 
   const currentHoverData = question.options.find(o => o.value === hoveredOption);
 
@@ -192,7 +195,7 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
         </div>
 
         {/* Bottom: Option Description */}
-        <div className="h-48 flex items-end justify-center pb-12 px-6">
+        <div className="h-48 flex items-end justify-center pb-24 px-6">
           <AnimatePresence mode="wait">
             {currentHoverData && (
               <motion.div
@@ -215,16 +218,21 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
         </div>
       </div>
 
+      {/* Bottom ProgressLine */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-6 pointer-events-auto z-[60]">
+        <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+      </div>
+
       {/* Interactive Hotspots Layer */}
       <div className="absolute inset-0 z-20">
         {question.options.map((opt) => {
-          const rect = hotspots[opt.value];
+          const rect = config[opt.value];
           if (!rect) return null;
 
           return (
             <div
               key={opt.id}
-              className="absolute cursor-none flex items-center justify-center"
+              className={`absolute cursor-none flex items-center justify-center ${isEditMode ? 'border-2 border-red-500 bg-red-500/20 pointer-events-auto' : ''}`}
               style={{
                 left: `${rect.x}%`,
                 top: `${rect.y}%`,
@@ -255,6 +263,45 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
           );
         })}
       </div>
+
+      {/* Debug Panel */}
+      {isEditMode && (
+        <div className="fixed bottom-10 right-10 z-[999] bg-slate-900/80 backdrop-blur text-white p-4 rounded-xl text-xs font-mono shadow-2xl border border-white/10 w-80 pointer-events-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-amber-400 font-bold">Staircase Hotspots</h3>
+            <button onClick={() => setIsEditMode(false)} className="text-slate-400 hover:text-white">✕</button>
+          </div>
+          {Object.entries(config).map(([key, rect]) => (
+            <div key={key} className="bg-slate-800/80 p-2 rounded mb-2">
+              <div className="font-bold text-amber-200 mb-1">Option {key}</div>
+              <div className="flex gap-2 mb-1 items-center"><span className="w-4">X</span><input type="range" min="0" max="100" value={rect.x} onChange={e => setConfig({...config, [key]: {...rect, x: Number(e.target.value)}})} className="flex-1" /><span className="w-6 text-right">{rect.x}</span></div>
+              <div className="flex gap-2 mb-1 items-center"><span className="w-4">Y</span><input type="range" min="0" max="100" value={rect.y} onChange={e => setConfig({...config, [key]: {...rect, y: Number(e.target.value)}})} className="flex-1" /><span className="w-6 text-right">{rect.y}</span></div>
+              <div className="flex gap-2 mb-1 items-center"><span className="w-4">W</span><input type="range" min="1" max="100" value={rect.w} onChange={e => setConfig({...config, [key]: {...rect, w: Number(e.target.value)}})} className="flex-1" /><span className="w-6 text-right">{rect.w}</span></div>
+              <div className="flex gap-2 items-center"><span className="w-4">H</span><input type="range" min="1" max="100" value={rect.h} onChange={e => setConfig({...config, [key]: {...rect, h: Number(e.target.value)}})} className="flex-1" /><span className="w-6 text-right">{rect.h}</span></div>
+            </div>
+          ))}
+          <button 
+            className="w-full mt-2 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded transition-colors"
+            onClick={() => {
+              navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+              alert('Copied to clipboard!');
+            }}
+          >
+            복사하기 (Copy)
+          </button>
+        </div>
+      )}
+
+      {/* Debug Gear Icon */}
+      {!isEditMode && (
+        <button 
+          onClick={() => setIsEditMode(true)}
+          className="fixed bottom-4 right-4 z-[999] w-10 h-10 bg-slate-800/50 backdrop-blur rounded-full flex items-center justify-center text-slate-400 hover:text-amber-400 transition-colors pointer-events-auto"
+          title="Toggle Debug Mode"
+        >
+          ⚙️
+        </button>
+      )}
 
     </div>
   );

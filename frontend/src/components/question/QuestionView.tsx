@@ -20,6 +20,26 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
   const isQ4 = question.id === 'Q4';
   const isQ5 = question.id === 'Q5';
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.15,
+        delayChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { 
+      opacity: 1, 
+      y: 0, 
+      transition: { duration: 0.8, ease: [0.76, 0, 0.24, 1] as [number, number, number, number] } 
+    }
+  };
+
   return (
     <div className="w-full relative max-w-xl mx-auto flex flex-col min-h-screen py-12 px-6">
       
@@ -86,11 +106,14 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
         <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
       </div>
       
-      <div className="flex-1 flex flex-col justify-center mb-10">
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="flex-1 flex flex-col justify-center mb-10"
+      >
         <motion.h2 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.8, ease: "easeOut" }}
+          variants={itemVariants}
           className={`text-2xl md:text-3xl font-display font-bold mb-6 leading-relaxed ${
             ['Q6', 'Q7'].includes(question.id) ? 'text-emergency-red drop-shadow-[0_0_8px_rgba(182,65,53,0.5)]' : 'text-ivory'
           }`}
@@ -100,23 +123,24 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
         
         {question.subtitle && (
           <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3, duration: 0.8 }}
+            variants={itemVariants}
             className="text-muted-ivory font-sans text-base leading-loose"
           >
             {question.subtitle}
           </motion.p>
         )}
-      </div>
+      </motion.div>
 
-      <div className={`mb-8 w-full ${question.options.some(o => o.description) ? 'flex flex-col space-y-4' : 'grid grid-cols-2 gap-4'}`}>
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className={`mb-8 w-full ${question.options.some(o => o.description) ? 'flex flex-col space-y-4' : 'grid grid-cols-2 gap-4'}`}
+      >
         {question.options.map((option, index) => (
           <motion.div
             key={option.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 + index * 0.1, duration: 0.5, ease: "easeOut" }}
+            variants={itemVariants}
             onMouseEnter={() => setHoveredOption(option)}
             onMouseLeave={() => setHoveredOption(null)}
           >
@@ -129,7 +153,7 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
             />
           </motion.div>
         ))}
-      </div>
+      </motion.div>
     </div>
   );
 }

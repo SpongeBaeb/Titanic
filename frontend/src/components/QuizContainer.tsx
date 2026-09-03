@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuizStore } from '@/store/quizStore';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import ResultView from '@/components/ResultView';
 import { questionsData } from '@/data/questions';
 import QuestionView from '@/components/question/QuestionView';
@@ -10,11 +10,15 @@ import GenderView from '@/components/question/GenderView';
 import AgeView from '@/components/question/AgeView';
 import CompanionCamera from '@/components/question/CompanionCamera';
 import StaircaseView from '@/components/question/StaircaseView';
-import { useEffect, useState } from 'react';
+import MoneyMinigameView from '@/components/question/MoneyMinigameView';
+import { useEffect, useState, useMemo } from 'react';
+import { preloadImages } from '@/lib/preloadImages';
 
 export default function QuizContainer() {
   const { currentStep, nextStep, setAnswer, answers } = useQuizStore();
   const [mounted, setMounted] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     setMounted(true);
@@ -38,12 +42,44 @@ export default function QuizContainer() {
         setAnswer(key as any, value);
         nextStep(next);
         setIsFlashing(false);
-      }, 50);
+      }, 500);
       return;
     }
     setAnswer(key as any, value);
     nextStep(next);
   };
+
+  const stepKeys: Record<string, string> = {
+    'Q0': 'sex', 'Q1': 'ageGroup', 'Q2': 'companion', 'Q3': 'pclass', 'Q4': 'fareIntent', 'Q5': 'purpose', 'Q6': 'rumorAction', 'Q7': 'finalAction'
+  };
+  const nextSteps: Record<string, any> = {
+    'Q0': 'Q1', 'Q1': 'Q2', 'Q2': 'Q3', 'Q3': 'Q4', 'Q4': 'Q5', 'Q5': 'Q6', 'Q6': 'Q7', 'Q7': 'RESULT'
+  };
+  const prevSteps: Record<string, any> = {
+    'Q0': 'PROLOGUE', 'Q1': 'Q0', 'Q2': 'Q1', 'Q3': 'Q2', 'Q4': 'Q3', 'Q5': 'Q4', 'Q6': 'Q5', 'Q7': 'Q6'
+  };
+
+  const bgImageUrl = useMemo(() => {
+    if (currentStep === 'PROLOGUE') return '/bg/bg-titanic.png';
+    if (currentStep === 'RESULT') return '/bg/collasping.png';
+    const q = questionsData[currentStep];
+    if (q?.bgImage) {
+      return typeof q.bgImage === 'function' ? q.bgImage(answers) : q.bgImage;
+    }
+    return '/bg/bg-titanic.png';
+  }, [currentStep, answers]);
+
+  useEffect(() => {
+    // Preload next step background
+    const nextStepKey = nextSteps[currentStep];
+    if (nextStepKey && nextStepKey !== 'RESULT') {
+      const nextQ = questionsData[nextStepKey];
+      if (nextQ?.bgImage) {
+        const nextUrl = typeof nextQ.bgImage === 'function' ? nextQ.bgImage(answers) : nextQ.bgImage;
+        preloadImages([nextUrl]);
+      }
+    }
+  }, [currentStep, answers, nextSteps]);
 
   if (!mounted) return null;
 
@@ -63,23 +99,6 @@ export default function QuizContainer() {
     // Q0 ~ Q7
     const question = questionsData[currentStep];
     if (question) {
-      const stepKeys: Record<string, string> = {
-        'Q0': 'sex',
-        'Q1': 'ageGroup',
-        'Q2': 'companion',
-        'Q3': 'pclass',
-        'Q4': 'fareIntent',
-        'Q5': 'purpose',
-        'Q6': 'rumorAction',
-        'Q7': 'finalAction'
-      };
-      const nextSteps: Record<string, any> = {
-        'Q0': 'Q1', 'Q1': 'Q2', 'Q2': 'Q3', 'Q3': 'Q4', 'Q4': 'Q5', 'Q5': 'Q6', 'Q6': 'Q7', 'Q7': 'RESULT'
-      };
-      const prevSteps: Record<string, any> = {
-        'Q0': 'PROLOGUE', 'Q1': 'Q0', 'Q2': 'Q1', 'Q3': 'Q2', 'Q4': 'Q3', 'Q5': 'Q4', 'Q6': 'Q5', 'Q7': 'Q6'
-      };
-
       const handleBack = () => {
         nextStep(prevSteps[currentStep]);
       };
@@ -128,6 +147,17 @@ export default function QuizContainer() {
         );
       }
 
+      if (currentStep === 'Q4') {
+        return (
+          <MoneyMinigameView 
+            key={currentStep} 
+            question={question} 
+            onAnswer={(value) => handleAnswer(stepKeys[currentStep], value, nextSteps[currentStep])} 
+            onBack={handleBack}
+          />
+        );
+      }
+
       return (
         <QuestionView 
           key={currentStep} 
@@ -150,38 +180,41 @@ export default function QuizContainer() {
             key="global-flash"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: { duration: 0.05 } }}
-            exit={{ opacity: 0, transition: { duration: 3.0, ease: "easeOut" } }}
+            exit={{ opacity: 0, transition: { duration: 4.0, ease: "easeIn" } }}
             className="fixed inset-0 bg-white z-[9999] pointer-events-none"
           />
         )}
       </AnimatePresence>
 
-      {/* Base Background Color & Image Layer */}
-      <div 
-        className="absolute inset-0 bg-slate-950 bg-cover bg-center bg-no-repeat opacity-40 transition-all duration-1000"
-        style={{ 
-          backgroundImage: `url('${
-            ['PROLOGUE', 'Q0', 'Q1'].includes(currentStep) 
-              ? '/bg/bg-titanic.png' 
-              : currentStep === 'RESULT'
-                ? '/bg/collasping.png'
-                : currentStep === 'Q7'
-                  ? '/bg/lifeboat.png'
-                  : ['Q5', 'Q6'].includes(currentStep)
-                    ? '/bg/railing.png'
-                    : currentStep === 'Q3'
-                      ? '/bg/where.png'
-                      : currentStep === 'Q4' && answers.pclass
-                        ? `/bg/${answers.pclass}.png`
-                      : '/bg/bg-dock.png'
-          }')` 
-        }}
-      />
+      {/* Hidden SVG Filter for Water Ripple */}
+      <svg className="hidden">
+        <filter id="water-ripple">
+          <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="20" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
+
+      {/* Base Background Image Layer with AnimatePresence and SVG filter */}
+      <div className="absolute inset-0 bg-slate-950 z-0">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={bgImageUrl}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.05 }}
+            animate={shouldReduceMotion 
+              ? { opacity: currentStep === 'Q6' ? 0.8 : 0.4 } 
+              : { opacity: currentStep === 'Q6' ? 0.8 : 0.4, scale: 1, filter: currentStep === 'RESULT' || currentStep === 'Q7' ? 'url(#water-ripple)' : 'none' }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+            transition={{ duration: 1.5, ease: [0.76, 0, 0.24, 1] }}
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url('${bgImageUrl}')` }}
+          />
+        </AnimatePresence>
+      </div>
       
       {/* Gradient Overlay for dark cinematic mode */}
       <div className={`absolute inset-0 transition-all duration-1000 pointer-events-none z-[1] ${
         currentStep === 'Q6'
-          ? 'bg-gradient-to-b from-slate-950 via-slate-950/80 to-slate-950'
+          ? 'bg-gradient-to-b from-slate-950/40 via-transparent to-slate-950/80'
           : currentStep === 'Q7'
             ? 'bg-gradient-to-b from-slate-950/80 via-slate-950/40 to-slate-950/80'
             : ['PROLOGUE', 'Q0', 'Q1'].includes(currentStep)
@@ -206,10 +239,10 @@ export default function QuizContainer() {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentStep}
-          initial={{ opacity: 0, filter: 'blur(8px)', scale: 0.98 }}
-          animate={{ opacity: 1, filter: 'blur(0px)', scale: 1 }}
-          exit={{ opacity: 0, filter: 'blur(8px)', scale: 1.02 }}
-          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          initial={shouldReduceMotion || currentStep === 'Q3' ? { opacity: 0 } : { opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={shouldReduceMotion || currentStep === 'Q2' ? { opacity: 0, transition: { duration: 0.01 } } : { opacity: 0, y: -20 }}
+          transition={{ duration: currentStep === 'Q3' ? 0.01 : 0.8, ease: [0.76, 0, 0.24, 1] }}
           className="w-full min-h-screen relative z-10"
         >
           {renderStep()}
@@ -218,25 +251,43 @@ export default function QuizContainer() {
 
       {/* 디버그용 바로가기 패널 */}
       {currentStep === 'PROLOGUE' && (
-        <div className="absolute top-4 right-4 z-50 flex flex-col gap-2 bg-slate-900/80 p-3 rounded-lg border border-slate-700 backdrop-blur-sm">
-          <div className="text-xs text-slate-400 font-bold mb-1">[Debug] 바로가기</div>
-          <div className="grid grid-cols-2 gap-2">
-            {['Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7'].map((q) => (
-              <button
-                key={q}
-                onClick={() => nextStep(q as any)}
-                className="bg-blue-500/50 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-500/90 transition-colors"
+        <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
+          <button 
+            onClick={() => setShowDebug(!showDebug)}
+            className="text-[10px] bg-slate-900/30 text-slate-400 px-2 py-1 rounded hover:bg-slate-800/50 transition-colors border border-slate-700/50 backdrop-blur-sm"
+          >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+          </button>
+          
+          <AnimatePresence>
+            {showDebug && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="flex flex-col gap-2 bg-slate-900/20 p-3 rounded-lg border border-slate-700/30 backdrop-blur-md"
               >
-                {q}
-              </button>
-            ))}
-            <button
-              onClick={() => nextStep('RESULT')}
-              className="col-span-2 bg-red-500/50 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-red-500/90 transition-colors"
-            >
-              RESULT
-            </button>
-          </div>
+                <div className="text-xs text-slate-400/80 font-bold mb-1">[Debug] 바로가기</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7'].map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => nextStep(q as any)}
+                      className="bg-blue-500/20 text-white/80 px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-500/50 transition-colors backdrop-blur-sm"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => nextStep('RESULT')}
+                    className="col-span-2 bg-red-500/20 text-white/80 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-500/50 transition-colors backdrop-blur-sm"
+                  >
+                    RESULT
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </div>

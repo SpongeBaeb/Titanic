@@ -19,13 +19,13 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   const pivotRef = useRef<HTMLDivElement>(null);
   
   // --- Debug Panel State ---
-  const [isEditMode, setIsEditMode] = useState(true);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [config, setConfig] = useState({
-    rbase: { x: 0, y: 487, scale: 2.2 },
-    base: { x: 0, y: 50, scale: 1.5 },
-    lever: { x: 0, y: 0, scale: 4.6, originY: 125, maxAngle: 120 },
-    arrow: { x: 0, y: 46, scale: 4.9, originY: 50 },
-    hitArea: { w: 30, h: 50, y: -20 }, // Adjusted default for scaled lever
+    rbase: { x: 2, y: 93, scale: 0.1 },
+    base: { x: -27, y: 469, scale: 3.4 },
+    lever: { x: 3, y: 40, scale: 3.2, originX: 50, originY: 128, maxAngle: 120 },
+    arrow: { x: 3, y: 91, scale: 2.6, originX: 50, originY: 53 },
+    hitArea: { w: 30, h: 50, y: -20 },
     snapAngles: [-107, -75, -49, -18, 18, 46, 75]
   });
   const [characterConfig, setCharacterConfig] = useState<Record<string, { x: number, y: number, scale: number }>>({});
@@ -288,7 +288,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
         {/* Rear Base Image (rbase) */}
         <div 
-          className={`absolute z-[34] pointer-events-none transition-opacity ${isEditMode ? 'opacity-40' : 'opacity-100'}`}
+          className={`absolute z-[50] pointer-events-none transition-opacity ${isEditMode ? 'opacity-40' : 'opacity-100'}`}
           style={{
             transform: `translate(${config.rbase.x}px, ${config.rbase.y}px) scale(${config.rbase.scale})`
           }}
@@ -319,7 +319,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         <motion.div 
           className="absolute z-[40] pointer-events-none"
           style={{
-            transformOrigin: `50% ${config.arrow.originY}%`,
+            transformOrigin: `${config.arrow.originX}% ${config.arrow.originY}%`,
             x: config.arrow.x,
             y: config.arrow.y,
             scale: config.arrow.scale,
@@ -328,6 +328,17 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         >
           <img src="/telegraph/arrow.png" alt="Telegraph Arrow" className="w-[65px] md:w-[80px] h-auto drop-shadow-lg" onError={(e) => { e.currentTarget.style.display = 'none'; }} draggable={false} />
           
+          {isEditMode && (
+            <div 
+              className="absolute w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-[0_0_10px_rgba(255,0,0,0.8)] z-50"
+              style={{
+                left: `${config.arrow.originX}%`,
+                top: `${config.arrow.originY}%`,
+                transform: 'translate(-50%, -50%)'
+              }}
+              title="Arrow Pivot"
+            />
+          )}
         </motion.div>
 
         {/* Draggable Lever Container */}
@@ -336,7 +347,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
           <motion.div 
             className="absolute pointer-events-none z-[30]"
             style={{
-              transformOrigin: `50% ${config.lever.originY}%`,
+              transformOrigin: `${config.lever.originX}% ${config.lever.originY}%`,
               rotate: smoothAngle,
               x: config.lever.x,
               y: config.lever.y,
@@ -346,6 +357,18 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
             <img src="/telegraph/lever.png" alt="Telegraph Lever" className="w-[100px] md:w-[120px] h-auto drop-shadow-2xl" onError={(e) => { 
               e.currentTarget.style.display = 'none'; 
             }} draggable={false} />
+            
+            {isEditMode && (
+              <div 
+                className="absolute w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow-[0_0_10px_rgba(59,130,246,0.8)] z-[60]"
+                style={{
+                  left: `${config.lever.originX}%`,
+                  top: `${config.lever.originY}%`,
+                  transform: 'translate(-50%, -50%)'
+                }}
+                title="Lever Pivot"
+              />
+            )}
             
             {/* Custom Hit Area that Rotates with the Lever */}
             <div 
@@ -438,8 +461,8 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
       {/* DEBUG PANEL */}
       {isEditMode && (
-        <div className="absolute bottom-4 right-4 bg-slate-900/90 text-white p-4 z-[100] border border-slate-700 rounded shadow-2xl flex flex-col gap-3 font-mono text-[10px] w-64 backdrop-blur-md pointer-events-auto h-[60vh] overflow-y-auto">
-          <div className="flex justify-between items-center border-b border-slate-700 pb-2 mb-2">
+        <div className="absolute bottom-4 right-4 bg-slate-900/30 text-white p-4 z-[100] border border-slate-700/50 rounded shadow-2xl flex flex-col gap-3 font-mono text-[10px] w-64 backdrop-blur-md pointer-events-auto h-[60vh] overflow-y-auto">
+          <div className="flex justify-between items-center border-b border-slate-700/50 pb-2 mb-2">
             <h3 className="font-bold text-amber-400">Position Debugger</h3>
             <button onClick={() => setIsEditMode(false)} className="text-slate-400 hover:text-white">X</button>
           </div>
@@ -486,17 +509,18 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
           {/* Base Controls */}
           <div className="bg-slate-800/80 p-2 rounded mb-2">
             <div className="font-bold text-amber-200 mb-1">base.png</div>
-            <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-200" max="200" value={config.base.x} onChange={e => setConfig({...config, base: {...config.base, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.x}</span></div>
-            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-200" max="200" value={config.base.y} onChange={e => setConfig({...config, base: {...config.base, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.y}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-1000" max="1000" value={config.base.x} onChange={e => setConfig({...config, base: {...config.base, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.x}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-1000" max="1000" value={config.base.y} onChange={e => setConfig({...config, base: {...config.base, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.y}</span></div>
             <div className="flex gap-2 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.base.scale} onChange={e => setConfig({...config, base: {...config.base, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.scale}</span></div>
           </div>
 
           {/* Lever Controls */}
           <div className="bg-slate-800/80 p-2 rounded mb-2">
             <div className="font-bold text-amber-200 mb-1">lever.png</div>
-            <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-200" max="200" value={config.lever.x} onChange={e => setConfig({...config, lever: {...config.lever, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.x}</span></div>
-            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-200" max="200" value={config.lever.y} onChange={e => setConfig({...config, lever: {...config.lever, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.y}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-1000" max="1000" value={config.lever.x} onChange={e => setConfig({...config, lever: {...config.lever, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.x}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-1000" max="1000" value={config.lever.y} onChange={e => setConfig({...config, lever: {...config.lever, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.y}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.lever.scale} onChange={e => setConfig({...config, lever: {...config.lever, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.scale}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Pivot X</span><input type="range" min="0" max="200" value={config.lever.originX} onChange={e => setConfig({...config, lever: {...config.lever, originX: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.originX}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Pivot Y</span><input type="range" min="0" max="200" value={config.lever.originY} onChange={e => setConfig({...config, lever: {...config.lever, originY: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.originY}</span></div>
             <div className="flex gap-2 items-center"><span className="w-8">Range</span><input type="range" min="30" max="150" value={config.lever.maxAngle} onChange={e => setConfig({...config, lever: {...config.lever, maxAngle: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.maxAngle}</span></div>
           </div>
@@ -504,9 +528,10 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
           {/* Arrow Controls */}
           <div className="bg-slate-800/80 p-2 rounded mb-2">
             <div className="font-bold text-amber-200 mb-1">arrow.png</div>
-            <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-200" max="200" value={config.arrow.x} onChange={e => setConfig({...config, arrow: {...config.arrow, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.x}</span></div>
-            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-200" max="200" value={config.arrow.y} onChange={e => setConfig({...config, arrow: {...config.arrow, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.y}</span></div>
-            <div className="flex gap-2 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.arrow.scale} onChange={e => setConfig({...config, arrow: {...config.arrow, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.scale}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-1000" max="1000" value={config.arrow.x} onChange={e => setConfig({...config, arrow: {...config.arrow, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.x}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-1000" max="1000" value={config.arrow.y} onChange={e => setConfig({...config, arrow: {...config.arrow, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.y}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.arrow.scale} onChange={e => setConfig({...config, arrow: {...config.arrow, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.scale}</span></div>
+            <div className="flex gap-2 mb-1 items-center"><span className="w-8">Pivot X</span><input type="range" min="0" max="200" value={config.arrow.originX} onChange={e => setConfig({...config, arrow: {...config.arrow, originX: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.originX}</span></div>
             <div className="flex gap-2 items-center"><span className="w-8">Pivot Y</span><input type="range" min="0" max="200" value={config.arrow.originY} onChange={e => setConfig({...config, arrow: {...config.arrow, originY: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.originY}</span></div>
           </div>
           

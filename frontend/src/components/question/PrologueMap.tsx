@@ -1,6 +1,6 @@
 'use client';
 
-import { motion, useScroll, useMotionValueEvent, useTransform, useSpring, AnimatePresence } from 'framer-motion';
+import { motion, useScroll, useMotionValueEvent, useTransform, useSpring, AnimatePresence, useMotionValue, animate } from 'framer-motion';
 import { useRef, useEffect, useState } from 'react';
 
 interface PrologueMapProps {
@@ -21,10 +21,17 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
   const [showTicket, setShowTicket] = useState(false);
   const [ticketX, setTicketX] = useState(0);
   const [ticketY, setTicketY] = useState(0);
+  const tearX = 27.5; // 찢어지는 X 위치 (퍼센트) 고정
+  const tearProgress = useMotionValue(0);
+  
+  const rightY = useTransform(tearProgress, (val) => val);
+  const rightX = useTransform(tearProgress, [0, 500], [0, 50]);
+  const rightRotate = useTransform(tearProgress, [0, 500], [0, 15]);
 
   const handlePortClick = (port: string) => {
     setSelectedPort(port);
     setShowTicket(true);
+    tearProgress.set(0);
   };
 
   // 컨테이너(400vh) 기준 스크롤을 추적
@@ -136,7 +143,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
   });
 
   return (
-    <div className="w-full relative z-10 text-slate-100 bg-slate-950">
+    <div className="w-full relative z-10 text-slate-100 bg-slate-950 select-none">
       
       {/* SECTION 1: Sticky Canvas & Hero Text */}
       <section ref={scrollContainerRef} className="h-[400vh] w-full relative">
@@ -226,6 +233,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
             <img 
               src="/virUI.png" 
               alt="UI frame" 
+              draggable={false}
               className="w-full h-auto object-contain drop-shadow-2xl opacity-90 relative z-10" 
             />
             <h3 
@@ -248,6 +256,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
               <img 
                 src="/map-route.png" 
                 alt="Route Map" 
+                draggable={false}
                 className="w-full h-full object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
@@ -284,10 +293,10 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/40 rounded-lg pointer-events-none"
+                  className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/70 rounded-lg pointer-events-none"
                 >
-                  <motion.img 
-                    src={`/ticket${selectedPort}.png`}
+                  <motion.div
+                    className="relative flex items-center justify-center w-[80vw] max-w-[500px] pointer-events-auto cursor-grab active:cursor-grabbing"
                     initial={{ 
                       scale: 3, y: '100vh', x: 0, rotate: -60, opacity: 0,
                       filter: 'drop-shadow(0px 40px 25px rgba(0,0,0,0.7))'
@@ -296,41 +305,58 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                       scale: 1, y: ticketY, x: ticketX, rotate: -3, opacity: 1,
                       filter: 'drop-shadow(5px 15px 10px rgba(0,0,0,0.5))'
                     }}
-                    transition={{ type: "spring", damping: 12, stiffness: 100, mass: 1 }}
-                    className="w-[80%] max-w-[500px] object-contain pointer-events-auto"
-                    onAnimationComplete={() => {
-                      setTimeout(() => {
-                        onSelectPort(selectedPort);
-                      }, 700);
+                    transition={{ type: "spring", damping: 15, stiffness: 100, mass: 1 }}
+                    onPan={(e, info) => {
+                      // Only allow increasing the tear distance
+                      if (info.offset.y > tearProgress.get()) {
+                        tearProgress.set(info.offset.y);
+                      }
                     }}
-                  />
-
-                  {/* Ticket Position Debug Panel */}
-                  <div className="absolute -bottom-16 right-0 bg-slate-900/90 p-4 rounded-lg border border-slate-700 shadow-2xl flex flex-col gap-3 w-64 text-xs font-sans z-50 pointer-events-auto">
-                    <h4 className="text-amber-400 font-bold border-b border-slate-700 pb-1">Ticket Debug</h4>
+                    onPanEnd={(e, info) => {
+                      if (tearProgress.get() > 100) {
+                        // Complete the tear
+                        animate(tearProgress, 1000, {
+                          duration: 0.8,
+                          ease: "easeIn",
+                          onComplete: () => onSelectPort(selectedPort)
+                        });
+                      }
+                    }}
+                  >
+                    {/* Left half - purely static */}
+                    <motion.img 
+                      src={`/ticket${selectedPort}.png`}
+                      draggable={false}
+                      className="absolute w-full object-contain pointer-events-none"
+                      style={{ clipPath: `polygon(0% 0%, ${tearX}% 0%, ${tearX}% 100%, 0% 100%)` }}
+                    />
                     
-                    <div className="flex flex-col gap-1">
-                      <label className="text-slate-300 flex justify-between">
-                        <span>Ticket X: {ticketX}px</span>
-                      </label>
-                      <input 
-                        type="range" min="-300" max="300" value={ticketX} 
-                        onChange={(e) => setTicketX(Number(e.target.value))}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-1">
-                      <label className="text-slate-300 flex justify-between">
-                        <span>Ticket Y: {ticketY}px</span>
-                      </label>
-                      <input 
-                        type="range" min="-300" max="300" value={ticketY} 
-                        onChange={(e) => setTicketY(Number(e.target.value))}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
+                    {/* Right half - moves down based on tearProgress */}
+                    <motion.img 
+                      src={`/ticket${selectedPort}.png`}
+                      draggable={false}
+                      className="absolute w-full object-contain pointer-events-none"
+                      style={{ 
+                        clipPath: `polygon(${tearX}% 0%, 100% 0%, 100% 100%, ${tearX}% 100%)`,
+                        y: rightY,
+                        x: rightX,
+                        rotate: rightRotate
+                      }}
+                    />
+                    
+                    {/* Hidden placeholder to dictate container size */}
+                    <img src={`/ticket${selectedPort}.png`} draggable={false} className="w-full object-contain opacity-0 pointer-events-none" />
+                  </motion.div>
+                  
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 1 }}
+                    className="absolute bottom-1 flex flex-col items-center text-white/90 font-light pointer-events-none animate-bounce"
+                  >
+                    <span className="text-sm font-display tracking-widest mb-2 drop-shadow-md">아래로 드래그하여 티켓 끊기</span>
+                    <div className="w-px h-10 bg-gradient-to-b from-white/90 to-transparent" />
+                  </motion.div>
                 </motion.div>
               )}
             </AnimatePresence>
