@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProgressLine from '@/components/ui/ProgressLine';
 import { Question } from '@/data/questions';
+import { useQuizStore } from '@/store/quizStore';
 
 interface GenderViewProps {
   question: Question;
@@ -18,7 +19,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
   const [hasMirrorAsset, setHasMirrorAsset] = useState(true);
   
   // --- Debug Panel State ---
-  const [isEditMode, setIsEditMode] = useState(true);
+  const isEditMode = useQuizStore(state => state.showDebug);
   const [config, setConfig] = useState({
     mirror: { x: 0, y: -210, scale: 0.8, maskW: 76, maskH: 66 },
     male: { x: -10, y: 258, scale: 0.82 },
@@ -261,7 +262,6 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
         <div className="absolute bottom-4 right-4 bg-slate-900/90 text-white p-4 rounded-lg shadow-2xl z-[100] text-xs font-mono w-80 border border-slate-700 pointer-events-auto">
           <div className="flex justify-between items-center mb-2">
             <h3 className="font-bold text-amber-500">GenderView Debug</h3>
-            <button onClick={() => setIsEditMode(false)} className="text-red-400 hover:text-red-300 px-2 py-1 bg-red-900/30 rounded">X</button>
           </div>
           
           {/* Mirror Controls */}
