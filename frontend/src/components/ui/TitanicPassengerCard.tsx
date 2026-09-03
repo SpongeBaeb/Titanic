@@ -28,6 +28,14 @@ interface TitanicPassengerCardProps {
 
 const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerData }) => {
   const [isFlipped, setIsFlipped] = useState(false);
+  const [hasSpun, setHasSpun] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setHasSpun(true);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 프레임 위치 조절용 디버깅 상태 (고정값 적용)
   const [frameConfig, setFrameConfig] = useState({
@@ -213,7 +221,7 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
         style={{ transformStyle: 'preserve-3d' }}
         initial={{ rotateY: 360 }}
         animate={{ rotateY: isFlipped ? 180 : 0 }}
-        transition={{ duration: 0.6, ease: "easeInOut" }}
+        transition={{ duration: hasSpun ? 0.5 : 1.8, ease: "easeInOut" }}
         onClick={() => setIsFlipped(!isFlipped)}
       >
         
