@@ -1797,7 +1797,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
 
       {/* Submit Button */}
       {billsAvailable === 0 && (
-        <div className="flex flex-col items-center mt-8 z-20">
+        <div className="flex flex-col items-center mt-8 mb-24 relative z-[150]">
           {targetSpendCount > 0 && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
@@ -1811,9 +1811,14 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             onClick={handleSubmitFinal}
-            className="px-12 py-4 bg-amber-500 text-white font-bold rounded-2xl tracking-widest uppercase transition-all shadow-[0_0_20px_rgba(217,119,6,0.4)] border-amber-600 border-b-[6px] hover:brightness-110 hover:-translate-y-[2px] hover:border-b-[8px] active:border-b-[2px] active:brightness-90 active:translate-y-[2px]"
+            className="button"
           >
-            선택 완료
+            <span>선택 완료</span>
+            <svg viewBox="0 0 13 10" height="10px" width="15px">
+              <polygon points="0,0 5,5 0,10" />
+              <polygon points="4,0 9,5 4,10" />
+              <polygon points="8,0 13,5 8,10" />
+            </svg>
           </motion.button>
         </div>
       )}
