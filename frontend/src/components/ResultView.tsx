@@ -292,7 +292,7 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
                     style={{ backgroundImage: `url(/bg/${currentMatchObj.survived ? 'survived' : 'perished'}.png)` }}
                   />
                   {/* 결과 카드를 돋보이게 하는 하단 그라데이션 */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
+                  <div className="absolute -inset-[100px] bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
                 </motion.div>
               );
             })()}
