@@ -5,6 +5,7 @@ import { motion, AnimatePresence, useMotionValue, useAnimationFrame, animate, Pa
 import confetti from 'canvas-confetti';
 import { Question } from '@/data/questions';
 import ProgressLine from '@/components/ui/ProgressLine';
+import { useQuizStore } from '@/store/quizStore';
 
 interface MoneyMinigameViewProps {
   question: Question;
@@ -52,7 +53,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   });
   const [globalSpacing, setGlobalSpacing] = useState({ x: -18, y: -34 });
   const [duckOffset, setDuckOffset] = useState({ y: 60 });
-  const [showDebug, setShowDebug] = useState(true);
+  const showDebug = useQuizStore(state => state.showDebug);
   const [debugHitRadius] = useState(0.19);
   const [debugHitX] = useState(53);
   const [debugHitY] = useState(39);
@@ -867,11 +868,11 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             onDragEnd={handleDragEnd}
             whileHover={{ scale: 1.1, y: -10 }}
             whileDrag={{ scale: 1.2, zIndex: 100 }}
-            className={`absolute cursor-grab active:cursor-grabbing shadow-xl pointer-events-auto ${
-              i > 0 ? 'ml-' + (i * 8) : ''
-            }`}
+            className="absolute cursor-grab active:cursor-grabbing shadow-xl pointer-events-auto"
             style={{ 
-              rotate: -90 + (i - displayCount/2) * 5,
+              x: (i - (displayCount - 1) / 2) * 20,
+              y: Math.abs(i - (displayCount - 1) / 2) * 5,
+              rotate: (i - (displayCount - 1) / 2) * 8,
               zIndex: 50 + i 
             }}
           >
@@ -912,7 +913,6 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         <div className="fixed top-4 left-4 z-[9999] bg-black/80 text-white p-4 rounded-xl text-xs max-h-screen overflow-y-auto w-64 pointer-events-auto">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-sm">Position Debug</h3>
-            <button onClick={() => setShowDebug(false)} className="text-red-400">Close</button>
           </div>
           
           <div className="mb-4 border-b-2 border-amber-500 pb-4">
@@ -1141,14 +1141,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
           </button>
         </div>
       )}
-      {!showDebug && (
-        <button 
-          onClick={() => setShowDebug(true)} 
-          className="fixed top-4 left-4 z-50 bg-black/50 text-white px-2 py-1 rounded text-xs pointer-events-auto"
-        >
-          Open Debug
-        </button>
-      )}
+
 
       {/* Permanent Rising Water with Titanic Duck */}
       {hasWater && (
@@ -1793,6 +1786,13 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       </div>
 
       {/* Inventory Area */}
+      <motion.div 
+        className="text-center text-sm md:text-base text-amber-300 font-bold bg-black/40 py-2 px-4 rounded-full border border-amber-500/30 backdrop-blur-sm z-50 mb-2 mt-8 pointer-events-none"
+        animate={{ opacity: [0.6, 1, 0.6], scale: [0.98, 1.02, 0.98] }}
+        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        지폐를 드래그해서 원하는 시설에 투자하세요!
+      </motion.div>
       {renderBills()}
 
       {/* Submit Button */}

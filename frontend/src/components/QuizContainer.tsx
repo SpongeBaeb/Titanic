@@ -15,10 +15,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { preloadImages } from '@/lib/preloadImages';
 
 export default function QuizContainer() {
-  const { currentStep, nextStep, setAnswer, answers } = useQuizStore();
+  const { currentStep, nextStep, setAnswer, answers, showDebug, toggleDebug } = useQuizStore();
   const [mounted, setMounted] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
@@ -93,12 +92,10 @@ export default function QuizContainer() {
     if (key === 'companion') {
       setIsFlashing(true);
       setTimeout(async () => {
-        setIsTransitioning(true);
         const assets = getAssetsForStep(next, tempAnswers);
         await preloadImages(assets);
         setAnswer(key as any, value);
         nextStep(next);
-        setIsTransitioning(false);
         setIsFlashing(false);
       }, 500);
       return;
@@ -346,7 +343,7 @@ export default function QuizContainer() {
       {currentStep === 'PROLOGUE' && (
         <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
           <button 
-            onClick={() => setShowDebug(!showDebug)}
+            onClick={toggleDebug}
             className="text-[10px] bg-slate-900/30 text-slate-400 px-2 py-1 rounded hover:bg-slate-800/50 transition-colors border border-slate-700/50 backdrop-blur-sm"
           >
             {showDebug ? 'Hide Debug' : 'Show Debug'}

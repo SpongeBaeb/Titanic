@@ -18,13 +18,17 @@ interface QuizState {
   setAnswer: (key: keyof QuizState['answers'], value: any) => void;
   nextStep: (next: QuizStep) => void;
   resetQuiz: () => void;
+  showDebug: boolean;
+  toggleDebug: () => void;
 }
 
 export const useQuizStore = create<QuizState>((set) => ({
   currentStep: 'PROLOGUE',
   answers: {},
+  showDebug: false,
   setAnswer: (key, value) => 
     set((state) => ({ answers: { ...state.answers, [key]: value } })),
   nextStep: (next) => set({ currentStep: next }),
   resetQuiz: () => set({ currentStep: 'PROLOGUE', answers: {} }),
+  toggleDebug: () => set((state) => ({ showDebug: !state.showDebug })),
 }));
