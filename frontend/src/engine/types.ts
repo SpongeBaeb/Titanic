@@ -5,7 +5,7 @@ export type AnswerKey =
 export type Flags = Record<string, boolean>;
 
 export type RendererId =
-  | 'gender' | 'age' | 'companion' | 'staircase' | 'money' | 'cinematic';
+  | 'gender' | 'age' | 'companion' | 'staircase' | 'money' | 'cinematic' | 'night';
 
 export type Gradient = 'intro' | 'default' | 'rumor' | 'lifeboat';
 
@@ -30,7 +30,14 @@ export interface Ctx {
 export interface SceneDef {
   id: string;
   renderer: RendererId;
-  answerKey: AnswerKey;
+  /** 백엔드 계약 키. 밤 장면(night)은 점수용 답이 없어서 비어 있다 */
+  answerKey?: AnswerKey;
+  /** renderer 가 'night' 일 때 쓰는 장면 패널 id (demoScenes 의 id) */
+  cine?: string;
+  /** ?night=1 일 때만 거치는 장면 */
+  nightOnly?: boolean;
+  /** 앞 선택에 따라 문항 문구를 바꾼다 */
+  variant?: (ctx: Ctx) => { title?: string; subtitle?: string; omit?: string[] } | undefined;
   next: string | ((ctx: Ctx) => string);
   prev: string;
   /** 장면 진입 전에 미리 받아 둘 이미지 (배경·선택지 배경 제외) */

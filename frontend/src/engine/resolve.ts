@@ -1,12 +1,15 @@
 import type { Ctx, SceneDef } from './types';
 import { scenes, RESULT } from './scenes';
 import { questionsData } from '@/data/questions';
+import { demoScenes } from './demoScenes';
 
 export function nextSceneId(scene: SceneDef, ctx: Ctx): string {
   return typeof scene.next === 'function' ? scene.next(ctx) : scene.next;
 }
 
 export function bgFor(sceneId: string, answers: Ctx['answers']): string | undefined {
+  const cine = scenes[sceneId]?.cine;
+  if (cine) return demoScenes.find((c) => c.id === cine)?.bg;
   const bg = questionsData[sceneId]?.bgImage;
   return typeof bg === 'function' ? bg(answers) : bg;
 }

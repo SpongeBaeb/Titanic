@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, useSpring, AnimatePresence } from 'framer-motion';
 import { Question } from '@/data/questions';
+import { playShutter } from '@/lib/synth';
 import ProgressLine from '@/components/ui/ProgressLine';
 
 interface CompanionCameraProps {
@@ -86,13 +87,6 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
     }
   }, [hoveredOption, zoomScale, zoomOriginX, zoomOriginY]);
 
-  // 사운드 객체 초기화
-  const shutterSoundRef = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => {
-    shutterSoundRef.current = new Audio('/camera-shutter.mp3');
-    shutterSoundRef.current.load();
-  }, []);
-
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (shutterTriggered || !containerRef.current) return;
@@ -126,10 +120,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
     if (shutterTriggered) return;
     setShutterTriggered(true);
     
-    if (shutterSoundRef.current) {
-      shutterSoundRef.current.currentTime = 0;
-      shutterSoundRef.current.play().catch(e => console.log('Audio play failed:', e));
-    }
+    playShutter(); // 합성음(음소거 기본). 존재하지 않던 camera-shutter.mp3 요청(404)을 대체
 
     // 확 밝아진 후 거의 즉시 다음 질문으로 넘김 (서서히 페이드인은 부모 컨테이너가 처리)
     setTimeout(() => {

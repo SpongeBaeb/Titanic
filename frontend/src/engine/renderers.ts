@@ -15,7 +15,7 @@ export interface RendererProps {
 }
 
 // 전용 화면은 그대로 쓰고, 'cinematic' 은 E3 단계에서는 기존 QuestionView 와 같다.
-export const renderers: Record<RendererId, ComponentType<RendererProps>> = {
+export const renderers: Record<Exclude<RendererId, 'night'>, ComponentType<RendererProps>> = {
   gender: GenderView,
   age: AgeView,
   companion: CompanionCamera,

@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import type { CineOption, CineScene } from '@/engine/cinematic';
-import { TAG_LABEL, companionPhoto, formatRemaining, wallClock } from '@/engine/cinematic';
+import { SINK_AFTER_MIN, TAG_LABEL, companionPhoto, formatRemaining, wallClock } from '@/engine/cinematic';
 import type { Ctx } from '@/engine/types';
 import AnalogClock from './AnalogClock';
+import { playThud, playTick } from '@/lib/synth';
 
 interface Props {
   scene: CineScene;
@@ -21,6 +22,8 @@ interface Props {
 
 const CHARS_PER_TICK = 2;
 const TICK_MS = 22;
+const LAMPS = 10; // 선내 전등 개수 (남은 시간 표시)
+
 // 시계 클로즈업에서 분침이 도는 시간: 흐르는 시간이 길수록 조금 더 오래
 const sweepMs = (minutes: number) => Math.min(3200, 1400 + minutes * 30);
 
@@ -89,6 +92,7 @@ export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timer
     if (locked.current) return;
     locked.current = true;
     setChosen(option);
+    if (option.fx?.includes('shake')) playThud();
     const ms = Date.now() - enteredAt.current;
     const target = nextElapsed?.(option) ?? elapsed + (option.timeCost ?? 0);
     const cost = Math.max(0, target - elapsed);
@@ -108,10 +112,14 @@ export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timer
       later(() => setCloseup(true), 700 + lead);
       later(() => {
         const t0 = Date.now();
+        let lastTick = Math.floor(elapsed);
         clockTimer.current = setInterval(() => {
           const p = Math.min(1, (Date.now() - t0) / SWEEP_MS);
           const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-          setShownMin(elapsed + cost * eased);
+          const now = elapsed + cost * eased;
+          setShownMin(now);
+          // 분침이 한 눈금 지날 때마다 틱 (음소거가 기본)
+          if (Math.floor(now) !== lastTick) { lastTick = Math.floor(now); if (lastTick % 2 === 0) playTick(); }
           if (p >= 1 && clockTimer.current) clearInterval(clockTimer.current);
         }, 30);
       }, 1050 + lead);
@@ -193,6 +201,13 @@ export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timer
           <div className="font-display text-xs tracking-[0.2em] text-bright-brass [text-shadow:0_1px_8px_#000]">R.M.S. TITANIC</div>
           <div className="mt-1 text-sm text-danger-text [text-shadow:0_1px_8px_#000]">
             침몰까지 <span className="font-numeric font-bold [font-variant-numeric:lining-nums]">{formatRemaining(shownMin)}</span>
+          </div>
+          {/* 선내 전등: 시간이 지날수록 하나씩 꺼진다 */}
+          <div className="mt-1.5 flex gap-1" aria-hidden>
+            {Array.from({ length: LAMPS }, (_, i) => {
+              const lit = i < Math.ceil(Math.max(0, SINK_AFTER_MIN - shownMin) / (SINK_AFTER_MIN / LAMPS));
+              return <span key={i} className="h-1.5 w-1.5 rounded-full transition-all duration-700" style={{ background: lit ? '#F2C766' : '#3a3a3a', boxShadow: lit ? '0 0 6px 1px rgba(242,199,102,.7)' : 'none' }} />;
+            })}
           </div>
         </div>
       </div>

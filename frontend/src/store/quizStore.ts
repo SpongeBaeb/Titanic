@@ -38,9 +38,11 @@ interface QuizState {
   /** 이 판의 회차 (1부터). 저장된 기억은 마운트 후 setRun 으로 반영 */
   runIndex: number;
   setRun: (run: number) => void;
+  /** 부가 기록을 장면 이동 없이 합친다 (예: ?night=1 모드 표시) */
+  setExtras: (extras: Record<string, unknown>) => void;
   setAnswer: (key: AnswerKey, value: any) => void;
   /** 답을 기록하고 다음 장면으로 이동 (뒤로 가기 기록을 남긴다) */
-  advance: (opts: { next: QuizStep; key?: AnswerKey; value?: any; sets?: Flags; extras?: Record<string, unknown> }) => void;
+  advance: (opts: { next: QuizStep; key?: AnswerKey; value?: any; sets?: Flags; extras?: Record<string, unknown>; pick?: string }) => void;
   /** 직전 상태로 복원. 기록이 없으면(바로가기로 진입) fallback 장면으로 */
   back: (fallback: QuizStep) => void;
   /** 기록 없이 이동 (개발용 바로가기, 공유 링크) */
@@ -59,10 +61,11 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   history: [],
   runIndex: 1,
   setRun: (run) => set({ runIndex: run }),
+  setExtras: (extras) => set((state) => ({ extras: { ...state.extras, ...extras } })),
   showDebug: false,
   setAnswer: (key, value) =>
     set((state) => ({ answers: { ...state.answers, [key]: value } })),
-  advance: ({ next, key, value, sets, extras }) =>
+  advance: ({ next, key, value, sets, extras, pick }) =>
     set((state) => {
       const snap: Snapshot = {
         step: state.currentStep, answers: state.answers, flags: state.flags, picks: state.picks, extras: state.extras,
@@ -72,7 +75,8 @@ export const useQuizStore = create<QuizState>((set, get) => ({
         answers: key ? { ...state.answers, [key]: value } : state.answers,
         flags: sets ? { ...state.flags, ...sets } : state.flags,
         extras: extras ? { ...state.extras, ...extras } : state.extras,
-        picks: key ? [...state.picks, { scene: state.currentStep, value: String(value) }] : state.picks,
+        picks: key ? [...state.picks, { scene: state.currentStep, value: String(value) }]
+          : pick ? [...state.picks, { scene: state.currentStep, value: pick }] : state.picks,
         history: [...state.history, snap],
       };
     }),

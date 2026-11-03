@@ -7,6 +7,8 @@ import { questionsData } from '@/data/questions';
 import PrologueMap from '@/components/question/PrologueMap';
 import { scenes, sceneIds, PROLOGUE, RESULT } from '@/engine/scenes';
 import { renderers } from '@/engine/renderers';
+import NightScene from '@/components/cinematic/NightScene';
+import type { CineOption } from '@/engine/cinematic';
 import { loadRuns, completeRun } from '@/engine/memory';
 import { emitPick } from '@/engine/events';
 import { assetsFor, bgFor, nextSceneId } from '@/engine/resolve';
@@ -17,7 +19,7 @@ import { preloadImages } from '@/lib/preloadImages';
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 export default function QuizContainer() {
-  const { currentStep, nextStep, advance, back, answers, flags, picks, extras, runIndex, setRun, showDebug, toggleDebug } = useQuizStore();
+  const { currentStep, nextStep, advance, back, answers, flags, picks, extras, runIndex, setRun, setExtras, showDebug, toggleDebug } = useQuizStore();
   const scene = scenes[currentStep];
   const [mounted, setMounted] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
@@ -40,6 +42,8 @@ export default function QuizContainer() {
       setMounted(true);
       
       const params = new URLSearchParams(window.location.search);
+      // 밤 장면(N1~N3) 체험 모드: 주소에 ?night=1 이 있을 때만 Q6 뒤에 끼어든다
+      if (params.get('night')) setExtras({ night: true, noTimer: params.get('notimer') ? true : undefined });
       if (params.get('result')) {
         nextStep(RESULT);
       }
@@ -54,8 +58,19 @@ export default function QuizContainer() {
   const [isFlashing, setIsFlashing] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const handleAnswer = async (value: string, extra?: Record<string, unknown>) => {
+  // 밤 장면(N1~N3)에서 선택지를 고른 뒤: 점수용 답 없이 플래그·소모 시간만 누적하고 다음 장면으로
+  const handleNightChoose = (option: CineOption, ms: number) => {
     if (!scene) return;
+    const spent = typeof extras.spent === 'number' ? extras.spent : 0;
+    const spentNext = spent + (option.timeCost ?? 0);
+    const nextFlags = { ...flags, ...(option.sets ?? {}) };
+    const next = nextSceneId(scene, { answers, flags: nextFlags, picks, run: runIndex, extras: { ...extras, spent: spentNext } });
+    emitPick({ run: runIndex, scene: scene.id, value: option.id, ms });
+    advance({ next, sets: option.sets, extras: { spent: spentNext }, pick: option.id });
+  };
+
+  const handleAnswer = async (value: string, extra?: Record<string, unknown>) => {
+    if (!scene || !scene.answerKey) return;
     const key = scene.answerKey;
     const next = nextSceneId(scene, { answers: { ...answers, [key]: value }, flags, picks, run: runIndex, extras });
     const tempAnswers = { ...answers, [key]: value };
@@ -133,9 +148,28 @@ export default function QuizContainer() {
       return <ResultView key="result_view" sharedResultId={sharedResultId || undefined} />;
     }
 
+    // 밤 장면 (N1 ~ N3): 장면 패널
+    if (scene?.renderer === 'night' && scene.cine) {
+      return (
+        <NightScene
+          key={currentStep}
+          cineId={scene.cine}
+          ctx={{ answers, flags, picks, run: runIndex, extras }}
+          timerEnabled={!extras.noTimer}
+          onChoose={handleNightChoose}
+        />
+      );
+    }
+
     // 엔진 장면 (Q0 ~ Q7)
-    const question = questionsData[currentStep];
-    if (scene && question) {
+    const baseQuestion = questionsData[currentStep];
+    if (scene && baseQuestion && scene.renderer !== 'night') {
+      // 앞 선택에 따라 문구가 바뀌는 장면(예: 구명정에 탄 경우의 Q7)
+      const v = scene.variant?.({ answers, flags, picks, run: runIndex, extras });
+      const question = v
+        ? { ...baseQuestion, title: v.title ?? baseQuestion.title, subtitle: v.subtitle ?? baseQuestion.subtitle,
+            options: v.omit ? baseQuestion.options.filter((o) => !v.omit!.includes(o.value)) : baseQuestion.options }
+        : baseQuestion;
       const Renderer = renderers[scene.renderer];
       return (
         <Renderer

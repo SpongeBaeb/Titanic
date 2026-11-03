@@ -9,10 +9,11 @@ import { scenes, sceneIds, CHAPTERS } from '@/engine/scenes';
  */
 export default function ProgressLine() {
   const currentStep = useQuizStore((s) => s.currentStep);
+  const night = useQuizStore((s) => !!s.extras.night);
   const scene = scenes[currentStep];
   if (!scene) return null;
 
-  const inChapter = sceneIds.filter((id) => scenes[id].chapter === scene.chapter);
+  const inChapter = sceneIds.filter((id) => scenes[id].chapter === scene.chapter && (night || !scenes[id].nightOnly));
   const within = (inChapter.indexOf(currentStep) + 1) / inChapter.length;
 
   return (
