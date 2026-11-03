@@ -1,0 +1,2 @@
+# 쉘 스크립트가 Windows 에서 줄바꿈(CRLF)으로 바뀌면 실행되지 않으므로 항상 LF 로 둔다
+.githooks/* text eol=lf

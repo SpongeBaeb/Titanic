@@ -1,0 +1,2 @@
+# 이미지 점검에서 "이미 알고 있는" 위반 목록입니다. 해결할 때마다 줄어듭니다.
+# 갱신: python scripts/optimize_images.py check --update-baseline scripts/image-baseline.txt

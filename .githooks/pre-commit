@@ -1,0 +1,33 @@
+#!/bin/sh
+# 커밋 전 점검: 새로 추가·수정한 이미지가 이미지_최적화_기준.md 를 지키는지 확인한다.
+# 설치: cd frontend && npm run hooks:install   (git config core.hooksPath .githooks)
+# 건너뛰기(비상용): git commit --no-verify
+
+# 이미지가 stage 되지 않았으면 바로 통과
+# (한글·특수문자 파일 이름은 git 이 따옴표·이스케이프로 출력하므로 -z 와 quotepath=false 로 원본 이름을 받는다)
+git -c core.quotepath=false diff --cached --name-only --diff-filter=AM -z | tr '\0' '\n' \
+  | grep -qiE '^frontend/public/.*\.(png|jpe?g|webp)$' || exit 0
+
+# 실제로 실행되는 Python 을 찾는다 (Windows 의 Microsoft Store 가짜 python 은 건너뜀)
+PY=""
+for cand in python3 python py; do
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" --version >/dev/null 2>&1; then
+    PY="$cand"
+    break
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "[이미지 점검] Python 을 찾지 못해 점검을 건너뜁니다."
+  exit 0
+fi
+
+"$PY" scripts/optimize_images.py check --staged
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo ""
+  echo "[이미지 점검] 기준(이미지_최적화_기준.md)을 지키지 않는 이미지가 있어 커밋을 중단합니다."
+  echo "  - PNG 는 WebP 로 변환:  python scripts/optimize_images.py images --src <원본 폴더> --dest frontend/public"
+  echo "  - 급하면 점검을 건너뛰고 커밋:  git commit --no-verify"
+  exit 1
+fi
+exit 0

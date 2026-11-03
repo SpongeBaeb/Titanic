@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "images:check": "python ../scripts/optimize_images.py check --baseline ../scripts/image-baseline.txt",
+    "images:build": "python ../scripts/optimize_images.py images",
+    "images:frames": "python ../scripts/optimize_images.py frames",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@types/canvas-confetti": "^1.9.0",
