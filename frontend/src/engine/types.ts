@@ -2,7 +2,7 @@ export type AnswerKey =
   | 'embarked' | 'sex' | 'ageGroup' | 'companion' | 'pclass'
   | 'fareIntent' | 'purpose' | 'rumorAction' | 'finalAction';
 
-export type Flags = Record<string, true>;
+export type Flags = Record<string, boolean>;
 
 export type RendererId =
   | 'gender' | 'age' | 'companion' | 'staircase' | 'money' | 'cinematic';
@@ -20,6 +20,10 @@ export interface Ctx {
   picks: Pick[];
   /** 이 판의 회차 (1부터) */
   run: number;
+  /** 충돌 후 경과 분 (시간 자원을 쓰는 장면에서만 의미가 있다) */
+  elapsed?: number;
+  /** 숫자·목록 같은 부가 기록 (예: 가방에 담은 물건). boolean 플래그로 담기 어려운 것 */
+  extras?: Record<string, unknown>;
 }
 
 // 문항 본문(제목·선택지)은 data/questions.ts 의 같은 id 를 따른다.
@@ -43,4 +47,6 @@ export interface SceneDef {
   bgOpacity?: number;
   ripple?: boolean;
   redPulse?: boolean;
+  /** 문항 화면에 띄우는 작은 시계 (E6: 석양에는 시각만, 밤에는 침몰 표식까지) */
+  clock?: { elapsed: number; mark: boolean };
 }

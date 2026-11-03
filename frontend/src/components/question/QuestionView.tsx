@@ -7,6 +7,9 @@ import MoneyParticles from '@/components/ui/MoneyParticles';
 import StarlitBackground from '@/components/ui/StarlitBackground';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
+import AnalogClock from '@/components/cinematic/AnalogClock';
+import { wallClock } from '@/engine/cinematic';
+import { scenes } from '@/engine/scenes';
 
 interface QuestionViewProps {
   question: Question;
@@ -17,6 +20,7 @@ interface QuestionViewProps {
 export default function QuestionView({ question, onAnswer, onBack }: QuestionViewProps) {
   const [hoveredOption, setHoveredOption] = useState<Option | null>(null);
 
+  const clock = scenes[question.id]?.clock;
   const isQ4 = question.id === 'Q4';
   const isQ5 = question.id === 'Q5';
 
@@ -102,8 +106,18 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
         <span className="mr-2 group-hover:-translate-x-1 transition-transform">←</span>
         <span className="text-sm font-sans tracking-widest uppercase">Back</span>
       </button>
-      <div className="mb-12 mt-4">
-        <ProgressLine />
+      <div className="mb-12 mt-4 flex items-center gap-4">
+        <div className="flex-1"><ProgressLine /></div>
+        {/* 같은 시계가 석양에서는 시각만, 밤에는 침몰 표식과 함께 다시 나타난다 */}
+        {clock && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1.6, delay: 0.6 }}
+            className="shrink-0 flex flex-col items-center gap-0.5" aria-hidden
+          >
+            <AnalogClock elapsed={clock.elapsed} size={48} sinkMark={clock.mark} />
+            <span className="font-numeric text-xs font-bold text-bright-brass [font-variant-numeric:lining-nums]">{wallClock(clock.elapsed)}</span>
+          </motion.div>
+        )}
       </div>
       
       <motion.div 

@@ -9,7 +9,7 @@ import { useQuizStore } from '@/store/quizStore';
 
 interface MoneyMinigameViewProps {
   question: Question;
-  onAnswer: (value: string) => void;
+  onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   onBack: () => void;
 }
 
@@ -27,6 +27,10 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   // State
   const [billsAvailable, setBillsAvailable] = useState(5);
   const [billsInBag, setBillsInBag] = useState(0);
+  // 반향(밤 장면)에서 쓰는 기록: 가방에 실제로 들어간 기념품, 도박 시도 횟수, 시설별 지출
+  const [bagItems, setBagItems] = useState<string[]>([]);
+  const [gambleCount, setGambleCount] = useState(0);
+  const [spentOn, setSpentOn] = useState<Record<string, number>>({});
   const [totalEarnedBills, setTotalEarnedBills] = useState(5);
   
   const [activeEffect, setActiveEffect] = useState<string | null>(null);
@@ -573,6 +577,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
 
     if (droppedId === 'mybag') {
       playSound('cash');
+      setBagItems(prev => [...prev, item.img.replace(/^.*\//, '').replace('.webp', '')]);
       setSouvenirItems(prev => prev.filter(i => i.id !== itemId));
     } else {
       setSouvenirItems(prev => prev.map(i => {
@@ -745,6 +750,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     } else {
       // Regular facilities
       setBillsAvailable(prev => prev - 1);
+      setSpentOn(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
       triggerVFX(id);
     }
   };
@@ -763,6 +769,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const handleGambleSubmit = () => {
     if (billsAvailable <= 0) return; // shouldn't happen but safe
     
+    setGambleCount(prev => prev + 1);
     const target = Math.floor(Math.random() * (550 - 480 + 1)) + 480;
     setTargetDistance(target);
     setGamblingState('animating');
@@ -822,7 +829,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     } else if (ratio >= 0.2) {
       finalValue = 'balance';
     }
-    onAnswer(finalValue);
+    onAnswer(finalValue, { bagItems, bagBills: billsInBag, gambleCount, spentOn });
   };
 
   const handleGlobalClick = (e: React.MouseEvent) => {

@@ -17,7 +17,7 @@ import { preloadImages } from '@/lib/preloadImages';
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 export default function QuizContainer() {
-  const { currentStep, nextStep, advance, back, answers, flags, picks, runIndex, setRun, showDebug, toggleDebug } = useQuizStore();
+  const { currentStep, nextStep, advance, back, answers, flags, picks, extras, runIndex, setRun, showDebug, toggleDebug } = useQuizStore();
   const scene = scenes[currentStep];
   const [mounted, setMounted] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
@@ -54,15 +54,15 @@ export default function QuizContainer() {
   const [isFlashing, setIsFlashing] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const handleAnswer = async (value: string) => {
+  const handleAnswer = async (value: string, extra?: Record<string, unknown>) => {
     if (!scene) return;
     const key = scene.answerKey;
-    const next = nextSceneId(scene, { answers: { ...answers, [key]: value }, flags, picks, run: runIndex });
+    const next = nextSceneId(scene, { answers: { ...answers, [key]: value }, flags, picks, run: runIndex, extras });
     const tempAnswers = { ...answers, [key]: value };
     const ms = Date.now() - enteredAt.current;
     const commit = () => {
       emitPick({ run: runIndex, scene: scene.id, value, ms });
-      advance({ next, key, value });
+      advance({ next, key, value, extras: extra });
       if (next === RESULT) setRun(completeRun() + 1);
     };
 
@@ -91,11 +91,11 @@ export default function QuizContainer() {
   useEffect(() => {
     // 다음 장면 배경 미리 받기
     if (!scene) return;
-    const nextId = nextSceneId(scene, { answers, flags, picks, run: runIndex });
+    const nextId = nextSceneId(scene, { answers, flags, picks, run: runIndex, extras });
     if (nextId === RESULT) return;
     const nextBg = bgFor(nextId, answers);
     if (nextBg) preloadImages([nextBg]);
-  }, [currentStep, answers, flags, picks, runIndex, scene]);
+  }, [currentStep, answers, flags, picks, runIndex, extras, scene]);
 
   const bgOpacity = scene?.bgOpacity ?? 0.4;
   const gradientClass =

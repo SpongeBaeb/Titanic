@@ -10,7 +10,7 @@ import QuestionView from '@/components/question/QuestionView';
 
 export interface RendererProps {
   question: Question;
-  onAnswer: (value: string) => void;
+  onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   onBack: () => void;
 }
 

@@ -31,10 +31,11 @@ export const scenes: Record<string, SceneDef> = {
     assets: ['/bg/1.webp', '/bg/2.webp', '/bg/3.webp'], fastEnter: true,
   },
   Q4: { id: 'Q4', renderer: 'money', answerKey: 'fareIntent', next: 'Q5', prev: 'Q3', chapter: 1, gradient: 'default', assets: MONEY_ASSETS },
-  Q5: { id: 'Q5', renderer: 'cinematic', answerKey: 'purpose', next: 'Q6', prev: 'Q4', chapter: 1, gradient: 'default' },
+  // 시계는 석양(Q5)에서 처음 소개되고(시각만, 초안: 21:00), 밤(Q6)에 같은 시계에 침몰 표식이 붙는다
+  Q5: { id: 'Q5', renderer: 'cinematic', answerKey: 'purpose', next: 'Q6', prev: 'Q4', chapter: 1, gradient: 'default', clock: { elapsed: -160, mark: false } },
   Q6: {
     id: 'Q6', renderer: 'cinematic', answerKey: 'rumorAction', next: 'Q7', prev: 'Q5', chapter: 2,
-    gradient: 'rumor', bgOpacity: 0.8, redPulse: true,
+    gradient: 'rumor', bgOpacity: 0.8, redPulse: true, clock: { elapsed: 5, mark: true },
   },
   Q7: {
     id: 'Q7', renderer: 'cinematic', answerKey: 'finalAction', next: RESULT, prev: 'Q6', chapter: 2,
