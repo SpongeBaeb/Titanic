@@ -4,15 +4,21 @@ import uuid
 import sqlite3
 from supabase import create_client, Client
 
-SUPABASE_URL = "https://bfbqxhzcodhwzynjfcjt.supabase.co"
-SUPABASE_KEY = "sb_publishable_H0ZtD0fXJADwBP9eswkTjw_2HHbtMvu"
+# 접속 정보는 코드에 두지 않고 환경 변수로 받는다 (backend/.env.example 참고)
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-try:
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    USE_SUPABASE = True
-except Exception as e:
-    print(f"Supabase init error: {e}")
-    USE_SUPABASE = False
+supabase: Client | None = None
+USE_SUPABASE = False
+
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        USE_SUPABASE = True
+    except Exception as e:
+        print(f"Supabase init error: {e}")
+else:
+    print("SUPABASE_URL / SUPABASE_KEY 환경 변수가 없어 SQLite만 사용합니다.")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'results.db')
 

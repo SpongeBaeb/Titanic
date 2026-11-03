@@ -10,6 +10,9 @@ import subprocess
 app = Flask(__name__)
 CORS(app)
 
+# FLASK_ENV=development 일 때만 관리자 API와 debug 모드를 켠다 (기본값: 꺼짐)
+DEV_MODE = os.environ.get('FLASK_ENV') == 'development'
+
 survival_engine = SurvivalEngine(model_path='model.joblib')
 historical_matcher = HistoricalMatcher()
 
@@ -57,14 +60,20 @@ def parse_user_features(data):
     features['FamilySize'] = features['SibSp'] + features['Parch'] + 1
     features['IsAlone'] = 1 if features['FamilySize'] == 1 else 0
     
-    if 'fareIntent' in data:
-        fare_mapping = {'luxury': 80.0, 'balance': 30.0, 'save': 8.0}
-        features['Fare'] = fare_mapping.get(data['fareIntent'], 15.0)
+    # 요금은 객실 등급의 실제 중앙값(1등석 60.3 / 2등석 14.3 / 3등석 8.05)을 기준으로
+    # 선택 성향만큼 가감해, 등급과 모순되는 조합(3등석+80 등)이 모델에 들어가지 않게 한다.
+    fare_by_class = {1: 60.0, 2: 14.0, 3: 8.0}
+    fare_scale = {'luxury': 1.5, 'balance': 1.0, 'save': 0.7}
+    features['Fare'] = fare_by_class.get(features['Pclass'], 15.0) * fare_scale.get(data.get('fareIntent'), 1.0)
         
     return features
 
 @app.route('/api/admin/image-config', methods=['POST'])
 def save_image_config():
+    # 개발용 도구: 파일 쓰기 + 서브프로세스 실행이 있으므로 운영 환경에서는 차단한다.
+    if not DEV_MODE:
+        return jsonify({"status": "error", "message": "Not found"}), 404
+
     data = request.json
     character_name = data.get('character')
     config = data.get('config')
@@ -170,8 +179,13 @@ def match_historical():
     data = request.json
     features = parse_user_features(data)
     persona = data.get('persona', 'THE OBSERVER')
-    match = historical_matcher.find_match(features, persona)
-    return jsonify({"status": "success", "historical_match": match})
+    match = historical_matcher.find_all_matches(features, persona)
+    return jsonify({
+        "status": "success",
+        "historical_match": match.get('best'),
+        "worst_match": match.get('worst'),
+        "opposite_match": match.get('opposite')
+    })
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=DEV_MODE, port=5000)

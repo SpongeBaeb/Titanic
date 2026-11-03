@@ -10,8 +10,9 @@
 - Backend: Python Flask (API 서버 및 ML 연동)
 - Data Source (중요): 프로젝트에 포함된 **`Titanic-Dataset.csv`** 파일을 사용하여 실제 승객 정보 로드, 매칭 및 ML 파이프라인 처리를 수행합니다.
 - Database 전략: 
-  - **MVP 단계**: 완벽한 Stateless 구조로 운영합니다. DB 연동 없이 프론트엔드의 상태(State)와 백엔드의 `Titanic-Dataset.csv` 파일 처리 로직만으로 동작하도록 설계하세요.
-  - **Post-MVP (Phase 2)**: 정식 서비스 출시 및 Viral Loop 확장을 위해 결과 저장, 공유 URL 생성, 사용자 통계 추적이 필요해지는 시점에 **PostgreSQL 및 Supabase**를 도입할 계획입니다. 향후 확장이 용이하도록 백엔드 응답 구조를 유연하게 설계하세요.
+  - **MVP 단계 (완료, 2026-07)**: Stateless 구조로 시작했습니다. (이 규칙은 2026-08 Phase 2에서 결과 저장을 붙이면서 이미 넘어섰습니다.)
+  - **현재 상태 (2026-11 갱신)**: 결과 저장과 공유 URL을 위해 `backend/engine/db.py`가 DB를 사용합니다. **Supabase(PostgreSQL)를 우선 사용하고, 접속 정보는 환경 변수(`SUPABASE_URL`, `SUPABASE_KEY`)로만 받습니다. 코드에 직접 적지 않습니다.** 환경 변수가 없거나 연결에 실패하면 SQLite(`results.db`)로 대체하지만, 배포 환경에서는 SQLite가 재시작 때 사라질 수 있어 공유 링크가 깨질 수 있으므로 **운영에서는 Supabase가 정상이어야 합니다.** 
+  - **다음 계획**: 선택 통계 수집은 `선택통계_설계.md`를 따릅니다. 선택 기록 테이블(`runs`, `choice_events`)은 PostgreSQL에 둡니다.
 - ML Pipeline: XGBoost/LightGBM (향후 Flask에 연동 예정이므로 API 스캐폴딩 구조로 설계)
 
 # 작업 및 협업 규칙 (★ 필수 준수 사항)
