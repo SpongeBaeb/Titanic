@@ -11,21 +11,73 @@
 
   --color-ivory: #F1EBDD;
   --color-muted-ivory: #B8B1A4;
-  --color-dim: #716E68;
+  /* 보조 텍스트 대비 3.8:1 -> 6.0:1 (AA 4.5:1 충족) */
+  --color-dim: #938F87;
 
   --color-brass: #B89A5B;
   --color-bright-brass: #D4B878;
 
   --color-blood-red: #8E2E2E;
   --color-emergency-red: #B64135;
+  /* red-*는 채움 전용(텍스트 대비 부족). 텍스트는 danger-text, 생존은 survive */
+  --color-danger-text: #E8685A;
+  --color-survive: #4DB88A;
 
-  --font-sans: var(--font-inter);
+  /* 한글 제목·본문은 Noto Serif KR 하나로 통일 (DESIGN_RULES.md §1.1).
+     기존 font-sans / font-serif 클래스도 같은 서체로 연결해 한글이 OS 기본 폰트로 떨어지지 않게 한다. */
+  --font-sans: var(--font-noto-serif-kr), "Noto Serif KR", serif;
+  --font-serif: var(--font-noto-serif-kr), "Noto Serif KR", serif;
+  --font-title: var(--font-noto-serif-kr), "Noto Serif KR", serif;
   --font-display: var(--font-cormorant);
+  --font-numeric: var(--font-playfair), "Playfair Display", serif;
+
+  /* 글자 크기 스케일 (DESIGN_RULES.md §1.2). 12px 미만 금지 */
+  --text-display: 3.5rem;
+  --text-display--line-height: 1.05;
+  --text-headline: 2rem;
+  --text-headline--line-height: 1.25;
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.35;
+  --text-body: 1rem;
+  --text-body--line-height: 1.65;
+  --text-caption: 0.875rem;
+  --text-caption--line-height: 1.5;
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.4;
+  --text-label--letter-spacing: 0.08em;
+
+  /* 모서리 */
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+}
+
+:root {
+  /* 이미지 위 글자용 스크림 (DESIGN_RULES.md §2 규칙 4) */
+  --scrim-top: linear-gradient(to bottom, rgb(7 16 20 / 0.85), rgb(7 16 20 / 0));
+  --scrim-bottom: linear-gradient(to top, rgb(7 16 20 / 0.9), rgb(7 16 20 / 0));
+  --scrim-full: rgb(7 16 20 / 0.55);
+
+  /* 레이아웃 */
+  --gutter: 1.25rem;
+  --content-max: 35rem;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 1.5rem;
+  }
 }
 
 body {
   background: var(--color-ocean-black);
   color: var(--color-ivory);
+  font-weight: 400;
+  /* 한글 조판: 단어 중간에서 줄바꿈하지 않음 */
+  word-break: keep-all;
+}
+
+h1, h2, h3 {
+  text-wrap: balance;
 }
 
 @keyframes shimmer {

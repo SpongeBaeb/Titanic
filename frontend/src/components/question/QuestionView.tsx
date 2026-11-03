@@ -103,7 +103,7 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
         <span className="text-sm font-sans tracking-widest uppercase">Back</span>
       </button>
       <div className="mb-12 mt-4">
-        <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+        <ProgressLine />
       </div>
       
       <motion.div 
@@ -114,8 +114,8 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
       >
         <motion.h2 
           variants={itemVariants}
-          className={`text-2xl md:text-3xl font-display font-bold mb-6 leading-relaxed ${
-            ['Q6', 'Q7'].includes(question.id) ? 'text-emergency-red drop-shadow-[0_0_8px_rgba(182,65,53,0.5)]' : 'text-ivory'
+          className={`text-2xl md:text-3xl font-title font-bold mb-6 leading-relaxed ${
+            ['Q6', 'Q7'].includes(question.id) ? 'text-danger-text drop-shadow-[0_0_8px_rgba(182,65,53,0.5)]' : 'text-ivory'
           }`}
         >
           {question.title}
@@ -124,7 +124,7 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
         {question.subtitle && (
           <motion.p 
             variants={itemVariants}
-            className="text-muted-ivory font-sans text-base leading-loose"
+            className="text-muted-ivory font-sans text-base leading-loose [text-shadow:0_1px_10px_rgb(0_0_0/0.7)]"
           >
             {question.subtitle}
           </motion.p>

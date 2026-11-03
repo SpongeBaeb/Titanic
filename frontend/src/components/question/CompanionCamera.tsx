@@ -174,7 +174,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
           marginLeft: `${BG_CONFIG.offsetX}vw`
         }}
       >
-        <img src="/bg/withwho.png" alt="Background" className="w-full h-full object-cover pointer-events-none" />
+        <img src="/bg/withwho.webp" alt="Background" className="w-full h-full object-cover pointer-events-none" />
 
         {/* 핫스팟 투명 영역 렌더링 (디버그 테두리 제거) */}
         {Object.entries(SPOTS).map(([key, rect]) => (
@@ -205,9 +205,9 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
       <div className="absolute inset-y-0 left-0 bg-black pointer-events-none" style={{ width: `${PANEL_WIDTH}vw` }} />
       <div className="absolute inset-y-0 right-0 bg-black pointer-events-none" style={{ width: `${PANEL_WIDTH}vw` }} />
 
-      {/* 2.5 렌즈(lens.png) 그래픽 오버레이 (화면 전체 고정, 유효한 z-index 사용) */}
+      {/* 2.5 렌즈(lens.webp) 그래픽 오버레이 (화면 전체 고정, 유효한 z-index 사용) */}
       <img 
-        src="/lens.png" 
+        src="/lens.webp" 
         alt="Camera Lens Frame" 
         className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10"
       />
@@ -216,13 +216,13 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
       <div className="absolute inset-0 z-20 pointer-events-none">
         <div className="absolute top-0 inset-x-0 pt-12 pb-24 flex flex-col items-center bg-gradient-to-b from-slate-950/90 via-slate-950/50 to-transparent">
           <div className="w-full max-w-xl px-6 mb-6 mt-4">
-            <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+            <ProgressLine />
           </div>
           <div className="text-center flex flex-col gap-2 w-full px-4">
             <h2 className="text-2xl md:text-3xl font-serif text-white/90 tracking-widest drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
               {question.title}
             </h2>
-            <p className="text-white/40 font-sans tracking-[0.2em] text-[10px] md:text-xs uppercase">
+            <p className="text-muted-ivory/80 font-sans tracking-[0.2em] text-xs uppercase">
               Look around and take a photo
             </p>
           </div>
@@ -240,7 +240,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
               transition={{ duration: 0.3 }}
               className="text-center"
             >
-              <h3 className="text-3xl md:text-4xl font-display text-amber-100 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)] mb-2">
+              <h3 className="text-3xl md:text-4xl font-title text-amber-100 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)] mb-2">
                 {currentHoverData.label}
               </h3>
               <p className="text-sm text-slate-300 font-sans max-w-md mx-auto">

@@ -139,7 +139,7 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
         {!hoveredOption && (
           <motion.img
             key="base"
-            src="/bg/where.png"
+            src="/bg/where.webp"
             alt="Grand Staircase"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -160,7 +160,7 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
             className="absolute inset-0 w-full h-full pointer-events-none"
           >
             <img 
-              src={`/bg/${hoveredOption}.png`} 
+              src={`/bg/${hoveredOption}.webp`} 
               alt="Class Atmosphere" 
               className="w-full h-full object-cover" 
             />
@@ -172,7 +172,7 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
       <div className="absolute inset-0 z-30 pointer-events-none flex flex-col justify-between">
         
         {/* Top: Back Button and Question Title (with gradient for readability) */}
-        <div className="p-8 pt-12 pb-24 flex flex-col items-center relative bg-gradient-to-b from-slate-950/90 via-slate-950/50 to-transparent">
+        <div className="p-8 pt-12 pb-24 flex flex-col items-center relative bg-gradient-to-b from-slate-950/90 via-slate-950/70 to-transparent">
           {onBack && (
             <button 
               onClick={onBack}
@@ -183,11 +183,11 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
           )}
 
           <div className="text-center w-full max-w-4xl mx-auto px-4 mt-8 md:mt-0">
-            <h2 className="text-2xl md:text-3xl lg:text-4xl font-serif text-white/95 tracking-wide drop-shadow-[0_4px_15px_rgba(0,0,0,0.8)] whitespace-pre-wrap">
+            <h2 className="text-2xl md:text-3xl lg:text-4xl font-title font-bold text-white/95 tracking-wide drop-shadow-[0_4px_15px_rgba(0,0,0,0.8)] whitespace-pre-wrap">
               {question.title}
             </h2>
             {question.subtitle && (
-              <p className="mt-4 text-white/80 font-sans tracking-widest text-xs md:text-sm drop-shadow-md">
+              <p className="mt-4 text-ivory/90 font-sans text-sm md:text-base leading-relaxed [text-shadow:0_1px_10px_rgb(0_0_0/0.85)]">
                 {question.subtitle}
               </p>
             )}
@@ -220,7 +220,7 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
 
       {/* Bottom ProgressLine */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-6 pointer-events-auto z-[60]">
-        <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+        <ProgressLine />
       </div>
 
       {/* Interactive Hotspots Layer */}

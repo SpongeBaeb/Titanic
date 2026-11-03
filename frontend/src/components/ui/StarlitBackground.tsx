@@ -84,20 +84,11 @@ export default function StarlitBackground({ activeOptionValue }: StarlitBackgrou
 
       {/* Railing Back (Ocean/Horizon) - 3D Parallax */}
       <motion.img 
-        src="/bg/railing_back.png" 
+        src="/bg/railing_back.webp" 
         alt="railing back" 
         className="absolute bottom-0 left-0 w-full h-full object-cover z-[-1]"
         animate={{ x: -mousePos.x * 0.4, y: -mousePos.y * 0.2 }}
         transition={{ type: 'spring', stiffness: 40, damping: 25 }}
-      />
-
-      {/* Railing Front (Closest to Camera) - 3D Parallax */}
-      <motion.img 
-        src="/bg/railing_front.png" 
-        alt="railing front" 
-        className="absolute bottom-0 left-0 w-full h-full object-cover z-[0]"
-        animate={{ x: mousePos.x * 0.6, y: mousePos.y * 0.3 }}
-        transition={{ type: 'spring', stiffness: 60, damping: 20 }}
       />
 
     </div>

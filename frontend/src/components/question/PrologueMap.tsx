@@ -9,6 +9,11 @@ interface PrologueMapProps {
 
 // 추출된 총 프레임 수
 const FRAME_COUNT = 121;
+// 처음에 받을 대표 프레임 간격 (0, 8, 16 … 120 → 16장). 이것만 받으면 화면을 보여준다.
+const KEY_FRAME_STEP = 8;
+// 화면 폭이 이 이하면 모바일용(864px) 프레임을 쓴다 (scripts/optimize_images.py frames)
+const MOBILE_QUERY = '(max-width: 768px)';
+const LOAD_CONCURRENCY = 6;
 
 export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -50,48 +55,29 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
   // 스크롤이 끝부분(0.7 ~ 0.9)에 다다르면 텍스트를 부드럽게 페이드아웃
   const textOpacity = useTransform(smoothProgress, [0.7, 0.9], [1, 0]);
 
-  // 프레임 프리로딩 로직
-  useEffect(() => {
-    let loadedCount = 0;
-    imagesRef.current = []; // 초기화
-
-    const preloadImages = () => {
-      for (let i = 0; i < FRAME_COUNT; i++) {
-        const img = new Image();
-        const frameNumber = i.toString().padStart(4, '0');
-        img.src = `/bg/frames/frame_${frameNumber}.jpg`;
-        
-        img.onload = () => {
-          loadedCount++;
-          setLoadingProgress(Math.floor((loadedCount / FRAME_COUNT) * 100));
-          if (loadedCount === FRAME_COUNT) {
-            setImagesLoaded(true);
-          }
-        };
-        // 에러 방어 코드 (프레임 누락 시 에러 방지)
-        img.onerror = () => {
-          loadedCount++;
-          if (loadedCount === FRAME_COUNT) setImagesLoaded(true);
-        }
-        
-        imagesRef.current.push(img);
+  // 요청한 프레임이 아직 없으면 가장 가까운 받은 프레임을 찾는다
+  const findLoadedFrame = (index: number): HTMLImageElement | null => {
+    const imgs = imagesRef.current;
+    for (let d = 0; d < FRAME_COUNT; d++) {
+      for (const i of [index - d, index + d]) {
+        const im: HTMLImageElement | undefined = imgs[i];
+        if (im && im.complete && im.naturalWidth > 0) return im;
       }
-    };
-    preloadImages();
-  }, []);
+    }
+    return null;
+  };
 
   // 캔버스에 이미지를 그리는 핵심 함수 (object-cover 효과 구현)
   const renderFrame = (index: number) => {
-    if (!canvasRef.current || !imagesRef.current[index]) return;
-    
+    if (!canvasRef.current) return;
+
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { alpha: false }); // alpha false로 렌더링 성능 최적화
     if (!ctx) return;
 
-    const img = imagesRef.current[index];
-    // 아직 이미지가 완전 로드되지 않았다면 스킵
-    if (!img.complete || img.naturalWidth === 0) return;
-    
+    const img = findLoadedFrame(index);
+    if (!img) return;
+
     // 디스플레이 해상도에 맞게 캔버스 크기 조정
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -100,7 +86,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
     const hRatio = canvas.width / img.width;
     const vRatio = canvas.height / img.height;
     const ratio = Math.max(hRatio, vRatio);
-    
+
     const centerShift_x = (canvas.width - img.width * ratio) / 2;
     const centerShift_y = (canvas.height - img.height * ratio) / 2;
 
@@ -112,6 +98,71 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
     ctx.drawImage(img, 0, 0, img.width, img.height,
                   centerShift_x, centerShift_y, img.width * ratio, img.height * ratio);
   };
+
+  // 프레임 점진적 로딩: 대표 프레임(16장)만 받으면 화면을 보여주고,
+  // 나머지는 거친 간격(4 → 2 → 1)부터 백그라운드에서 채운다.
+  useEffect(() => {
+    let cancelled = false;
+    const dir = window.matchMedia(MOBILE_QUERY).matches ? 'frames-m' : 'frames-d';
+    imagesRef.current = new Array(FRAME_COUNT);
+
+    const load = (i: number) =>
+      new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          if (!cancelled) imagesRef.current[i] = img;
+          resolve();
+        };
+        // 누락된 프레임은 건너뛰고 가까운 프레임을 대신 쓴다
+        img.onerror = () => resolve();
+        img.src = `/bg/${dir}/frame_${i.toString().padStart(4, '0')}.webp`;
+      });
+
+    // 로딩 순서: 대표 프레임 → 4칸 간격 → 2칸 간격 → 나머지
+    const seen = new Set<number>();
+    const passes: number[][] = [];
+    for (const step of [KEY_FRAME_STEP, 4, 2, 1]) {
+      const ids: number[] = [];
+      for (let i = 0; i < FRAME_COUNT; i += step) {
+        if (!seen.has(i)) { seen.add(i); ids.push(i); }
+      }
+      if (step === KEY_FRAME_STEP && !seen.has(FRAME_COUNT - 1)) {
+        seen.add(FRAME_COUNT - 1);
+        ids.push(FRAME_COUNT - 1);
+      }
+      passes.push(ids);
+    }
+
+    const runPass = async (ids: number[], onEach?: () => void) => {
+      let next = 0;
+      const worker = async () => {
+        while (!cancelled && next < ids.length) {
+          await load(ids[next++]);
+          onEach?.();
+        }
+      };
+      await Promise.all(Array.from({ length: LOAD_CONCURRENCY }, worker));
+    };
+
+    (async () => {
+      let done = 0;
+      await runPass(passes[0], () => {
+        done++;
+        setLoadingProgress(Math.floor((done / passes[0].length) * 100));
+      });
+      if (cancelled) return;
+      setImagesLoaded(true);
+
+      for (let p = 1; p < passes.length && !cancelled; p++) {
+        await runPass(passes[p]);
+        // 새로 받은 프레임으로 현재 화면을 다시 그린다
+        const latest = Math.max(0, Math.min(1, smoothProgress.get()));
+        renderFrame(Math.min(FRAME_COUNT - 1, Math.round(latest * (FRAME_COUNT - 1))));
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
 
   // 초기 렌더링 및 리사이즈 이벤트 처리
   useEffect(() => {
@@ -202,7 +253,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
       {/* SECTION 2: Map */}
       <section 
         className="min-h-screen flex flex-col items-center justify-center py-20 px-4 w-full relative z-20 bg-cover bg-center bg-no-repeat shadow-[0_-20px_50px_rgba(2,6,23,1)]"
-        style={{ backgroundImage: "url('/bg/TitanicBoarding.png')" }}
+        style={{ backgroundImage: "url('/bg/TitanicBoarding.webp')" }}
       >
         {/* 가독성을 위해 어두운 오버레이 추가 */}
         <div className="absolute inset-0 bg-slate-950/70" />
@@ -231,7 +282,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
               }}
             />
             <img 
-              src="/virUI.png" 
+              src="/virUI.webp" 
               alt="UI frame" 
               draggable={false}
               className="w-full h-auto object-contain drop-shadow-2xl opacity-90 relative z-10" 
@@ -254,7 +305,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
           <div className="relative w-full max-w-3xl mx-auto aspect-[4/3] md:aspect-[16/9] mb-8">
             <div className="absolute inset-0 overflow-hidden">
               <img 
-                src="/map-route.png" 
+                src="/map-route.webp" 
                 alt="Route Map" 
                 draggable={false}
                 className="w-full h-full object-contain"
@@ -325,7 +376,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                   >
                     {/* Left half - purely static */}
                     <motion.img 
-                      src={`/ticket${selectedPort}.png`}
+                      src={`/ticket${selectedPort}.webp`}
                       draggable={false}
                       className="absolute w-full object-contain pointer-events-none"
                       style={{ clipPath: `polygon(0% 0%, ${tearX}% 0%, ${tearX}% 100%, 0% 100%)` }}
@@ -333,7 +384,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                     
                     {/* Right half - moves down based on tearProgress */}
                     <motion.img 
-                      src={`/ticket${selectedPort}.png`}
+                      src={`/ticket${selectedPort}.webp`}
                       draggable={false}
                       className="absolute w-full object-contain pointer-events-none"
                       style={{ 
@@ -345,7 +396,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                     />
                     
                     {/* Hidden placeholder to dictate container size */}
-                    <img src={`/ticket${selectedPort}.png`} draggable={false} className="w-full object-contain opacity-0 pointer-events-none" />
+                    <img src={`/ticket${selectedPort}.webp`} draggable={false} className="w-full object-contain opacity-0 pointer-events-none" />
                   </motion.div>
                   
                   <motion.div 
@@ -354,7 +405,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                     transition={{ delay: 1 }}
                     className="absolute bottom-1 flex flex-col items-center text-white/90 font-light pointer-events-none animate-bounce"
                   >
-                    <span className="text-sm font-display tracking-widest mb-2 drop-shadow-md">아래로 드래그하여 티켓 끊기</span>
+                    <span className="text-sm font-title tracking-widest mb-2 drop-shadow-md">아래로 드래그하여 티켓 끊기</span>
                     <div className="w-px h-10 bg-gradient-to-b from-white/90 to-transparent" />
                   </motion.div>
                 </motion.div>

@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { motion } from 'framer-motion';
 import { characterDB } from '@/data/characterDB';
+import { resultImage } from '@/lib/assetPath';
 import { Quote, Settings, X } from 'lucide-react';
 
 interface TitanicPassengerCardProps {
@@ -66,22 +67,22 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
   const [debugFrame, setDebugFrame] = useState<'auto' | '1' | '2' | '3'>('auto');
 
   // 객실 등급에 따른 프레임 선택 (디버깅 오버라이드)
-  let frameImage = '/frame/frame3.png';
+  let frameImage = '/frame/frame3.webp';
   if (debugFrame !== 'auto') {
-    frameImage = `/frame/frame${debugFrame}.png`;
+    frameImage = `/frame/frame${debugFrame}.webp`;
   } else if (activeData.class.includes('1')) {
-    frameImage = '/frame/frame1.png';
+    frameImage = '/frame/frame1.webp';
   } else if (activeData.class.includes('2')) {
-    frameImage = '/frame/frame2.png';
+    frameImage = '/frame/frame2.webp';
   }
 
   // result 폴더의 이미지를 먼저 시도하고, 없으면 fallback
-  const initialImage = `/result/${encodeURIComponent(activeData.name)}.png`;
+  const initialImage = resultImage(activeData.name);
   const [imgSrc, setImgSrc] = useState(initialImage);
 
   // 승객 정보가 바뀔 때마다 이미지 소스 및 기본 위치 초기화
   useEffect(() => {
-    setImgSrc(`/result/${encodeURIComponent(activeData.name)}.png`);
+    setImgSrc(resultImage(activeData.name));
     if (activeData.imageConfig) {
       setPortraitConfig(activeData.imageConfig);
     } else {
@@ -255,8 +256,8 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
               src={imgSrc} 
               onError={(e) => {
                 // 이미지가 없을 경우 fallback 처리 (Anna Turja로 임시 설정)
-                if (imgSrc !== "/result/Anna Turja.png") {
-                  setImgSrc("/result/Anna Turja.png");
+                if (imgSrc !== resultImage("Anna Turja")) {
+                  setImgSrc(resultImage("Anna Turja"));
                 }
               }}
               alt={activeData.name} 

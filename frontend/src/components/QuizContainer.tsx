@@ -4,32 +4,36 @@ import { useQuizStore } from '@/store/quizStore';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import ResultView from '@/components/ResultView';
 import { questionsData } from '@/data/questions';
-import QuestionView from '@/components/question/QuestionView';
 import PrologueMap from '@/components/question/PrologueMap';
-import GenderView from '@/components/question/GenderView';
-import AgeView from '@/components/question/AgeView';
-import CompanionCamera from '@/components/question/CompanionCamera';
-import StaircaseView from '@/components/question/StaircaseView';
-import MoneyMinigameView from '@/components/question/MoneyMinigameView';
-import { useEffect, useState, useMemo } from 'react';
+import { scenes, sceneIds, PROLOGUE, RESULT } from '@/engine/scenes';
+import { renderers } from '@/engine/renderers';
+import { loadRuns, completeRun } from '@/engine/memory';
+import { emitPick } from '@/engine/events';
+import { assetsFor, bgFor, nextSceneId } from '@/engine/resolve';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { preloadImages } from '@/lib/preloadImages';
 
+// 바로가기 패널은 개발 서버에서만 노출 (빌드 시 값이 고정되어 운영 화면에는 나타나지 않는다)
+const IS_DEV = process.env.NODE_ENV === 'development';
+
 export default function QuizContainer() {
-  const { currentStep, nextStep, setAnswer, answers, showDebug, toggleDebug } = useQuizStore();
+  const { currentStep, nextStep, advance, back, answers, flags, picks, runIndex, setRun, showDebug, toggleDebug } = useQuizStore();
+  const scene = scenes[currentStep];
   const [mounted, setMounted] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
   const shouldReduceMotion = useReducedMotion();
 
+  const enteredAt = useRef(0);
+  useEffect(() => { enteredAt.current = Date.now(); }, [currentStep]);
+
   useEffect(() => {
     const init = async () => {
+      setRun(loadRuns() + 1);
       // Preload the most essential startup images
       const initialAssets = [
-        '/bg/bg-titanic.png',
-        '/bg/male.png',
-        '/bg/female.png',
-        '/map/map_cherbourg.png',
-        '/map/map_queenstown.png',
-        '/map/map_southampton.png'
+        '/bg/bg-titanic.webp',
+        '/male.webp',
+        '/female.webp'
       ];
       await preloadImages(initialAssets);
       setInitialLoaded(true);
@@ -37,109 +41,71 @@ export default function QuizContainer() {
       
       const params = new URLSearchParams(window.location.search);
       if (params.get('result')) {
-        nextStep('RESULT');
+        nextStep(RESULT);
       }
     };
     init();
   }, []);
 
   const handlePrologue = (embarked: string) => {
-    setAnswer('embarked', embarked);
-    nextStep('Q0');
+    advance({ next: 'Q0', key: 'embarked', value: embarked });
   };
 
   const [isFlashing, setIsFlashing] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const getAssetsForStep = (step: string, currentAnswers: any): string[] => {
-    const assets: string[] = [];
-    const q = questionsData[step];
-    
-    if (q?.bgImage) {
-      assets.push(typeof q.bgImage === 'function' ? q.bgImage(currentAnswers) : q.bgImage);
-    }
-    
-    if (step === 'Q1') {
-      assets.push('/telegraph/base.png', '/telegraph/rbase.png', '/telegraph/lever.png', '/telegraph/arrow.png');
-      q?.options.forEach(opt => {
-        if (opt.bgImage) assets.push(opt.bgImage);
-      });
-    } else if (step === 'Q2') {
-      q?.options.forEach(opt => {
-        if (opt.bgImage) assets.push(opt.bgImage);
-      });
-      assets.push('/camera-lens.png');
-    } else if (step === 'Q3') {
-      assets.push('/bg/3.png', '/bg/4.png', '/bg/5.png');
-    } else if (step === 'Q4') {
-      assets.push(
-        '/spend/target.png', '/spend/bucket.png', '/spend/titanic_duck.png',
-        '/spend/label.png', '/spend/my_bag.png', '/spend/my_bag_open.png',
-        '/spend/bill.png', '/spend/duckhead.png', '/spend/duckbody.png',
-        '/spend/duckbody_thumbsup.png', '/spend/icon_pool.png', '/spend/icon_massage.png',
-        '/spend/icon_souvenir.png', '/spend/icon_gamble.png', '/spend/icon_bath.png',
-        '/spend/icon_barber.png', '/spend/icon_telegraph.png'
-      );
-    } else if (step === 'RESULT') {
-      assets.push('/bg/collasping.png');
-    }
-    return assets.filter(Boolean);
-  };
-
-  const handleAnswer = async (key: string, value: string, next: any) => {
+  const handleAnswer = async (value: string) => {
+    if (!scene) return;
+    const key = scene.answerKey;
+    const next = nextSceneId(scene, { answers: { ...answers, [key]: value }, flags, picks, run: runIndex });
     const tempAnswers = { ...answers, [key]: value };
+    const ms = Date.now() - enteredAt.current;
+    const commit = () => {
+      emitPick({ run: runIndex, scene: scene.id, value, ms });
+      advance({ next, key, value });
+      if (next === RESULT) setRun(completeRun() + 1);
+    };
 
-    if (key === 'companion') {
+    if (scene.flashOnAnswer) {
       setIsFlashing(true);
       setTimeout(async () => {
-        const assets = getAssetsForStep(next, tempAnswers);
-        await preloadImages(assets);
-        setAnswer(key as any, value);
-        nextStep(next);
+        await preloadImages(assetsFor(next, tempAnswers));
+        commit();
         setIsFlashing(false);
       }, 500);
       return;
     }
 
     setIsTransitioning(true);
-    const assets = getAssetsForStep(next, tempAnswers);
-    await preloadImages(assets);
-    setAnswer(key as any, value);
-    nextStep(next);
+    await preloadImages(assetsFor(next, tempAnswers));
+    commit();
     setIsTransitioning(false);
   };
 
-  const stepKeys: Record<string, string> = {
-    'Q0': 'sex', 'Q1': 'ageGroup', 'Q2': 'companion', 'Q3': 'pclass', 'Q4': 'fareIntent', 'Q5': 'purpose', 'Q6': 'rumorAction', 'Q7': 'finalAction'
-  };
-  const nextSteps: Record<string, any> = {
-    'Q0': 'Q1', 'Q1': 'Q2', 'Q2': 'Q3', 'Q3': 'Q4', 'Q4': 'Q5', 'Q5': 'Q6', 'Q6': 'Q7', 'Q7': 'RESULT'
-  };
-  const prevSteps: Record<string, any> = {
-    'Q0': 'PROLOGUE', 'Q1': 'Q0', 'Q2': 'Q1', 'Q3': 'Q2', 'Q4': 'Q3', 'Q5': 'Q4', 'Q6': 'Q5', 'Q7': 'Q6'
-  };
-
   const bgImageUrl = useMemo(() => {
-    if (currentStep === 'PROLOGUE') return '/bg/bg-titanic.png';
-    if (currentStep === 'RESULT') return '/bg/collasping.png';
-    const q = questionsData[currentStep];
-    if (q?.bgImage) {
-      return typeof q.bgImage === 'function' ? q.bgImage(answers) : q.bgImage;
-    }
-    return '/bg/bg-titanic.png';
+    if (currentStep === PROLOGUE) return '/bg/bg-titanic.webp';
+    if (currentStep === RESULT) return '/bg/collasping.webp';
+    return bgFor(currentStep, answers) ?? '/bg/bg-titanic.webp';
   }, [currentStep, answers]);
 
   useEffect(() => {
-    // Preload next step background
-    const nextStepKey = nextSteps[currentStep];
-    if (nextStepKey && nextStepKey !== 'RESULT') {
-      const nextQ = questionsData[nextStepKey];
-      if (nextQ?.bgImage) {
-        const nextUrl = typeof nextQ.bgImage === 'function' ? nextQ.bgImage(answers) : nextQ.bgImage;
-        preloadImages([nextUrl]);
-      }
-    }
-  }, [currentStep, answers, nextSteps]);
+    // 다음 장면 배경 미리 받기
+    if (!scene) return;
+    const nextId = nextSceneId(scene, { answers, flags, picks, run: runIndex });
+    if (nextId === RESULT) return;
+    const nextBg = bgFor(nextId, answers);
+    if (nextBg) preloadImages([nextBg]);
+  }, [currentStep, answers, flags, picks, runIndex, scene]);
+
+  const bgOpacity = scene?.bgOpacity ?? 0.4;
+  const gradientClass =
+    currentStep === PROLOGUE || scene?.gradient === 'intro'
+      ? 'bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-slate-950/90'
+      : scene?.gradient === 'rumor'
+        ? 'bg-gradient-to-b from-slate-950/40 via-transparent to-slate-950/80'
+        : scene?.gradient === 'lifeboat'
+          ? 'bg-gradient-to-b from-slate-950/80 via-slate-950/40 to-slate-950/80'
+          : 'bg-gradient-to-b from-slate-950/70 via-slate-950/30 to-slate-950/70';
 
   if (!initialLoaded) {
     return (
@@ -155,86 +121,28 @@ export default function QuizContainer() {
   if (!mounted) return null;
 
   const renderStep = () => {
-    if (currentStep === 'PROLOGUE') {
+    if (currentStep === PROLOGUE) {
       return (
         <PrologueMap key="prologue" onSelectPort={handlePrologue} />
       );
     }
 
-    if (currentStep === 'RESULT') {
+    if (currentStep === RESULT) {
       const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
       const sharedResultId = params?.get('result');
       return <ResultView key="result_view" sharedResultId={sharedResultId || undefined} />;
     }
 
-    // Q0 ~ Q7
+    // 엔진 장면 (Q0 ~ Q7)
     const question = questionsData[currentStep];
-    if (question) {
-      const handleBack = () => {
-        nextStep(prevSteps[currentStep]);
-      };
-
-      if (currentStep === 'Q0') {
-        return (
-          <GenderView
-            key="Q0"
-            question={question}
-            onAnswer={(value) => handleAnswer(stepKeys[currentStep], value, nextSteps[currentStep])}
-            onBack={handleBack}
-          />
-        );
-      }
-
-      if (currentStep === 'Q1') {
-        return (
-          <AgeView
-            key="Q1"
-            question={question}
-            onAnswer={(value) => handleAnswer(stepKeys[currentStep], value, nextSteps[currentStep])}
-            onBack={handleBack}
-          />
-        );
-      }
-
-      if (currentStep === 'Q2') {
-        return (
-          <CompanionCamera
-            key="Q2"
-            question={question}
-            onAnswer={(value) => handleAnswer(stepKeys[currentStep], value, nextSteps[currentStep])}
-            onBack={handleBack}
-          />
-        );
-      }
-
-      if (currentStep === 'Q3') {
-        return (
-          <StaircaseView
-            key="Q3"
-            question={question}
-            onAnswer={(value) => handleAnswer(stepKeys[currentStep], value, nextSteps[currentStep])}
-            onBack={handleBack}
-          />
-        );
-      }
-
-      if (currentStep === 'Q4') {
-        return (
-          <MoneyMinigameView 
-            key={currentStep} 
-            question={question} 
-            onAnswer={(value) => handleAnswer(stepKeys[currentStep], value, nextSteps[currentStep])} 
-            onBack={handleBack}
-          />
-        );
-      }
-
+    if (scene && question) {
+      const Renderer = renderers[scene.renderer];
       return (
-        <QuestionView 
-          key={currentStep} 
-          question={question} 
-          onAnswer={(value) => handleAnswer(stepKeys[currentStep], value, nextSteps[currentStep])} 
-          onBack={handleBack}
+        <Renderer
+          key={currentStep}
+          question={question}
+          onAnswer={handleAnswer}
+          onBack={() => back(scene.prev)}
         />
       );
     }
@@ -243,7 +151,7 @@ export default function QuizContainer() {
   };
 
   return (
-    <div className={`w-full relative min-h-screen ${currentStep === 'PROLOGUE' ? '' : 'overflow-hidden'}`}>
+    <div className={`w-full relative min-h-screen ${currentStep === PROLOGUE ? '' : 'overflow-hidden'}`}>
       {/* Global Camera Flash Overlay */}
       <AnimatePresence>
         {isFlashing && (
@@ -291,8 +199,8 @@ export default function QuizContainer() {
             key={bgImageUrl}
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.05 }}
             animate={shouldReduceMotion 
-              ? { opacity: currentStep === 'Q6' ? 0.8 : 0.4 } 
-              : { opacity: currentStep === 'Q6' ? 0.8 : 0.4, scale: 1, filter: currentStep === 'RESULT' || currentStep === 'Q7' ? 'url(#water-ripple)' : 'none' }}
+              ? { opacity: bgOpacity } 
+              : { opacity: bgOpacity, scale: 1, filter: currentStep === RESULT || scene?.ripple ? 'url(#water-ripple)' : 'none' }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
             transition={{ duration: 1.5, ease: [0.76, 0, 0.24, 1] }}
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -303,18 +211,12 @@ export default function QuizContainer() {
       
       {/* Gradient Overlay for dark cinematic mode */}
       <div className={`absolute inset-0 transition-all duration-1000 pointer-events-none z-[1] ${
-        currentStep === 'Q6'
-          ? 'bg-gradient-to-b from-slate-950/40 via-transparent to-slate-950/80'
-          : currentStep === 'Q7'
-            ? 'bg-gradient-to-b from-slate-950/80 via-slate-950/40 to-slate-950/80'
-            : ['PROLOGUE', 'Q0', 'Q1'].includes(currentStep)
-              ? 'bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-slate-950/90'
-              : 'bg-gradient-to-b from-slate-950/70 via-slate-950/30 to-slate-950/70'
+gradientClass
       }`} />
 
       {/* Emergency Red Pulse Overlay (Q6 only) */}
       <AnimatePresence>
-        {currentStep === 'Q6' && (
+        {scene?.redPulse && (
           <motion.div
             key="emergency-pulse"
             initial={{ opacity: 0 }}
@@ -329,10 +231,10 @@ export default function QuizContainer() {
       <AnimatePresence mode="wait">
         <motion.div
           key={currentStep}
-          initial={shouldReduceMotion || currentStep === 'Q3' ? { opacity: 0 } : { opacity: 0, y: 20 }}
+          initial={shouldReduceMotion || scene?.fastEnter ? { opacity: 0 } : { opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={shouldReduceMotion || currentStep === 'Q2' ? { opacity: 0, transition: { duration: 0.01 } } : { opacity: 0, y: -20 }}
-          transition={{ duration: currentStep === 'Q3' ? 0.01 : 0.8, ease: [0.76, 0, 0.24, 1] }}
+          exit={shouldReduceMotion || scene?.fastExit ? { opacity: 0, transition: { duration: 0.01 } } : { opacity: 0, y: -20 }}
+          transition={{ duration: scene?.fastEnter ? 0.01 : 0.8, ease: [0.76, 0, 0.24, 1] }}
           className="w-full min-h-screen relative z-10"
         >
           {renderStep()}
@@ -340,7 +242,7 @@ export default function QuizContainer() {
       </AnimatePresence>
 
       {/* 디버그용 바로가기 패널 */}
-      {currentStep === 'PROLOGUE' && (
+      {IS_DEV && currentStep === PROLOGUE && (
         <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
           <button 
             onClick={toggleDebug}
@@ -359,17 +261,17 @@ export default function QuizContainer() {
               >
                 <div className="text-xs text-slate-400/80 font-bold mb-1">[Debug] 바로가기</div>
                 <div className="grid grid-cols-2 gap-2">
-                  {['Q0', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7'].map((q) => (
+                  {sceneIds.map((q) => (
                     <button
                       key={q}
-                      onClick={() => nextStep(q as any)}
+                      onClick={() => nextStep(q)}
                       className="bg-blue-500/20 text-white/80 px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-500/50 transition-colors backdrop-blur-sm"
                     >
                       {q}
                     </button>
                   ))}
                   <button
-                    onClick={() => nextStep('RESULT')}
+                    onClick={() => nextStep(RESULT)}
                     className="col-span-2 bg-red-500/20 text-white/80 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-500/50 transition-colors backdrop-blur-sm"
                   >
                     RESULT

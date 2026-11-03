@@ -34,7 +34,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
         className="absolute inset-0 z-[0] pointer-events-none"
       >
         <img 
-          src="/bg/house.png" 
+          src="/bg/house.webp" 
           alt="Vintage House" 
           className="w-full h-full object-cover opacity-100" 
           draggable={false}
@@ -54,12 +54,12 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
       {/* Header Info (Question Text) */}
       <div className="absolute bottom-16 md:bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
         <div className="mb-4">
-          <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+          <ProgressLine />
         </div>
         <motion.h2 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-2xl md:text-3xl font-display font-bold text-amber-50/90 mb-4 tracking-wide shadow-black drop-shadow-lg"
+          className="text-2xl md:text-3xl font-title font-bold text-amber-50/90 mb-4 tracking-wide shadow-black drop-shadow-lg"
         >
           {question.title}
         </motion.h2>
@@ -96,7 +96,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
         >
           {/* Base Reflection (Default Screen) */}
           <motion.img
-            src="/reflection.png"
+            src="/reflection.webp"
             alt="Mirror Reflection"
             className="absolute inset-0 w-full h-full object-cover z-[5]"
             animate={{ 
@@ -112,7 +112,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
             {hoveredGender === 'male' && (
               <motion.img 
                 key="male"
-                src="/male.png"
+                src="/male.webp"
                 alt="Male Silhouette"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 0.9 }}
@@ -133,7 +133,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
             {hoveredGender === 'female' && (
               <motion.img 
                 key="female"
-                src="/female.png"
+                src="/female.webp"
                 alt="Female Silhouette"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 0.9 }}
@@ -170,7 +170,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
         {/* Antique Mirror Frame (z-30) */}
         {hasMirrorAsset ? (
           <img 
-            src="/mirror.png" 
+            src="/mirror.webp" 
             alt="Antique Mirror" 
             className="absolute inset-0 w-full h-full object-contain z-[30]"
             onError={() => setHasMirrorAsset(false)}
@@ -219,7 +219,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
                 x: hoveredGender === 'male' ? 20 : 0
               }}
             >
-            <div className="text-4xl md:text-6xl font-display text-amber-100/90 tracking-widest drop-shadow-lg">
+            <div className="text-4xl md:text-6xl font-title text-amber-100/90 tracking-widest drop-shadow-lg">
               남성
             </div>
             <div className="text-amber-200/50 text-sm md:text-base font-sans tracking-wide">
@@ -245,7 +245,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
                 x: hoveredGender === 'female' ? -20 : 0
               }}
             >
-            <div className="text-4xl md:text-6xl font-display text-amber-100/90 tracking-widest drop-shadow-lg">
+            <div className="text-4xl md:text-6xl font-title text-amber-100/90 tracking-widest drop-shadow-lg">
               여성
             </div>
             <div className="text-amber-200/50 text-sm md:text-base font-sans tracking-wide">

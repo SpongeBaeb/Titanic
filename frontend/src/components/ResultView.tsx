@@ -7,9 +7,11 @@ import { QuizResultResponse } from '@/types';
 import { soundManager } from '@/lib/sound';
 import html2canvas from 'html2canvas';
 import TitanicPassengerCard from '@/components/ui/TitanicPassengerCard';
+import { ProbabilityNumber } from '@/components/ui/ProbabilityNumber';
 import { characterDB } from '@/data/characterDB';
 import { questionsData } from '@/data/questions';
 import { preloadImages } from '@/lib/preloadImages';
+import { resultImage } from '@/lib/assetPath';
 
 type RevealStage = 'LOADING' | 'STAGE1_STAT' | 'STAGE2_ADJUST' | 'STAGE3_MATCH';
 
@@ -74,16 +76,16 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
         if (data) {
           const assetsToPreload = [];
           if (data.historical_match) {
-            assetsToPreload.push(`/bg/${data.historical_match.survived ? 'survived' : 'perished'}.png`);
-            assetsToPreload.push(`/result/${encodeURIComponent(data.historical_match.name)}.png`);
+            assetsToPreload.push(`/bg/${data.historical_match.survived ? 'survived' : 'perished'}.webp`);
+            assetsToPreload.push(resultImage(data.historical_match.name));
           }
           if (data.worst_match) {
-            assetsToPreload.push(`/bg/${data.worst_match.survived ? 'survived' : 'perished'}.png`);
-            assetsToPreload.push(`/result/${encodeURIComponent(data.worst_match.name)}.png`);
+            assetsToPreload.push(`/bg/${data.worst_match.survived ? 'survived' : 'perished'}.webp`);
+            assetsToPreload.push(resultImage(data.worst_match.name));
           }
           if (data.opposite_match) {
-            assetsToPreload.push(`/bg/${data.opposite_match.survived ? 'survived' : 'perished'}.png`);
-            assetsToPreload.push(`/result/${encodeURIComponent(data.opposite_match.name)}.png`);
+            assetsToPreload.push(`/bg/${data.opposite_match.survived ? 'survived' : 'perished'}.webp`);
+            assetsToPreload.push(resultImage(data.opposite_match.name));
           }
           preloadImages(assetsToPreload);
         }
@@ -117,8 +119,8 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
       const timer = setTimeout(async () => {
         if (resultData?.historical_match) {
           await preloadImages([
-            `/bg/${resultData.historical_match.survived ? 'survived' : 'perished'}.png`,
-            `/result/${encodeURIComponent(resultData.historical_match.name)}.png`
+            `/bg/${resultData.historical_match.survived ? 'survived' : 'perished'}.webp`,
+            resultImage(resultData.historical_match.name)
           ]);
         }
         setStage('STAGE3_MATCH');
@@ -218,8 +220,8 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
           >
             <h2 className="text-2xl md:text-3xl font-light text-slate-300">1912년 4월 14일,</h2>
             <p className="text-xl text-slate-400">통계적으로 당신이 살아남을 확률은...</p>
-            <div className="text-7xl md:text-9xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-slate-100 to-slate-500 drop-shadow-2xl">
-              {resultData.statistical_probability}%
+            <div>
+              <ProbabilityNumber value={resultData.statistical_probability} size="xl" tone="ivory" />
             </div>
           </motion.div>
         )}
@@ -241,9 +243,12 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
                 initial={{ opacity: 0 }} 
                 animate={{ opacity: [0, 1, 1], scale: [1.5, 1, 1] }} 
                 transition={{ duration: 1.5 }}
-                className={`text-6xl md:text-8xl font-bold ${resultData.adjusted_probability > resultData.statistical_probability ? 'text-blue-400' : 'text-red-400'}`}
               >
-                {resultData.adjusted_probability}%
+                <ProbabilityNumber
+                  value={resultData.adjusted_probability}
+                  size="xl"
+                  tone={resultData.adjusted_probability > resultData.statistical_probability ? 'survive' : 'danger'}
+                />
               </motion.div>
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -289,7 +294,7 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
                   {/* 생존/사망 배경 이미지 */}
                   <div 
                     className="absolute -inset-[100px] bg-cover bg-center opacity-70"
-                    style={{ backgroundImage: `url(/bg/${currentMatchObj.survived ? 'survived' : 'perished'}.png)` }}
+                    style={{ backgroundImage: `url(/bg/${currentMatchObj.survived ? 'survived' : 'perished'}.webp)` }}
                   />
                   {/* 결과 카드를 돋보이게 하는 하단 그라데이션 */}
                   <div className="absolute -inset-[100px] bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
@@ -300,9 +305,11 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
             {/* 최종 생존 확률 */}
             <div className="flex flex-col items-center mt-12">
               <span className="text-xs tracking-widest text-slate-400/80 uppercase mb-1">나의 최종 생존 확률</span>
-              <span className={`text-4xl md:text-5xl font-bold drop-shadow-lg ${resultData.adjusted_probability > resultData.statistical_probability ? 'text-blue-400' : 'text-red-400'}`}>
-                {resultData.adjusted_probability}%
-              </span>
+              <ProbabilityNumber
+                value={resultData.adjusted_probability}
+                size="lg"
+                tone={resultData.adjusted_probability > resultData.statistical_probability ? 'survive' : 'danger'}
+              />
             </div>
 
             <h2 className="text-xl text-slate-300 font-light">
@@ -324,7 +331,7 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
                     <TitanicPassengerCard 
                       passengerData={{
                         ...characterDB[currentMatchObj.name],
-                        imageUrl: currentMatchObj.sex === 'male' ? '/male.png' : '/female.png',
+                        imageUrl: currentMatchObj.sex === 'male' ? '/male.webp' : '/female.webp',
                         matchRate: currentMatchObj.match_percentage,
                         survived: currentMatchObj.survived
                       }} 
@@ -420,7 +427,7 @@ export default function ResultView({ sharedResultId }: ResultViewProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 2.5, duration: 1 }}
-              className="mt-12 text-[10px] md:text-xs text-slate-500/60 leading-relaxed max-w-md mx-auto"
+              className="mt-12 text-xs text-muted-ivory/70 leading-relaxed max-w-md mx-auto"
             >
               <p>이 웹사이트의 일부 콘텐츠는 AI 기술을 사용하여 생성되었으며, 이는 ChatGPT와 Gemini의 이용약관을 준수하여 사용되었습니다.</p>
               <p className="mt-1">본 콘텐츠에는 역사적 사실을 바탕으로 한 각색 및 창작 내용이 포함되어 있습니다.</p>

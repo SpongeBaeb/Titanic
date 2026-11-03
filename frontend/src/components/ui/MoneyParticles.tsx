@@ -62,7 +62,7 @@ export default function MoneyParticles({ activeOptionId }: { activeOptionId: str
           style={{ transformOrigin: 'center' }}
         >
           <img 
-            src="/dollar.png" 
+            src="/dollar.webp" 
             alt="dollar" 
             className="w-full h-full object-contain drop-shadow-md opacity-90" 
           />

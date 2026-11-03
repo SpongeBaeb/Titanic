@@ -148,8 +148,8 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   const activeOption = question.options[activeIndex];
   
   let finalBgImage = activeOption?.bgImage;
-  if (userSex === 'female' && finalBgImage && !finalBgImage.includes('10.png')) {
-    finalBgImage = finalBgImage.replace('.png', 'f.png');
+  if (userSex === 'female' && finalBgImage && !finalBgImage.includes('10.webp')) {
+    finalBgImage = finalBgImage.replace('.webp', 'f.webp');
   }
 
   return (
@@ -162,7 +162,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       <div className="absolute inset-0 z-[0] pointer-events-none">
         {/* Base Background */}
         <img 
-          src="/bg/telegraph.png"
+          src="/bg/telegraph.webp"
           alt="Telegraph Room"
           className="absolute inset-0 w-full h-full object-cover"
         />
@@ -246,27 +246,30 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         <span className="text-sm font-sans tracking-widest uppercase">Back</span>
       </button>
 
+      {/* 헤더 글자 가독성을 위한 상단 스크림 (텔레그래프보다 아래 레이어) */}
+      <div className="absolute inset-x-0 top-0 h-72 z-[2] bg-gradient-to-b from-[#050302]/90 via-[#050302]/60 to-transparent pointer-events-none" />
+
       {/* Header Info */}
       <div className="absolute top-12 left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
         <div className="mb-8">
-          <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+          <ProgressLine />
         </div>
         <motion.h2 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-2xl md:text-3xl font-display font-bold text-amber-50/90 mb-2 tracking-wide shadow-black drop-shadow-lg"
+          className="text-2xl md:text-3xl font-title font-bold text-amber-50/90 mb-2 tracking-wide shadow-black drop-shadow-lg"
         >
           {question.title}
         </motion.h2>
-        <p className="text-sm text-amber-200/60 mb-2 font-sans animate-pulse">
-          (레버를 좌우로 드래그해서 나이를 선택하세요)
+        <p className="text-sm text-amber-100/90 mb-3 font-sans [text-shadow:0_1px_8px_rgb(0_0_0/0.8)]">
+          레버를 좌우로 드래그해서 나이를 선택하세요
         </p>
-        <div className="h-8">
+        <div className="h-10">
           <motion.div
             key={activeIndex}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-amber-400 font-display text-xl font-bold tracking-widest"
+            className="text-amber-300 font-title text-2xl font-bold tracking-widest [text-shadow:0_2px_12px_rgb(0_0_0/0.8)]"
           >
             {activeOption.label}
           </motion.div>
@@ -296,7 +299,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
             transform: `translate(${config.rbase.x}px, ${config.rbase.y}px) scale(${config.rbase.scale})`
           }}
         >
-          <img src="/telegraph/rbase.png" alt="Telegraph Rear Base" className="w-[500px] md:w-[600px] h-auto drop-shadow-2xl" onError={(e) => { e.currentTarget.style.opacity = '0.5'; }} draggable={false} />
+          <img src="/telegraph/rbase.webp" alt="Telegraph Rear Base" className="w-[500px] md:w-[600px] h-auto drop-shadow-2xl" onError={(e) => { e.currentTarget.style.opacity = '0.5'; }} draggable={false} />
         </div>
 
         {/* Click-to-Snap Area (z-25, behind the lever but clickable) */}
@@ -315,7 +318,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
             transform: `translate(${config.base.x}px, ${config.base.y}px) scale(${config.base.scale})`
           }}
         >
-          <img src="/telegraph/base.png" alt="Telegraph Base" className="w-[500px] md:w-[600px] h-auto drop-shadow-2xl pointer-events-none" onError={(e) => { e.currentTarget.style.opacity = '0.5'; }} draggable={false} />
+          <img src="/telegraph/base.webp" alt="Telegraph Base" className="w-[500px] md:w-[600px] h-auto drop-shadow-2xl pointer-events-none" onError={(e) => { e.currentTarget.style.opacity = '0.5'; }} draggable={false} />
         </div>
 
         {/* Pointer Arrow Image (Optional) */}
@@ -329,7 +332,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
             rotate: smoothAngle
           }}
         >
-          <img src="/telegraph/arrow.png" alt="Telegraph Arrow" className="w-[65px] md:w-[80px] h-auto drop-shadow-lg" onError={(e) => { e.currentTarget.style.display = 'none'; }} draggable={false} />
+          <img src="/telegraph/arrow.webp" alt="Telegraph Arrow" className="w-[65px] md:w-[80px] h-auto drop-shadow-lg" onError={(e) => { e.currentTarget.style.display = 'none'; }} draggable={false} />
           
           {isEditMode && (
             <div 
@@ -357,7 +360,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
               scale: config.lever.scale
             }}
           >
-            <img src="/telegraph/lever.png" alt="Telegraph Lever" className="w-[100px] md:w-[120px] h-auto drop-shadow-2xl" onError={(e) => { 
+            <img src="/telegraph/lever.webp" alt="Telegraph Lever" className="w-[100px] md:w-[120px] h-auto drop-shadow-2xl" onError={(e) => { 
               e.currentTarget.style.display = 'none'; 
             }} draggable={false} />
             
@@ -414,7 +417,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
               }}
             >
               {/* Invisible lever image to force exact same dimensions for accurate pivot math */}
-              <img src="/telegraph/lever.png" className="w-[100px] md:w-[120px] h-auto opacity-0" alt="hidden" />
+              <img src="/telegraph/lever.webp" className="w-[100px] md:w-[120px] h-auto opacity-0" alt="hidden" />
               
               {config.snapAngles.map((angle, i) => (
                 <div key={i} className="absolute inset-0" style={{ transformOrigin: `50% ${config.lever.originY}%`, transform: `rotate(${angle}deg)` }}>
@@ -437,12 +440,12 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
           className="relative w-56 h-20 flex items-center justify-center pointer-events-auto transition-all group drop-shadow-[0_15px_25px_rgba(0,0,0,0.9)] hover:drop-shadow-[0_0_30px_rgba(255,180,100,0.6)]"
         >
           <img 
-            src="/labelUI.png" 
+            src="/labelUI.webp" 
             alt="Confirm Label" 
             className="absolute inset-0 w-full h-full object-contain pointer-events-none transition-all" 
             draggable={false}
           />
-          <span className="relative z-10 text-[#2a1708] font-display uppercase tracking-widest font-extrabold text-sm md:text-base opacity-90 group-hover:opacity-100 transition-opacity" style={{ textShadow: '0 1px 1px rgba(255,255,255,0.4)' }}>
+          <span className="relative z-10 text-[#2a1708] font-title tracking-widest font-bold text-sm md:text-base opacity-90 group-hover:opacity-100 transition-opacity" style={{ textShadow: '0 1px 1px rgba(255,255,255,0.4)' }}>
             나이 확정
           </span>
         </motion.button>
@@ -503,7 +506,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
           {/* RBase Controls */}
           <div className="bg-slate-800/80 p-2 rounded mb-2">
-            <div className="font-bold text-amber-200 mb-1">rbase.png</div>
+            <div className="font-bold text-amber-200 mb-1">rbase.webp</div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-1000" max="1000" value={config.rbase.x} onChange={e => setConfig({...config, rbase: {...config.rbase, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.rbase.x}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-1000" max="1000" value={config.rbase.y} onChange={e => setConfig({...config, rbase: {...config.rbase, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.rbase.y}</span></div>
             <div className="flex gap-2 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.rbase.scale} onChange={e => setConfig({...config, rbase: {...config.rbase, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.rbase.scale}</span></div>
@@ -511,7 +514,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
           {/* Base Controls */}
           <div className="bg-slate-800/80 p-2 rounded mb-2">
-            <div className="font-bold text-amber-200 mb-1">base.png</div>
+            <div className="font-bold text-amber-200 mb-1">base.webp</div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-1000" max="1000" value={config.base.x} onChange={e => setConfig({...config, base: {...config.base, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.x}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-1000" max="1000" value={config.base.y} onChange={e => setConfig({...config, base: {...config.base, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.y}</span></div>
             <div className="flex gap-2 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.base.scale} onChange={e => setConfig({...config, base: {...config.base, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.base.scale}</span></div>
@@ -519,7 +522,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
           {/* Lever Controls */}
           <div className="bg-slate-800/80 p-2 rounded mb-2">
-            <div className="font-bold text-amber-200 mb-1">lever.png</div>
+            <div className="font-bold text-amber-200 mb-1">lever.webp</div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-1000" max="1000" value={config.lever.x} onChange={e => setConfig({...config, lever: {...config.lever, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.x}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-1000" max="1000" value={config.lever.y} onChange={e => setConfig({...config, lever: {...config.lever, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.y}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.lever.scale} onChange={e => setConfig({...config, lever: {...config.lever, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.lever.scale}</span></div>
@@ -530,7 +533,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
           {/* Arrow Controls */}
           <div className="bg-slate-800/80 p-2 rounded mb-2">
-            <div className="font-bold text-amber-200 mb-1">arrow.png</div>
+            <div className="font-bold text-amber-200 mb-1">arrow.webp</div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">X</span><input type="range" min="-1000" max="1000" value={config.arrow.x} onChange={e => setConfig({...config, arrow: {...config.arrow, x: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.x}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Y</span><input type="range" min="-1000" max="1000" value={config.arrow.y} onChange={e => setConfig({...config, arrow: {...config.arrow, y: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.y}</span></div>
             <div className="flex gap-2 mb-1 items-center"><span className="w-8">Scale</span><input type="range" min="0.1" max="10" step="0.1" value={config.arrow.scale} onChange={e => setConfig({...config, arrow: {...config.arrow, scale: Number(e.target.value)}})} className="flex-1" /><span className="w-8 text-right">{config.arrow.scale}</span></div>

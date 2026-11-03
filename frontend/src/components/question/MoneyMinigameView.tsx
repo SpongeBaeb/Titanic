@@ -14,13 +14,13 @@ interface MoneyMinigameViewProps {
 }
 
 const FACILITIES = [
-  { id: 'gamble', name: '선상 도박', img: '/spend/icon_gamble.png', color: 'bg-red-900/40 border-red-500/50' },
-  { id: 'barber', name: '이발소', img: '/spend/icon_barber.png', color: 'bg-orange-900/40 border-orange-500/50' },
-  { id: 'massage', name: '전기 마사지', img: '/spend/icon_massage.png', color: 'bg-yellow-900/40 border-yellow-500/50' },
-  { id: 'telegraph', name: '무선 전신', img: '/spend/icon_telegraph.png', color: 'bg-slate-900/40 border-slate-500/50' },
-  { id: 'bath', name: '목욕탕', img: '/spend/icon_bath.png', color: 'bg-teal-900/40 border-teal-500/50' },
-  { id: 'pool', name: '수영장', img: '/spend/icon_pool.png', color: 'bg-blue-900/40 border-blue-500/50' },
-  { id: 'souvenir', name: '기념품 구입', img: '/spend/icon_souvenir.png', color: 'bg-pink-900/40 border-pink-500/50' },
+  { id: 'gamble', name: '선상 도박', img: '/spend/icon_gamble.webp', color: 'bg-red-900/40 border-red-500/50' },
+  { id: 'barber', name: '이발소', img: '/spend/icon_barber.webp', color: 'bg-orange-900/40 border-orange-500/50' },
+  { id: 'massage', name: '전기 마사지', img: '/spend/icon_massage.webp', color: 'bg-yellow-900/40 border-yellow-500/50' },
+  { id: 'telegraph', name: '무선 전신', img: '/spend/icon_telegraph.webp', color: 'bg-slate-900/40 border-slate-500/50' },
+  { id: 'bath', name: '목욕탕', img: '/spend/icon_bath.webp', color: 'bg-teal-900/40 border-teal-500/50' },
+  { id: 'pool', name: '수영장', img: '/spend/icon_pool.webp', color: 'bg-blue-900/40 border-blue-500/50' },
+  { id: 'souvenir', name: '기념품 구입', img: '/spend/icon_souvenir.webp', color: 'bg-pink-900/40 border-pink-500/50' },
 ];
 
 export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyMinigameViewProps) {
@@ -636,7 +636,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       
       const newHairs = [];
       const numHairs = 12;
-      const hairImages = ['/spend/hair1.png', '/spend/hair2.png', '/spend/hair3.png'];
+      const hairImages = ['/spend/hair1.webp', '/spend/hair2.webp', '/spend/hair3.webp'];
       
       // Magic hair should be on the edges (index 0,1,2 or 9,10,11) so it doesn't permanently block the center UI
       const edgeIndices = [0, 1, 2, numHairs - 3, numHairs - 2, numHairs - 1];
@@ -661,9 +661,9 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       setActiveEffect(id);
       setIsTargetUnlocked(true);
       
-      const images = ['/spend/shop2.png', '/spend/shop3.png', '/spend/shop4.png'];
+      const images = ['/spend/shop2.webp', '/spend/shop3.webp', '/spend/shop4.webp'];
       const newItems = [
-        { img: '/spend/shop1.png' }, // guarantee sword
+        { img: '/spend/shop1.webp' }, // guarantee sword
         { img: images[Math.floor(Math.random() * images.length)] },
         { img: images[Math.floor(Math.random() * images.length)] },
         { img: images[Math.floor(Math.random() * images.length)] },
@@ -877,7 +877,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             }}
           >
             <img 
-              src="/spend/bill.png" 
+              src="/spend/bill.webp" 
               alt="Titanic Bill" 
               className="w-48 h-auto drop-shadow-[0_10px_15px_rgba(0,0,0,0.5)] pointer-events-none"
             />
@@ -1233,7 +1233,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                 whileTap={{ scale: 0.8 }}
                 animate={isDraggingDuck ? { rotate: 0 } : { rotate: [-10, 10, -10] }}
                 transition={{ rotate: { duration: 5, repeat: Infinity, ease: "easeInOut" } }}
-                src={isDuckDamaged ? "/spend/titanic_duck_damaged.png" : (isHairInWater && fallingHairs.length > 0 ? "/spend/titanic_duck_yuck.png" : "/spend/titanic_duck.png")} 
+                src={isDuckDamaged ? "/spend/titanic_duck_damaged.webp" : (isHairInWater && fallingHairs.length > 0 ? "/spend/titanic_duck_yuck.webp" : "/spend/titanic_duck.webp")} 
                 alt="Titanic Rubber Duck" 
                 draggable={false}
                 className="w-24 md:w-32 h-auto drop-shadow-[0_15px_15px_rgba(0,0,0,0.4)] pointer-events-auto cursor-grab active:cursor-grabbing relative z-10" 
@@ -1634,7 +1634,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                     {fac.id === 'souvenir' && shards.map(shard => (
                       <motion.img
                         key={shard.id}
-                        src="/spend/shop2.png"
+                        src="/spend/shop2.webp"
                         initial={{ x: shard.x, y: shard.y, scale: 1, opacity: 1, rotate: 0 }}
                         animate={{ 
                           x: shard.x + shard.vx, 
@@ -1709,7 +1709,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                           initial={{ y: -200, opacity: 0 }}
                           animate={{ y: bucketOffset.y, x: bucketOffset.x, rotate: bucketOffset.rotate, scale: bucketOffset.scale, opacity: 1 }}
                           exit={{ y: 300, opacity: 0, rotate: 180 }}
-                          src="/spend/bucket.png"
+                          src="/spend/bucket.webp"
                           className="absolute pointer-events-none z-10"
                           style={{ top: '0%', left: '50%' }}
                         />
@@ -1717,7 +1717,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                     </AnimatePresence>
 
                     <img 
-                      src={targetState === 'normal' ? "/spend/target.png" : "/spend/target_zombified.png"} 
+                      src={targetState === 'normal' ? "/spend/target.webp" : "/spend/target_zombified.webp"} 
                       alt="Target" 
                       draggable={false}
                       className="w-full h-auto drop-shadow-xl pointer-events-none"
@@ -1776,7 +1776,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             draggable={false}
           >
           <img 
-            src={hoveredDropZone === 'mybag' ? '/spend/my_bag_open.png' : '/spend/my_bag.png'} 
+            src={hoveredDropZone === 'mybag' ? '/spend/my_bag_open.webp' : '/spend/my_bag.webp'} 
             alt="My Bag" 
             draggable={false}
             className="h-32 w-auto drop-shadow-xl pointer-events-none transition-all"
@@ -1824,7 +1824,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       )}
 
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-6 pointer-events-none z-[1]">
-        <ProgressLine currentStep={question.step} totalSteps={question.totalSteps} />
+        <ProgressLine />
       </div>
 
       {/* Back Button */}
@@ -1889,7 +1889,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                 <div className="absolute right-[15%] bottom-[50%] w-[2px] h-[150px] bg-white border-x-[0.5px] border-slate-400 z-[5]" />
 
                 {/* Label Background */}
-                <div className="absolute inset-0 w-full h-full z-0" style={{ backgroundImage: "url('/spend/label.png')", backgroundSize: '100% 100%', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} />
+                <div className="absolute inset-0 w-full h-full z-0" style={{ backgroundImage: "url('/spend/label.webp')", backgroundSize: '100% 100%', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} />
 
                 <h3 className="text-3xl font-serif text-amber-100 font-black text-center drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] relative z-10" style={{ transform: 'translateY(-2px)' }}>
                   선상 도박장
@@ -1909,7 +1909,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   style={{
                     background: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff0000)',
                     backgroundSize: '200% 200%',
-                    WebkitMaskImage: "url('/spend/gamble.png')",
+                    WebkitMaskImage: "url('/spend/gamble.webp')",
                     WebkitMaskSize: '100% 100%',
                     WebkitMaskRepeat: 'no-repeat',
                     WebkitMaskPosition: 'center',
@@ -1919,7 +1919,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
 
               {/* Actual Table Image */}
               <img 
-                src="/spend/gamble.png" 
+                src="/spend/gamble.webp" 
                 alt="Gamble Table"
                 className="absolute inset-0 w-full h-full object-fill -z-10 pointer-events-none"
               />
@@ -1931,9 +1931,9 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   animate={{ rotate: [0, 15, 0] }}
                   transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut" }}
                 >
-                  <img src="/spend/duckhead.png" alt="Head" className="absolute inset-0 w-full h-full object-contain" />
+                  <img src="/spend/duckhead.webp" alt="Head" className="absolute inset-0 w-full h-full object-contain" />
                 </motion.div>
-                <img src="/spend/duckbody.png" alt="Body" className="w-40 h-auto object-contain z-20" />
+                <img src="/spend/duckbody.webp" alt="Body" className="w-40 h-auto object-contain z-20" />
               </div>
 
               <div className="absolute right-[3%] bottom-[5%] w-48 flex flex-col items-center justify-end z-20 pointer-events-none" style={{ transform: 'scaleX(-1)', filter: 'drop-shadow(-2px 4px 6px rgba(0,0,0,0.5))' }}>
@@ -1942,9 +1942,9 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   animate={{ rotate: [0, 15, 0] }}
                   transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut", delay: 0.25 }}
                 >
-                  <img src="/spend/duckhead.png" alt="Head" className="absolute inset-0 w-full h-full object-contain" />
+                  <img src="/spend/duckhead.webp" alt="Head" className="absolute inset-0 w-full h-full object-contain" />
                 </motion.div>
-                <img src="/spend/duckbody_thumbsup.png" alt="Body" className="w-40 h-auto object-contain z-20" />
+                <img src="/spend/duckbody_thumbsup.webp" alt="Body" className="w-40 h-auto object-contain z-20" />
               </div>
               <div 
                 className="w-full flex flex-col justify-center relative z-10"
@@ -1969,7 +1969,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   marginBottom: `${gmbTrackMb}rem`,
                   width: `${gmbTrackWidth}%`,
                   height: `${gmbTrackHeight}rem`,
-                  backgroundImage: "url('/spend/paper.png')",
+                  backgroundImage: "url('/spend/paper.webp')",
                   backgroundSize: '100% 100%',
                   backgroundPosition: 'center',
                   backgroundRepeat: 'no-repeat'
@@ -2011,7 +2011,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   style={{ left: `${((gamblingGuess - 480) / 70) * 100}%`, transform: 'translateX(-50%)' }}
                 >
                   <div className="text-2xl mt-1 leading-none">🚩</div>
-                  <div className="text-[10px] text-amber-200 bg-black/60 px-1 rounded absolute -bottom-5">{gamblingGuess}</div>
+                  <div className="text-xs text-amber-200 bg-black/60 px-1 rounded absolute -bottom-5">{gamblingGuess}</div>
                 </motion.div>
 
                 {/* Ship */}
@@ -2022,7 +2022,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                     transition={{ duration: 3, ease: "easeInOut" }}
                     className="absolute top-1/2 -translate-y-1/2 -ml-6 z-20 pointer-events-none"
                   >
-                    <img src="/spend/titanic_duck.png" alt="Ship" className="w-12 h-12 object-contain drop-shadow-lg" />
+                    <img src="/spend/titanic_duck.webp" alt="Ship" className="w-12 h-12 object-contain drop-shadow-lg" />
                   </motion.div>
                 )}
               </div>
@@ -2154,7 +2154,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
               >
                 <img 
                   id="morse-machine-image"
-                  src={isMorsePressed ? "/spend/morse pressed.png" : "/spend/morse.png"} 
+                  src={isMorsePressed ? "/spend/morse-pressed.webp" : "/spend/morse.webp"} 
                   alt="Morse Machine" 
                   draggable={false}
                   className="h-96 w-auto object-contain cursor-pointer drop-shadow-2xl transition-all"
@@ -2226,7 +2226,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             }}
           >
             <img 
-              src={isScissorClosed ? "/spend/scissor.png" : "/spend/scissor open.png"} 
+              src={isScissorClosed ? "/spend/scissor.webp" : "/spend/scissor-open.webp"} 
               alt="scissor cursor" 
               className="w-48 md:w-64 h-auto drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]"
               style={{ transform: isScissorClosed ? 'rotate(-15deg)' : 'rotate(0deg)' }}
