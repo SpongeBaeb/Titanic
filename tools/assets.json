@@ -1,0 +1,205 @@
+{
+  "icon_gamble": {
+    "dest": "spend/icon_gamble.webp",
+    "mode": "flood",
+    "max": 768
+  },
+  "icon_barber": {
+    "dest": "spend/icon_barber.webp",
+    "mode": "flood",
+    "max": 768
+  },
+  "icon_massage": {
+    "dest": "spend/icon_massage.webp",
+    "mode": "flood",
+    "max": 768
+  },
+  "icon_telegraph": {
+    "dest": "spend/icon_telegraph.webp",
+    "mode": "flood",
+    "max": 768
+  },
+  "icon_bath": {
+    "dest": "spend/icon_bath.webp",
+    "mode": "flood",
+    "max": 768
+  },
+  "icon_pool": {
+    "dest": "spend/icon_pool.webp",
+    "mode": "flood",
+    "max": 768
+  },
+  "icon_souvenir": {
+    "dest": "spend/icon_souvenir.webp",
+    "mode": "flood",
+    "max": 768
+  },
+  "purser_idle": {
+    "dest": "spend/purser_idle.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_greet": {
+    "dest": "spend/purser_greet.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_receive": {
+    "dest": "spend/purser_receive.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_ledger": {
+    "dest": "spend/purser_ledger.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_stamp": {
+    "dest": "spend/purser_stamp.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_point": {
+    "dest": "spend/purser_point.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_refuse": {
+    "dest": "spend/purser_refuse.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_shrug": {
+    "dest": "spend/purser_shrug.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "purser_bow": {
+    "dest": "spend/purser_bow.webp",
+    "mode": "rembg",
+    "max": 1400
+  },
+  "ui_pin": {
+    "dest": "ui/ui_pin.webp",
+    "mode": "flood",
+    "max": 512
+  },
+  "ui_corner": {
+    "dest": "ui/ui_corner.webp",
+    "mode": "flood",
+    "max": 1200
+  },
+  "ui_title_plate": {
+    "dest": "ui/ui_title_plate.webp",
+    "mode": "flood",
+    "max": 1400
+  },
+  "ui_nameplate": {
+    "dest": "ui/ui_nameplate.webp",
+    "mode": "flood",
+    "max": 800
+  },
+  "ui_button_plate": {
+    "dest": "ui/ui_button_plate.webp",
+    "mode": "flood",
+    "max": 800
+  },
+  "ui_speech_bubble": {
+    "dest": "ui/ui_speech_bubble.webp",
+    "mode": "flood",
+    "max": 1400
+  },
+  "age_bg_clean": {
+    "dest": "bg/telegraph_clean.webp",
+    "mode": "none",
+    "max": 2000,
+    "trim": false
+  },
+  "gear_clock": {
+    "dest": "gears/gear_clock.webp",
+    "mode": "rembg",
+    "max": 1024
+  },
+  "gear_spoke_l": {
+    "dest": "gears/gear_spoke_l.webp",
+    "mode": "rembg",
+    "max": 1024
+  },
+  "gear_spoke_m": {
+    "dest": "gears/gear_spoke_m.webp",
+    "mode": "rembg",
+    "max": 1024
+  },
+  "gear_solid": {
+    "dest": "gears/gear_solid.webp",
+    "mode": "rembg",
+    "max": 1024
+  },
+  "gear_small_a": {
+    "dest": "gears/gear_small_a.webp",
+    "mode": "rembg",
+    "max": 1024
+  },
+  "gear_tiny": {
+    "dest": "gears/gear_tiny.webp",
+    "mode": "rembg",
+    "max": 1024
+  },
+  "age_floor_shadow": {
+    "dest": "telegraph/floor_shadow.webp",
+    "mode": "none",
+    "max": 1600
+  },
+  "age_vent_a": {
+    "dest": "telegraph/vent_a.webp",
+    "mode": "rembg",
+    "max": 512
+  },
+  "age_vent_b": {
+    "dest": "telegraph/vent_b.webp",
+    "mode": "rembg",
+    "max": 512
+  },
+  "age_vent_c": {
+    "dest": "telegraph/vent_c.webp",
+    "mode": "rembg",
+    "max": 512
+  },
+  "age_nameplate": {
+    "dest": "ui/age_nameplate.webp",
+    "mode": "flood",
+    "hole": true,
+    "max": 1600
+  },
+  "age_button_plate": {
+    "dest": "ui/age_button_plate.webp",
+    "mode": "flood",
+    "hole": true,
+    "max": 1200
+  },
+  "age_telegram": {
+    "dest": "ui/age_telegram.webp",
+    "mode": "flood",
+    "max": 900
+  },
+  "age_vent_up": {
+    "dest": "telegraph/vent_up.webp",
+    "mode": "rembg",
+    "max": 512
+  },
+  "age_vent_left": {
+    "dest": "telegraph/vent_left.webp",
+    "mode": "rembg",
+    "max": 512
+  },
+  "age_vent_right": {
+    "dest": "telegraph/vent_right.webp",
+    "mode": "rembg",
+    "max": 512
+  },
+  "age_post": {
+    "dest": "ui/post.webp",
+    "mode": "rembg",
+    "max": 900
+  }
+}
