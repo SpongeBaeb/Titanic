@@ -7,6 +7,10 @@ import CompanionCamera from '@/components/question/CompanionCamera';
 import StaircaseView from '@/components/question/StaircaseView';
 import MoneyMinigameView from '@/components/question/MoneyMinigameView';
 import QuestionView from '@/components/question/QuestionView';
+import DogChoiceView from '@/components/question/DogChoiceView';
+import DogIntroView from '@/components/question/DogIntroView';
+import DeckView from '@/components/question/DeckView';
+import RumorView from '@/components/question/RumorView';
 
 export interface RendererProps {
   question: Question;
@@ -22,4 +26,8 @@ export const renderers: Record<Exclude<RendererId, 'night'>, ComponentType<Rende
   staircase: StaircaseView,
   money: MoneyMinigameView,
   cinematic: QuestionView,
+  dog: DogChoiceView,
+  dogintro: DogIntroView,
+  deck: DeckView,
+  rumor: RumorView,
 };

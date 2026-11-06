@@ -31,7 +31,7 @@ class SoundManager {
     
     const src = SOUND_FILES[key];
     if (!src) {
-      console.log(`[SoundManager] 🔊 Play requested for '${key}', but no file mapped yet.`);
+      console.log(`[SoundManager] Play requested for '${key}', but no file mapped yet.`);
       return null;
     }
 

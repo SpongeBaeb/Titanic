@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, useMotionValue, useSpring, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useSpring, AnimatePresence, useReducedMotion } from 'framer-motion';
+import SteamField, { SteamBurst } from './SteamField';
+import GaugeLayer from './GaugeLayer';
+import { unlock } from '@/engine/achievements';
+import GearLayer from './GearLayer';
+import BoardPost from './BoardPost';
+import PushButton from '@/components/ui/PushButton';
+import RoomControls, { RoomLighting, type ControlId, type LightLevel } from './RoomControls';
+import { useBgMap } from './useBgMap';
+import { playRatchet, playSteamHiss, playTelegramPrint, playServoRise, playPop } from '@/lib/synth';
 import ProgressLine from '@/components/ui/ProgressLine';
 import { Question } from '@/data/questions';
 import { useQuizStore } from '@/store/quizStore';
@@ -11,6 +20,32 @@ interface AgeViewProps {
   onAnswer: (value: string) => void;
   onBack: () => void;
 }
+
+/** 제어판 버튼을 한 번씩이라도 눌렀는지 (업적 "Please, Don't Touch Anything") */
+const ALL_CONTROLS: ControlId[] = ['light', 'burst', 'hold', 'engine', 'flicker'];
+const pressedControls = new Set<ControlId>();
+const visitedAges = new Set<number>();
+let ageCountSeen = 0;
+/** 제어판 버튼 다섯 개와 모든 나이를 한 번씩 다 해 봤으면 업적 */
+function checkDontTouch() {
+  if (pressedControls.size >= ALL_CONTROLS.length && ageCountSeen > 0 && visitedAges.size >= ageCountSeen) unlock('dont-touch');
+}
+
+/** 전보 인쇄: 종이가 PRINT_STEPS 번 끊어 가며 밀려 올라온다 (소리도 같은 박자) */
+const PRINT_STEPS = 8;
+const PRINT_DUR = 3.0;
+const PRINT_TOTAL = 0.94; // 종이 높이 중 올라오는 비율 (나머지는 프린터 속에 남는다)
+const { PRINT_Y, PRINT_TIMES } = (() => {
+  const y: string[] = ['0%'];
+  const t: number[] = [0];
+  for (let i = 1; i <= PRINT_STEPS; i++) {
+    y.push(`${-((i - 1) / PRINT_STEPS) * PRINT_TOTAL * 100}%`);
+    t.push((i - 1 + 0.55) / PRINT_STEPS);
+    y.push(`${-(i / PRINT_STEPS) * PRINT_TOTAL * 100}%`);
+    t.push(i / PRINT_STEPS);
+  }
+  return { PRINT_Y: y, PRINT_TIMES: t };
+})();
 
 export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   // --- Physics & Mechanics ---
@@ -38,7 +73,92 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   const snapAngles = config.snapAngles;
 
   const [activeIndex, setActiveIndex] = useState(3); // Start at middle
-  const [showSparks, setShowSparks] = useState(false);
+  // 아직 아무것도 고르지 않은 상태에서 시작한다: 레버를 만지기 전에는 확정할 수 없다
+  const [picked, setPicked] = useState(false);
+  const pickedRef = useRef(false);
+  const targetRef = useRef(3); // 레버가 향하는 칸(스프링이 도착하기 전에도 최신 값)
+  const [confirming, setConfirming] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const steamBurst = useRef<SteamBurst | null>(null);
+  // 배경 레버: 조명 3단계, 증기 유지, 기관 가속, 전구 점멸
+  const bg = useBgMap();
+  const bgRef = useRef(bg);
+  bgRef.current = bg;
+  const [lightLevel, setLightLevel] = useState<LightLevel>(1);
+  const [steamHold, setSteamHold] = useState(false);
+  const [engineFast, setEngineFast] = useState(false);
+  const [bulbFlicker, setBulbFlicker] = useState(false);
+  const [burstTick, setBurstTick] = useState(0);
+
+  /** 배경 속 배관 이음매 세 곳(그림 좌표)에서 김을 뿜는다: 인물과 UI에 가려지지 않는 자리의 밸브와 엘보 */
+  const VENTS: [number, number, number][] = [
+    [333, 203, -0.35], // 위쪽 왼쪽 배관의 밸브 휠
+    [558, 238, 0.2], // 계기판 오른쪽의 작은 밸브
+    [712, 262, 0.45], // 콘솔 뒤 배관의 꺾임(엘보)
+  ];
+  const valveSteam = (power: number) => {
+    const b = bgRef.current;
+    VENTS.forEach(([x, y, dir]) => steamBurst.current?.(b.toX(x), b.toY(y), power, dir));
+  };
+  const pullLever = (id: ControlId) => {
+    playRatchet();
+    pressedControls.add(id);
+    checkDontTouch();
+    if (id === 'light') setLightLevel((l) => (l === 1 ? 2 : l === 2 ? 0 : 1));
+    else if (id === 'burst') {
+      playSteamHiss(1.1);
+      setBurstTick((t) => t + 1);
+      valveSteam(1.7);
+      setTimeout(() => valveSteam(1.2), 220);
+    } else if (id === 'hold') {
+      setSteamHold((v) => {
+        if (!v) playSteamHiss(0.5);
+        return !v;
+      });
+    } else if (id === 'engine') setEngineFast((v) => !v);
+    else if (id === 'flicker') setBulbFlicker((v) => !v);
+  };
+  // 증기 유지: 켜 두면 밸브에서 계속 김이 올라온다
+  useEffect(() => {
+    if (!steamHold) return;
+    valveSteam(0.5);
+    const id = setInterval(() => valveSteam(0.45), 1100);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [steamHold]);
+  // 업적: 고른 나이를 기록한다 (모든 나이를 한 번씩 골라 봤는지)
+  useEffect(() => {
+    ageCountSeen = numOptions;
+    if (picked) visitedAges.add(activeIndex);
+    checkDontTouch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked, activeIndex, numOptions]);
+  // 바늘은 눈금에 걸려 튕기도록 레버보다 탄성이 크다
+  const needleAngle = useSpring(dragAngle, { stiffness: 260, damping: 9, mass: 0.9 });
+
+  const markPicked = () => {
+    if (!pickedRef.current) {
+      // 처음 나이를 고르는 순간: 선반 속에서 승강대가 위이잉 올라오고(김이 새어 나온다), 그 위로 버튼이 똿 하고 튀어나온다
+      playServoRise(0.85);
+      setTimeout(playPop, 1000);
+      const bgNow = bgRef.current;
+      steamBurst.current?.(bgNow.toX(116), bgNow.toY(526), 0.55, -1);
+      steamBurst.current?.(bgNow.toX(170), bgNow.toY(526), 0.55, 1);
+    }
+    pickedRef.current = true;
+    setPicked(true);
+  };
+
+  /** 레버 축 양옆의 증기 배출구에서 김을 뿜는다 */
+  const ventBurst = (power: number) => {
+    const el = pivotRef.current;
+    if (!el || !steamBurst.current) return;
+    const r = el.getBoundingClientRect();
+    const px = r.left + r.width / 2;
+    const py = r.top + r.height / 2;
+    steamBurst.current(px - 150, py - 110, power, -1);
+    steamBurst.current(px + 150, py - 110, power, 1);
+  };
 
   // Update active index based on smooth angle
   useEffect(() => {
@@ -55,15 +175,20 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       });
 
       if (closestIdx !== activeIndex) {
-        // Option changed! Play ratchet sound conceptually and trigger sparks
+        // 한 칸 넘어감: 래칫 소리와 증기 배출
         setActiveIndex(closestIdx);
-        setShowSparks(true);
-        setTimeout(() => setShowSparks(false), 500); // Reset sparks after 500ms
+        targetRef.current = closestIdx;
+        if (pickedRef.current) {
+          playRatchet();
+          playSteamHiss(0.5);
+          ventBurst(0.55);
+        }
       }
     });
   }, [smoothAngle, activeIndex, snapAngles]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    markPicked();
     isDragging.current = true;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     updateAngle(e.clientX, e.clientY);
@@ -115,7 +240,8 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   };
 
   const handleTelegraphClick = (e: React.MouseEvent) => {
-    if (!pivotRef.current) return;
+    if (!pivotRef.current || confirming) return;
+    markPicked();
     const rect = pivotRef.current.getBoundingClientRect();
     const pivotX = rect.left + rect.width / 2;
     const pivotY = rect.top + rect.height / 2;
@@ -140,12 +266,45 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     dragAngle.set(snapAngles[closestIdx]);
   };
 
-  const handleConfirm = () => {
-    onAnswer(question.options[activeIndex].value);
+  const goTo = (idx: number) => {
+    if (confirming) return;
+    const i = Math.max(0, Math.min(numOptions - 1, idx));
+    markPicked();
+    targetRef.current = i;
+    dragAngle.set(snapAngles[i]);
   };
 
+  const handleConfirm = () => {
+    if (confirming || !pickedRef.current) return;
+    setConfirming(true);
+    playTelegramPrint(PRINT_STEPS, PRINT_DUR);
+    playSteamHiss(1.2);
+    ventBurst(1.6);
+    setTimeout(() => ventBurst(1.2), 260);
+    timerRef.current = setTimeout(() => onAnswer(question.options[activeIndex].value), reduceMotion ? 250 : Math.round(PRINT_DUR * 1000) + 1500);
+  };
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  // 키보드: 좌우(위아래) 화살표로 한 칸씩, Home/End 로 양 끝, Enter/Space 로 확정
+  const keyState = useRef({ activeIndex, picked, goTo, handleConfirm });
+  keyState.current = { activeIndex, picked, goTo, handleConfirm };
+  const keyBase = () => (pickedRef.current ? targetRef.current : 3);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const k = keyState.current;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); k.goTo(keyBase() + 1); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); k.goTo(keyBase() - 1); }
+      else if (e.key === 'Home') { e.preventDefault(); k.goTo(0); }
+      else if (e.key === 'End') { e.preventDefault(); k.goTo(numOptions - 1); }
+      else if ((e.key === 'Enter' || e.key === ' ') && k.picked && document.activeElement?.tagName !== 'BUTTON') { e.preventDefault(); k.handleConfirm(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [numOptions]);
+
   const userSex = useQuizStore(state => state.answers.sex);
-  const activeOption = question.options[activeIndex];
+  const activeOption = picked ? question.options[activeIndex] : null;
   
   let finalBgImage = activeOption?.bgImage;
   if (userSex === 'female' && finalBgImage && !finalBgImage.includes('10.webp')) {
@@ -162,56 +321,43 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       <div className="absolute inset-0 z-[0] pointer-events-none">
         {/* Base Background */}
         <img 
-          src="/bg/telegraph.webp"
+          src="/bg/telegraph_gauges.webp"
           alt="Telegraph Room"
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* CSS Only Animated Smoke Layers */}
-        <div className="absolute inset-0 w-[200%] h-[200%] -left-[50%] -top-[50%] opacity-60 mix-blend-screen pointer-events-none">
-          <style>{`
-            @keyframes floatUp1 {
-              0% { transform: translateY(50%) translateX(-10%) scale(1) rotate(0deg); opacity: 0; }
-              20% { opacity: 0.8; }
-              80% { opacity: 0.8; }
-              100% { transform: translateY(-30%) translateX(10%) scale(1.5) rotate(20deg); opacity: 0; }
-            }
-            @keyframes floatUp2 {
-              0% { transform: translateY(40%) translateX(10%) scale(1.2) rotate(0deg); opacity: 0; }
-              20% { opacity: 0.6; }
-              80% { opacity: 0.6; }
-              100% { transform: translateY(-40%) translateX(-20%) scale(1.8) rotate(-15deg); opacity: 0; }
-            }
-            @keyframes floatUp3 {
-              0% { transform: translateY(60%) translateX(0%) scale(0.8) rotate(0deg); opacity: 0; }
-              20% { opacity: 0.7; }
-              80% { opacity: 0.7; }
-              100% { transform: translateY(-20%) translateX(15%) scale(1.3) rotate(10deg); opacity: 0; }
-            }
-          `}</style>
-          <div 
-            className="absolute inset-0 blur-[30px]" 
-            style={{ 
-              background: 'radial-gradient(circle at 50% 50%, rgba(200,210,220,0.15) 0%, transparent 60%)',
-              animation: 'floatUp1 8s infinite linear' 
-            }} 
-          />
-          <div 
-            className="absolute inset-0 blur-[40px]" 
-            style={{ 
-              background: 'radial-gradient(circle at 40% 60%, rgba(200,210,220,0.1) 0%, transparent 65%)',
-              animation: 'floatUp2 12s infinite linear -4s' 
-            }} 
-          />
-          <div 
-            className="absolute inset-0 blur-[25px]" 
-            style={{ 
-              background: 'radial-gradient(circle at 60% 40%, rgba(220,230,240,0.12) 0%, transparent 55%)',
-              animation: 'floatUp3 10s infinite linear -2s' 
-            }} 
-          />
-        </div>
-        
+        {/* 배경 톱니바퀴: 천천히 돈다 */}
+        <GearLayer reduced={!!reduceMotion} speed={engineFast ? 6 : 1} />
+
+        {/* 계기판: 바늘을 지운 배경 위에서 상황(증기·기관·조명·고른 나이)에 맞춰 바늘이 움직인다 */}
+        <GaugeLayer
+          reduced={!!reduceMotion}
+          inputs={{ hold: steamHold, engine: engineFast, level: lightLevel, flicker: bulbFlicker, age: picked ? activeIndex : null, ageCount: numOptions, burstTick }}
+        />
+
+        {/* 전구 조명: 레버로 밝기와 점멸을 바꾼다 */}
+        <RoomLighting level={lightLevel} flicker={bulbFlicker} reduced={!!reduceMotion} />
+
+        {/* 인물 뒤 처리: 인물 주변 배경만 살짝 흐리게 하고 어둡게 눌러 구리색 벽에서 분리한다 */}
+        <div
+          className="absolute inset-0"
+          style={{
+            backdropFilter: 'blur(3px)',
+            WebkitBackdropFilter: 'blur(3px)',
+            maskImage: 'radial-gradient(ellipse 24% 40% at 78% 64%, #000 38%, transparent 100%)',
+            WebkitMaskImage: 'radial-gradient(ellipse 24% 40% at 78% 64%, #000 38%, transparent 100%)',
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'radial-gradient(ellipse 27% 45% at 78% 64%, rgba(6,3,2,0.58) 0%, rgba(6,3,2,0.32) 55%, rgba(6,3,2,0) 100%)' }}
+        />
+
+        {/* 인물: 왼쪽은 따뜻한 윤곽빛, 오른쪽은 청록 보조광으로 윤곽을 살리고 옷은 조금 눌러 벽과 구분한다 */}
+        <div
+          className="absolute inset-0"
+          style={{ filter: 'saturate(0.88) brightness(0.96) drop-shadow(-3px 0 5px rgba(255,170,90,0.5)) drop-shadow(4px 0 9px rgba(70,190,200,0.3))' }}
+        >
         {/* Background Silhouettes (Crossfaded based on active index) */}
         <AnimatePresence>
           {activeOption && finalBgImage && (
@@ -234,13 +380,14 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
             />
           )}
         </AnimatePresence>
+        </div>
       </div>
       <div className="absolute inset-0 z-[1] bg-gradient-to-b from-transparent to-[#050302]/40 pointer-events-none" />
 
       {/* Back Button */}
       <button 
         onClick={onBack}
-        className="fixed bottom-8 left-8 z-[50] flex items-center text-slate-400 hover:text-amber-400 transition-colors group pointer-events-auto"
+        className="fixed left-4 top-3 md:bottom-8 md:left-8 md:top-auto z-[50] flex items-center text-slate-400 hover:text-amber-400 transition-colors group pointer-events-auto"
       >
         <span className="mr-2 group-hover:-translate-x-1 transition-transform">←</span>
         <span className="text-sm font-sans tracking-widest uppercase">Back</span>
@@ -249,11 +396,69 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       {/* 헤더 글자 가독성을 위한 상단 스크림 (텔레그래프보다 아래 레이어) */}
       <div className="absolute inset-x-0 top-0 h-72 z-[2] bg-gradient-to-b from-[#050302]/90 via-[#050302]/60 to-transparent pointer-events-none" />
 
-      {/* Header Info */}
-      <div className="absolute top-12 left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
-        <div className="mb-8">
-          <ProgressLine />
+      {/* 나이 전광판: 천장 지지대에 매달려 있고, 숫자만 바뀐다 */}
+      <div className="pointer-events-none absolute left-1/2 top-[68px] z-[50] -translate-x-1/2">
+        <div className="relative">
+          {/* 지지대: 천장 고정판에서 내려와 보드 윗틀을 단단히 잡는 굵은 황동 기둥 하나 (이미지가 있으면 이미지, 없으면 코드로 그린 기둥) */}
+          <BoardPost />
+
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label={activeOption ? `선택한 나이 ${activeOption.label}` : '나이를 아직 고르지 않았습니다'}
+          className="pointer-events-none relative"
+          style={{
+            borderStyle: 'solid',
+            borderWidth: '27px 26px 25px 26px',
+            borderImage: "url('/ui/age_nameplate.webp') 139 136 130 135 / 27px 26px 25px 26px stretch",
+            backgroundColor: '#050403',
+            backgroundClip: 'padding-box',
+          }}
+        >
+          <style>{`
+            @keyframes led-blip { 0% { opacity: .25; filter: brightness(2.2); } 35% { opacity: 1; filter: brightness(1.6); } 100% { opacity: 1; filter: brightness(1); } }
+          `}</style>
+          <div className="relative flex h-[62px] w-[min(60vw,260px)] flex-col items-center justify-start overflow-hidden bg-[#070504] pt-[3px]">
+            <div className="flex h-[44px] items-center justify-center">
+            <span
+              key={activeOption ? activeOption.id : 'none'}
+              className="font-mono text-[28px] font-bold leading-none tracking-[0.1em] md:text-[32px]"
+              style={{
+                color: activeOption ? '#ffc060' : 'rgba(255,170,60,0.4)',
+                textShadow: activeOption ? '0 0 6px rgba(255,150,30,0.95), 0 0 18px rgba(255,110,10,0.55)' : 'none',
+                animation: activeOption && !reduceMotion ? 'led-blip 0.35s ease-out' : undefined,
+              }}
+            >
+              {activeOption ? activeOption.label : '--~--세'}
+            </span>
+            </div>
+            {/* 진행 표시: 전광판 안쪽 아래 줄의 작은 LED 막대 */}
+            <div className="absolute inset-x-4 bottom-[6px]">
+              <ProgressLine led />
+            </div>
+            {/* 전광판의 점 격자: 글자가 작은 전구들로 보이게 한다 */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                backgroundImage: 'radial-gradient(circle at center, rgba(0,0,0,0) 0 52%, rgba(5,3,2,0.55) 62%)',
+                backgroundSize: '4px 4px',
+              }}
+            />
+            {/* 유리 반사 */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 45%)' }}
+            />
+          </div>
         </div>
+
+        </div>
+      </div>
+
+      {/* Header Info */}
+      <div className="absolute top-[184px] left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
         <motion.h2 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -261,37 +466,35 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         >
           {question.title}
         </motion.h2>
-        <p className="text-sm text-amber-100/90 mb-3 font-sans [text-shadow:0_1px_8px_rgb(0_0_0/0.8)]">
-          레버를 좌우로 드래그해서 나이를 선택하세요
+        <p className="mb-3 font-sans text-base text-amber-100 [text-shadow:0_1px_8px_rgb(0_0_0/0.9)]">
+          {picked ? '레버를 돌려 나이를 바꿀 수 있어요' : '레버를 잡고 좌우로 돌려 나이를 고르세요'}
         </p>
-        <div className="h-10">
-          <motion.div
-            key={activeIndex}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-amber-300 font-title text-2xl font-bold tracking-widest [text-shadow:0_2px_12px_rgb(0_0_0/0.8)]"
-          >
-            {activeOption.label}
-          </motion.div>
-        </div>
+      </div>
+
+      {/* 배경 레버: 조명, 증기, 기관, 전구 점멸 (전신기 컨테이너 위, 레버 자리만 눌린다) */}
+      {/* 그림 층은 레버 아래(레버가 버튼 위로 지나간다), 누르는 층은 레버 위에 둬서 버튼이 레버 그림자 뒤에 막히지 않게 한다 */}
+      <div className="pointer-events-none absolute inset-0 z-[19]">
+        <RoomControls mode="visual" level={lightLevel} hold={steamHold} engine={engineFast} flicker={bulbFlicker} onPull={pullLever} />
+      </div>
+
+      {/* 캔버스 수증기: 제어판 버튼과 승선 장치 위로 피어오른다 (인물 자리는 비워서 얼굴을 가리지 않는다) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-[22]"
+        style={{
+          WebkitMaskImage: 'radial-gradient(ellipse 22% 40% at 78% 64%, transparent 50%, #000 100%)',
+          maskImage: 'radial-gradient(ellipse 22% 40% at 78% 64%, transparent 50%, #000 100%)',
+        }}
+      >
+        <SteamField burstRef={steamBurst} reduced={!!reduceMotion} />
+      </div>
+      <div className="pointer-events-none absolute inset-0 z-[21]">
+        <RoomControls mode="hit" level={lightLevel} hold={steamHold} engine={engineFast} flicker={bulbFlicker} onPull={pullLever} confirm={{ onClick: handleConfirm, disabled: !picked || confirming, ready: picked }} />
       </div>
 
       {/* TELEGRAPH CONTAINER */}
       <div className="relative w-full max-w-[600px] h-[500px] mt-24 z-[20] flex justify-center items-center">
         
-        {/* Particle/Steam Effects (z-10 relative to telegraph) */}
-        <AnimatePresence>
-          {showSparks && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 0.6, scale: 1.2 }}
-              exit={{ opacity: 0, scale: 1.5 }}
-              transition={{ duration: 0.5 }}
-              className="absolute inset-0 z-[10] bg-[radial-gradient(circle,rgba(255,255,255,0.8)_0%,transparent_70%)] blur-md pointer-events-none mix-blend-overlay"
-            />
-          )}
-        </AnimatePresence>
-
         {/* Rear Base Image (rbase) */}
         <div 
           className={`absolute z-[50] pointer-events-none transition-opacity ${isEditMode ? 'opacity-40' : 'opacity-100'}`}
@@ -305,6 +508,12 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         {/* Click-to-Snap Area (z-25, behind the lever but clickable) */}
         <div 
           className="absolute inset-0 z-[25] pointer-events-auto cursor-pointer rounded-full"
+          role="slider"
+          aria-label="나이 선택 레버"
+          aria-valuemin={0}
+          aria-valuemax={numOptions - 1}
+          aria-valuenow={picked ? activeIndex : undefined}
+          aria-valuetext={activeOption ? activeOption.label : '선택 전'}
           style={{
             transform: `translate(${config.base.x}px, ${config.base.y}px) scale(${config.base.scale})`
           }}
@@ -329,7 +538,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
             x: config.arrow.x,
             y: config.arrow.y,
             scale: config.arrow.scale,
-            rotate: smoothAngle
+            rotate: needleAngle
           }}
         >
           <img src="/telegraph/arrow.webp" alt="Telegraph Arrow" className="w-[65px] md:w-[80px] h-auto drop-shadow-lg" onError={(e) => { e.currentTarget.style.display = 'none'; }} draggable={false} />
@@ -360,6 +569,25 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
               scale: config.lever.scale
             }}
           >
+            {/* 처음에는 손잡이 뒤에서 은은한 후광이 숨 쉬며 잡을 곳을 알려 준다 (레버를 만지면 서서히 꺼진다) */}
+            <motion.div
+              aria-hidden
+              className="pointer-events-none absolute rounded-full"
+              style={{
+                left: '50%',
+                top: `calc(50% + ${config.hitArea.y}px)`,
+                width: 62,
+                height: 62,
+                x: '-50%',
+                y: '-50%',
+                zIndex: -1,
+                background: 'radial-gradient(circle, rgba(255,222,150,0.85) 0%, rgba(255,176,70,0.42) 38%, rgba(255,150,40,0) 72%)',
+                mixBlendMode: 'screen',
+              }}
+              initial={false}
+              animate={picked || confirming ? { opacity: 0, scale: 1.4 } : { opacity: [0.5, 1, 0.5], scale: [0.92, 1.14, 0.92] }}
+              transition={picked || confirming ? { duration: 0.6 } : { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+            />
             <img src="/telegraph/lever.webp" alt="Telegraph Lever" className="w-[100px] md:w-[120px] h-auto drop-shadow-2xl" onError={(e) => { 
               e.currentTarget.style.display = 'none'; 
             }} draggable={false} />
@@ -391,7 +619,8 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
               title="Grab here to move the lever"
-            />
+            >
+            </div>
             
             {/* Hidden Pivot Point for Angle Calculation */}
             <div 
@@ -431,28 +660,67 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
       </div>
 
-      {/* Confirm Button */}
-      <div className="absolute bottom-16 md:bottom-20 z-[40]">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleConfirm}
-          className="relative w-56 h-20 flex items-center justify-center pointer-events-auto transition-all group drop-shadow-[0_15px_25px_rgba(0,0,0,0.9)] hover:drop-shadow-[0_0_30px_rgba(255,180,100,0.6)]"
-        >
-          <img 
-            src="/labelUI.webp" 
-            alt="Confirm Label" 
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none transition-all" 
-            draggable={false}
+      {/* 확정 연출: 전보가 화면 아래 밖에서 한 줄씩 끊어 가며 밀려 올라온다 */}
+      <AnimatePresence>
+        {confirming && activeOption && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[70] flex justify-center">
+            <div className="relative" style={{ width: 'min(70vw, 280px)', height: 0 }}>
+              <motion.div
+                className="absolute top-0"
+                style={{ aspectRatio: '510 / 1035', height: 'min(64vh, 560px)', left: '50%', x: '-50%' }}
+                initial={{ y: '0%' }}
+                animate={{ y: reduceMotion ? '-94%' : PRINT_Y }}
+                transition={reduceMotion ? { duration: 0.2 } : { duration: PRINT_DUR, times: PRINT_TIMES, ease: 'easeOut' }}
+              >
+                <div
+                  className="relative h-full w-full text-center"
+                  style={{
+                    backgroundImage: "url('/ui/age_telegram_paper.webp')",
+                    backgroundSize: '100% 100%',
+                    backgroundRepeat: 'no-repeat',
+                    padding: '17% 11% 20%',
+                    filter: 'drop-shadow(0 10px 14px rgba(0,0,0,0.55))',
+                  }}
+                >
+                  <div className="font-display text-[10px] font-semibold leading-snug tracking-[0.18em] text-[#5a4524]">WHITE STAR LINE<br />TELEGRAM</div>
+                  <div className="mx-auto my-3 h-px w-3/4 bg-[#5a4524]/50" />
+                  {[
+                    'PASSENGER AGE RECORDED',
+                    `${activeOption.label}`,
+                    'STOP  CONFIRMED  STOP',
+                  ].map((line, i) => (
+                    <motion.div
+                      key={line}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: reduceMotion ? 0 : PRINT_DUR * (0.55 + i * 0.14), duration: 0.2 }}
+                      className={i === 1 ? 'my-2 font-title text-2xl font-bold text-[#2a1708]' : 'font-mono text-[11px] leading-snug tracking-[0.08em] text-[#4a3a1c]'}
+                    >
+                      {line}
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 확정 후 암전 */}
+      <AnimatePresence>
+        {confirming && (
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-[80] bg-black"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: reduceMotion ? 0 : PRINT_DUR + 1.0, duration: reduceMotion ? 0.1 : 0.45 }}
           />
-          <span className="relative z-10 text-[#2a1708] font-title tracking-widest font-bold text-sm md:text-base opacity-90 group-hover:opacity-100 transition-opacity" style={{ textShadow: '0 1px 1px rgba(255,255,255,0.4)' }}>
-            나이 확정
-          </span>
-        </motion.button>
-      </div>
+        )}
+      </AnimatePresence>
 
       {/* DEBUG PANEL TOGGLE */}
-      {!isEditMode && (
+      {!isEditMode && process.env.NODE_ENV !== 'production' && (
         <button 
           onClick={() => setIsEditMode(true)}
           className="fixed bottom-4 right-4 z-[100] bg-slate-900/80 text-amber-400 p-2 rounded-full border border-slate-700 shadow-lg hover:bg-slate-800 transition-colors pointer-events-auto"

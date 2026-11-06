@@ -1,11 +1,13 @@
 export type AnswerKey =
   | 'embarked' | 'sex' | 'ageGroup' | 'companion' | 'pclass'
-  | 'fareIntent' | 'purpose' | 'rumorAction' | 'finalAction';
+  | 'fareIntent' | 'purpose' | 'rumorAction' | 'finalAction'
+  // 강아지 시점 분기 (Q2 에서 숨은 강아지를 찍었을 때): 백엔드 점수와 무관하다
+  | 'dogLeash' | 'dogScent' | 'dogKennel' | 'dogNight' | 'dogDeck' | 'dogFinal';
 
 export type Flags = Record<string, boolean>;
 
 export type RendererId =
-  | 'gender' | 'age' | 'companion' | 'staircase' | 'money' | 'cinematic' | 'night';
+  | 'gender' | 'age' | 'companion' | 'staircase' | 'money' | 'cinematic' | 'night' | 'dog' | 'dogintro' | 'deck' | 'rumor';
 
 export type Gradient = 'intro' | 'default' | 'rumor' | 'lifeboat';
 

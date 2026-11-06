@@ -1,6 +1,8 @@
 'use client';
 
-import { motion, useScroll, useMotionValueEvent, useTransform, useSpring, AnimatePresence, useMotionValue, animate } from 'framer-motion';
+import { motion, useMotionValueEvent, useTransform, AnimatePresence, useMotionValue, animate, useReducedMotion } from 'framer-motion';
+import ClassicButton from '@/components/ui/ClassicButton';
+import Sprig from '@/components/ui/Sprig';
 import { useRef, useEffect, useState } from 'react';
 
 interface PrologueMapProps {
@@ -16,7 +18,8 @@ const MOBILE_QUERY = '(max-width: 768px)';
 const LOAD_CONCURRENCY = 6;
 
 export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const mapScrollRef = useRef<HTMLElement>(null);
+  const reduceMotion = useReducedMotion();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imagesRef = useRef<HTMLImageElement[]>([]);
   const [imagesLoaded, setImagesLoaded] = useState(false);
@@ -39,21 +42,89 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
     tearProgress.set(0);
   };
 
-  // 컨테이너(400vh) 기준 스크롤을 추적
-  const { scrollYProgress } = useScroll({
-    target: scrollContainerRef,
-    offset: ["start start", "end end"]
-  });
+  // 한 화면 안에서 장면이 바뀐다: 스크롤로 아래로 내려가지 않고, 같은 자리에서 배 영상이 다가오며 지도가 겹쳐 나타난다.
+  // fp: 영상 진행도(0~1). 도입 연출은 0~0.1, 지도로 넘어가면 1.
+  const fp = useMotionValue(0);
+  const [phase, setPhase] = useState<'hero' | 'map'>('hero');
+  const phaseRef = useRef<'hero' | 'map'>('hero');
+  const busy = useRef(false);
+  const introCtl = useRef<{ stop: () => void } | null>(null);
+  const showTicketRef = useRef(false);
+  showTicketRef.current = showTicket;
 
-  // 스크롤 시 발생할 수 있는 끊김(Stuttering)을 방지하기 위해 useSpring 적용
-  const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 150,
-    damping: 30,
-    restDelta: 0.001
-  });
+  const textOpacity = useTransform(fp, [0.12, 0.34], [1, 0]);
+  const mapOpacity = useTransform(fp, [0.72, 0.96], [0, 1]);
+  const mapScale = useTransform(fp, [0.72, 1], [1.06, 1]);
 
-  // 스크롤이 끝부분(0.7 ~ 0.9)에 다다르면 텍스트를 부드럽게 페이드아웃
-  const textOpacity = useTransform(smoothProgress, [0.7, 0.9], [1, 0]);
+  const goMap = () => {
+    if (busy.current || phaseRef.current === 'map') return;
+    busy.current = true;
+    introCtl.current?.stop();
+    animate(fp, 1, {
+      duration: reduceMotion ? 0.01 : 2.6,
+      ease: [0.45, 0, 0.2, 1],
+      onComplete: () => {
+        phaseRef.current = 'map';
+        setPhase('map');
+        busy.current = false;
+      },
+    });
+  };
+  const goHero = () => {
+    if (busy.current || phaseRef.current === 'hero') return;
+    busy.current = true;
+    phaseRef.current = 'hero';
+    setPhase('hero');
+    animate(fp, 0.1, {
+      duration: reduceMotion ? 0.01 : 1.8,
+      ease: [0.45, 0, 0.2, 1],
+      onComplete: () => {
+        busy.current = false;
+      },
+    });
+  };
+  const nav = useRef({ goMap, goHero });
+  nav.current = { goMap, goHero };
+
+  // 휠, 터치 스와이프, 키보드로 장면을 넘긴다
+  useEffect(() => {
+    const mapAtTop = () => (mapScrollRef.current?.scrollTop ?? 0) <= 1;
+    const onWheel = (e: WheelEvent) => {
+      if (phaseRef.current === 'hero') {
+        if (e.deltaY > 12) nav.current.goMap();
+      } else if (e.deltaY < -12 && !showTicketRef.current && mapAtTop()) {
+        nav.current.goHero();
+      }
+    };
+    let startY = 0;
+    const onTouchStart = (e: TouchEvent) => { startY = e.touches[0]?.clientY ?? 0; };
+    const onTouchEnd = (e: TouchEvent) => {
+      const dy = startY - (e.changedTouches[0]?.clientY ?? startY);
+      if (phaseRef.current === 'hero') {
+        if (dy > 50) nav.current.goMap();
+      } else if (dy < -60 && !showTicketRef.current && mapAtTop()) {
+        nav.current.goHero();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (phaseRef.current === 'hero' && (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'End')) {
+        e.preventDefault();
+        nav.current.goMap();
+      } else if (phaseRef.current === 'map' && !showTicketRef.current && (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Escape')) {
+        if (mapAtTop()) { e.preventDefault(); nav.current.goHero(); }
+      }
+    };
+    window.addEventListener('wheel', onWheel, { passive: true });
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
   // 요청한 프레임이 아직 없으면 가장 가까운 받은 프레임을 찾는다
   const findLoadedFrame = (index: number): HTMLImageElement | null => {
@@ -156,13 +227,21 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
       for (let p = 1; p < passes.length && !cancelled; p++) {
         await runPass(passes[p]);
         // 새로 받은 프레임으로 현재 화면을 다시 그린다
-        const latest = Math.max(0, Math.min(1, smoothProgress.get()));
+        const latest = Math.max(0, Math.min(1, fp.get()));
         renderFrame(Math.min(FRAME_COUNT - 1, Math.round(latest * (FRAME_COUNT - 1))));
       }
     })();
 
     return () => { cancelled = true; };
   }, []);
+
+  // 도입 연출: 아무것도 하지 않아도 배가 천천히 다가온다 (모션 줄이기 설정이면 생략)
+  useEffect(() => {
+    if (!imagesLoaded || reduceMotion) return;
+    if (phaseRef.current !== 'hero' || fp.get() >= 0.1) return;
+    introCtl.current = animate(fp, 0.1, { duration: 9, ease: 'easeOut' });
+    return () => introCtl.current?.stop();
+  }, [imagesLoaded, reduceMotion]);
 
   // 초기 렌더링 및 리사이즈 이벤트 처리
   useEffect(() => {
@@ -172,7 +251,7 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
     
     const handleResize = () => {
       if (imagesLoaded) {
-        const clampedLatest = Math.max(0, Math.min(1, smoothProgress.get()));
+        const clampedLatest = Math.max(0, Math.min(1, fp.get()));
         const frameIndex = Math.min(FRAME_COUNT - 1, Math.round(clampedLatest * (FRAME_COUNT - 1)));
         renderFrame(frameIndex);
       }
@@ -182,8 +261,8 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, [imagesLoaded]);
 
-  // 스크롤 변경 시 즉각적으로 캔버스 프레임 동기화
-  useMotionValueEvent(smoothProgress, "change", (latest) => {
+  // 진행도가 바뀔 때마다 캔버스 프레임 동기화
+  useMotionValueEvent(fp, "change", (latest) => {
     if (!imagesLoaded) return;
     const clampedLatest = Math.max(0, Math.min(1, latest));
     const frameIndex = Math.min(
@@ -194,13 +273,8 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
   });
 
   return (
-    <div className="w-full relative z-10 text-slate-100 bg-slate-950 select-none">
-      
-      {/* SECTION 1: Sticky Canvas & Hero Text */}
-      <section ref={scrollContainerRef} className="h-[400vh] w-full relative">
-        
-        {/* 스크롤하는 동안 이 100vh 영역이 화면에 고정(Sticky) 됨 */}
-        <div className="sticky top-0 h-screen w-full flex flex-col items-center justify-center overflow-hidden">
+    <div className="relative z-10 h-[100svh] w-full select-none overflow-hidden bg-slate-950 text-slate-100">
+      <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden">
           
           {/* 백그라운드 캔버스 */}
           <div className="absolute inset-0 -z-20 w-full h-full pointer-events-none bg-slate-950">
@@ -213,96 +287,178 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
             )}
             <canvas 
               ref={canvasRef}
-              className={`w-full h-full object-cover opacity-70 mix-blend-screen transition-opacity duration-1000 ${imagesLoaded ? 'opacity-70' : 'opacity-0'}`}
+              className={`w-full h-full object-cover opacity-70 mix-blend-screen sepia-[.3] transition-opacity duration-1000 ${imagesLoaded ? 'opacity-70' : 'opacity-0'}`}
             />
             {/* 가독성을 위한 어두운 오버레이 */}
-            <div className="absolute inset-0 bg-slate-950/40" />
+            <div className="absolute inset-0 bg-slate-950/10" />
           </div>
+
+          {/* 따뜻한 빛바랜 색조와 비네트: 오래된 사진 같은 분위기, 글자 가독성 */}
+          <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,rgba(20,12,4,0.05),rgba(4,6,10,0.82))]" />
+          <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-[#1b1206]/60 via-transparent to-[#05080d]/85" />
 
           {/* Hero 텍스트 */}
           <motion.div
             style={{ opacity: textOpacity }}
-            className="w-full max-w-4xl text-center space-y-12 px-4 relative z-10"
+            className="relative z-10 flex w-full max-w-5xl flex-col items-center px-6 text-center"
           >
-            <div className="space-y-4">
-              <h2 className="text-xs md:text-sm tracking-[0.3em] text-amber-400/80 uppercase font-sans">April 1912</h2>
-              <h1 className="text-5xl md:text-7xl font-display leading-tight tracking-widest drop-shadow-lg">THE ATLANTIC<br className="md:hidden" /> AWAITS</h1>
-            </div>
-            <p className="text-center text-slate-300 md:text-lg leading-loose font-sans font-light drop-shadow max-w-2xl mx-auto bg-slate-950/30 px-5 py-3 rounded-xl backdrop-blur-sm inline-block shadow-[0_4px_30px_rgba(0,0,0,0.1)] border border-slate-700/30">
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3, duration: 1.2 }}
+              className="flex items-center gap-3 font-display text-[11px] font-semibold tracking-[0.4em] text-bright-brass md:gap-5 md:text-sm"
+            >
+              <span className="h-px w-8 bg-gradient-to-r from-transparent to-brass md:w-20" />
+              WHITE STAR LINE
+              <span className="h-px w-8 bg-gradient-to-l from-transparent to-brass md:w-20" />
+            </motion.div>
+
+            {/* 날개 달린 금 명패 + 금빛 제목 */}
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 16, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: 0.7, duration: 1.3, ease: 'easeOut' }}
+              className="relative mt-2 w-[min(92vw,600px)]"
+            >
+              <div className="absolute rounded-[10px] bg-[#0b1a38]" style={{ left: '7.6%', right: '7.6%', top: '27.5%', bottom: '14.5%' }} />
+              <div className="absolute rounded-[10px] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.08),transparent_70%)]" style={{ left: '7.6%', right: '7.6%', top: '27.5%', bottom: '14.5%' }} />
+              <img src="/ui/ui_title_plate.webp" alt="" draggable={false} className="relative block w-full drop-shadow-[0_14px_20px_rgba(0,0,0,0.6)]" />
+              <div className="absolute inset-x-[9%] flex flex-col items-center justify-center" style={{ top: '30%', bottom: '16%' }}>
+                <h1
+                  className="bg-gradient-to-b from-[#f6e8b6] via-[#d9bd7a] to-[#9a7a38] bg-clip-text font-display font-semibold leading-none tracking-[0.14em] whitespace-nowrap text-transparent drop-shadow-[0_2px_2px_rgba(0,0,0,0.7)]"
+                  aria-label="THE ATLANTIC AWAITS"
+                  style={{ fontSize: 'calc(min(92vw, 600px) * 0.05)' }}
+                >
+                  THE ATLANTIC AWAITS
+                </h1>
+                <div className="mt-[3%] flex items-center gap-3 tracking-[0.5em] text-brass" style={{ fontSize: 'max(8px, calc(min(92vw, 600px) * 0.02))' }}>
+                  <span className="h-px w-10 bg-brass/70 md:w-24" />
+                  <span className="rotate-45 text-[0.6em]">&#9632;</span>
+                  ANNO MCMXII
+                  <span className="rotate-45 text-[0.6em]">&#9632;</span>
+                  <span className="h-px w-10 bg-brass/70 md:w-24" />
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.p
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: reduceMotion ? 0 : 2.1, duration: 1.4 }}
+              className="mt-7 font-serif text-lg italic text-ivory drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)] md:text-[26px]"
+            >
+              과연 당신이라면, 살아남았을까?
+            </motion.p>
+            <motion.p
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: reduceMotion ? 0 : 2.6, duration: 1 }}
+              className="mt-2 max-w-xl text-xs leading-relaxed text-[#cdbf9c] drop-shadow md:text-sm"
+            >
               결코 가라앉지 않는다는 거대한 쇳덩어리가 출항을 준비하고 있습니다.
-            </p>
+            </motion.p>
+            <motion.img
+              src="/ui/ui_divider.webp"
+              alt=""
+              draggable={false}
+              initial={reduceMotion ? false : { opacity: 0, scaleX: 0.6 }}
+              animate={{ opacity: 0.95, scaleX: 1 }}
+              transition={{ delay: reduceMotion ? 0 : 2.9, duration: 1 }}
+              className="mt-3 h-auto w-[min(78vw,480px)]"
+            />
+
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: reduceMotion ? 0 : 3, duration: 0.8 }}
+              className="mt-7 flex flex-col items-center gap-3"
+            >
+              <div className="flex items-center gap-2 md:gap-4">
+                <Sprig className="h-14 w-5 -rotate-90 text-bright-brass md:h-16 md:w-6" delay={3.1} />
+                <button
+                  onClick={goMap}
+                  className="font-display text-base font-semibold tracking-[0.3em] text-[#f1deaa] drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] transition-[filter] duration-300 hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-bright-brass md:text-xl"
+                  style={{
+                    '--bw': 'clamp(16px, 2.2vw, 24px)',
+                    padding: '0.55em 2.6em',
+                    borderStyle: 'solid',
+                    borderWidth: 'var(--bw)',
+                    borderImage: "url('/ui/ui_button_plate.webp') 85 / var(--bw) stretch",
+                    backgroundImage: 'linear-gradient(180deg,#12264a,#0a1630)',
+                    backgroundClip: 'padding-box',
+                  } as React.CSSProperties}
+                >
+                  승선하기
+                </button>
+                <Sprig flip className="h-14 w-5 rotate-90 text-bright-brass md:h-16 md:w-6" delay={3.1} />
+              </div>
+              <span className="text-[11px] tracking-[0.2em] text-[#cdbf9c] md:text-xs">결과는 당신의 인간 유형으로 돌아옵니다</span>
+            </motion.div>
           </motion.div>
 
-          {/* Scroll Indicator */}
-          <motion.div 
+          {/* Scroll Indicator: 액자 테두리 안쪽, 본문 아래에 글자만 둔다 */}
+          <motion.div
             style={{ opacity: textOpacity }}
-            className="absolute bottom-12 flex flex-col items-center space-y-3 z-10"
+            className="absolute bottom-[50px] z-10 text-[10px] tracking-[0.35em] text-brass/80 md:bottom-[56px]"
+            aria-hidden
           >
-            <span className="text-xs tracking-widest uppercase text-slate-300 drop-shadow">Scroll Down</span>
-            <div className="w-6 h-10 border border-slate-400/70 rounded-full flex justify-center p-1.5 shadow-lg bg-slate-950/40 backdrop-blur-md">
-              <motion.div 
-                className="w-1.5 h-2.5 bg-amber-400 rounded-full shadow-[0_0_10px_rgba(251,191,36,1)]" 
-                animate={{ y: [0, 12, 0] }}
-                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-              />
-            </div>
+            OR SCROLL
           </motion.div>
-        </div>
-      </section>
+      </div>
 
-      {/* SECTION 2: Map */}
-      <section 
-        className="min-h-screen flex flex-col items-center justify-center py-20 px-4 w-full relative z-20 bg-cover bg-center bg-no-repeat shadow-[0_-20px_50px_rgba(2,6,23,1)]"
-        style={{ backgroundImage: "url('/bg/TitanicBoarding.webp')" }}
+      {/* 지도 구역: 같은 화면 위로 서서히 겹쳐 나타난다 (스크롤로 내려가지 않는다) */}
+      <motion.section
+        ref={mapScrollRef}
+        aria-hidden={phase !== 'map'}
+        style={{
+          opacity: mapOpacity,
+          scale: mapScale,
+          pointerEvents: phase === 'map' ? 'auto' : 'none',
+          backgroundImage: "radial-gradient(ellipse at center, rgba(27,18,6,0) 0%, rgba(4,6,10,0.7) 100%), linear-gradient(rgba(5,8,13,0.7), rgba(5,8,13,0.7)), url('/bg/TitanicBoarding.webp')",
+        }}
+        className="absolute inset-0 z-20 flex flex-col overflow-y-auto bg-cover bg-center bg-no-repeat"
       >
-        {/* 가독성을 위해 어두운 오버레이 추가 */}
-        <div className="absolute inset-0 bg-slate-950/70" />
-        
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
-          className="w-full max-w-4xl text-center flex flex-col items-center relative z-10"
-        >
+        <div className="my-auto flex w-full flex-col items-center px-4 py-8 md:py-10">
+        <div className="relative z-10 flex w-full max-w-4xl flex-col items-center text-center">
           <motion.div 
             animate={{ y: [0, -8, 0] }}
             transition={{ repeat: Infinity, duration: 3.5, ease: "easeInOut" }}
-            className="relative mb-12 flex items-center justify-center transition-all w-[300px] md:w-[660px]"
+            className="relative mb-5 flex w-[min(92vw,400px)] items-center justify-center transition-all"
           >
-            <div 
-              className="absolute z-0 rounded-lg transition-all"
-              style={{ 
-                backgroundColor: '#0E2148',
-                top: `46px`,
-                bottom: `46px`,
-                left: `26px`,
-                right: `26px`,
-                transform: `translate(0px, 27px)`
-              }}
+            <div
+              className="absolute z-0 rounded-[10px]"
+              style={{ backgroundColor: '#0E2148', top: '27.5%', bottom: '14.5%', left: '7.6%', right: '7.6%' }}
             />
-            <img 
-              src="/virUI.webp" 
-              alt="UI frame" 
+            <img
+              src="/ui/ui_title_plate.webp"
+              alt=""
               draggable={false}
-              className="w-full h-auto object-contain drop-shadow-2xl opacity-90 relative z-10" 
+              className="relative z-10 h-auto w-full object-contain drop-shadow-2xl"
             />
-            <h3 
-              className="absolute font-display tracking-wider drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] whitespace-nowrap z-20"
-              style={{ 
-                top: `69%`, 
-                left: `50%`, 
+            <h3
+              className="absolute z-20 w-[78%] bg-gradient-to-b from-[#f6e8b6] via-[#d9bd7a] to-[#9a7a38] bg-clip-text text-center font-display font-semibold leading-snug tracking-wider text-transparent drop-shadow-[0_2px_2px_rgba(0,0,0,0.7)]"
+              style={{
+                top: '56.5%',
+                left: '50%',
                 transform: 'translate(-50%, -50%)',
-                color: '#E3D095',
-                fontSize: `36px`
+                fontSize: 'calc(min(92vw, 400px) * 0.062)',
               }}
             >
-              당신의 여정은 어디서 시작됩니까?
+              당신의 여정은<br />어디서 시작됩니까?
             </h3>
           </motion.div>
 
-          {/* Map Container */}
-          <div className="relative w-full max-w-3xl mx-auto aspect-[4/3] md:aspect-[16/9] mb-8">
+          {/* 안내: 항구 고르기 */}
+          <div className="-mt-2 mb-4 flex items-center gap-4 font-display text-xs font-semibold tracking-[0.4em] text-bright-brass md:text-sm">
+            <span className="h-px w-10 bg-gradient-to-r from-transparent to-brass md:w-20" />
+            CHOOSE YOUR PORT OF EMBARKATION
+            <span className="h-px w-10 bg-gradient-to-l from-transparent to-brass md:w-20" />
+          </div>
+
+          {/* 지도 액자: 금빛 이중 테두리와 모서리 장식 */}
+          <div className="relative mx-auto mb-3 w-full border border-brass/70 bg-black/30 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.6)] md:p-4" style={{ maxWidth: 'min(48rem, max(280px, calc((100svh - 480px) * 1.78)))' }}>
+            <div aria-hidden className="pointer-events-none absolute inset-1.5 border border-brass/30" />
+          <div className="relative w-full aspect-[4/3] md:aspect-[16/9]">
             <div className="absolute inset-0 overflow-hidden">
               <img 
                 src="/map-route.webp" 
@@ -314,26 +470,38 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                 }}
               />
 
-              <MapPin 
-                label="Queenstown" 
-                desc="아메리카를 향한 마지막 관문" 
-                top="39%" left="46%" 
+              <MapPin
+                label="Queenstown"
+                desc="아메리카를 향한 마지막 관문"
+                meta="아일랜드 · 4월 11일 · 마지막 기항"
+                stop="III"
+                accent="#4a8f6c" tone="#4a8f6c"
+                show={phase === 'map'} delay={1.1} reduceMotion={reduceMotion}
+                top="39%" left="46%"
                 tooltipPos="left"
-                onClick={() => handlePortClick('Q')} 
+                onClick={() => handlePortClick('Q')}
               />
-              <MapPin 
-                label="Southampton" 
-                desc="대서양 횡단의 거대한 시작점" 
-                top="53%" left="79%" 
-                tooltipPos="top" 
-                onClick={() => handlePortClick('S')} 
+              <MapPin
+                label="Southampton"
+                desc="대서양 횡단의 거대한 시작점"
+                meta="잉글랜드 · 4월 10일 · 출항항"
+                stop="I"
+                accent="#4a78b0" tone="#4a78b0"
+                show={phase === 'map'} delay={0.1} reduceMotion={reduceMotion}
+                top="53%" left="79%"
+                tooltipPos="top"
+                onClick={() => handlePortClick('S')}
               />
-              <MapPin 
-                label="Cherbourg" 
-                desc="대륙의 부와 낭만이 모이는 곳" 
-                top="71%" left="78%" 
+              <MapPin
+                label="Cherbourg"
+                desc="대륙의 부와 낭만이 모이는 곳"
+                meta="프랑스 · 4월 10일 밤 · 두 번째 기항"
+                stop="II"
+                accent="#b34a4f" tone="#b34a4f"
+                show={phase === 'map'} delay={0.6} reduceMotion={reduceMotion}
+                top="71%" left="78%"
                 tooltipPos="left"
-                onClick={() => handlePortClick('C')} 
+                onClick={() => handlePortClick('C')}
               />
             </div>
 
@@ -403,31 +571,93 @@ export default function PrologueMap({ onSelectPort }: PrologueMapProps) {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 1 }}
-                    className="absolute bottom-1 flex flex-col items-center text-white/90 font-light pointer-events-none animate-bounce"
+                    className="absolute bottom-1 flex flex-col items-center font-light pointer-events-none animate-bounce"
                   >
-                    <span className="text-sm font-title tracking-widest mb-2 drop-shadow-md">아래로 드래그하여 티켓 끊기</span>
-                    <div className="w-px h-10 bg-gradient-to-b from-white/90 to-transparent" />
+                    <span className="mb-2 font-display text-base font-semibold tracking-[0.3em] text-bright-brass drop-shadow-md">아래로 드래그하여 티켓 끊기</span>
+                    <div className="h-10 w-px bg-gradient-to-b from-bright-brass to-transparent" />
                   </motion.div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-        </motion.div>
-      </section>
+          </div>
+          <p className="mb-2 font-serif text-sm italic text-[#cdbf9c] md:text-base">항구를 누르면 승선권이 나옵니다</p>
+        </div>
+        </div>
+      </motion.section>
+
+      {/* 처음 화면으로 */}
+      {phase === 'map' && !showTicket && (
+        <button
+          onClick={goHero}
+          className="absolute bottom-[60px] left-1/2 z-40 -translate-x-1/2 font-display text-xs font-semibold tracking-[0.35em] text-bright-brass/80 transition-colors hover:text-bright-brass focus-visible:outline focus-visible:outline-2 focus-visible:outline-bright-brass md:bottom-[72px]"
+        >
+          RETURN TO THE QUAY
+        </button>
+      )}
+
+          {/* 에드워드 시대 액자 테두리: 금빛 주조 액자 이미지를 9칸으로 늘려 쓴다 */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-2 z-30 transition-opacity duration-700 md:inset-3"
+        style={{
+          opacity: phase === 'map' ? 1 : 0,
+          '--fw': 'clamp(16px, 2.5vw, 34px)',
+          borderStyle: 'solid',
+          borderWidth: 'var(--fw)',
+          borderImage: "url('/ui/ui_screen_frame.webp') 68 / var(--fw) stretch",
+        } as React.CSSProperties}
+      />
+      {/* 화면 네 귀퉁이 장식: 꽃무늬 금 모서리를 뒤집어 붙인다 */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-2 z-30 transition-opacity duration-700 md:inset-3"
+        style={{ opacity: phase === 'map' ? 1 : 0 }}
+      >
+        {[
+          { pos: 'left-0 top-0', flip: 'none' },
+          { pos: 'right-0 top-0', flip: 'scaleX(-1)' },
+          { pos: 'bottom-0 left-0', flip: 'scaleY(-1)' },
+          { pos: 'bottom-0 right-0', flip: 'scale(-1,-1)' },
+        ].map((c) => (
+          <img
+            key={c.pos}
+            src="/ui/ui_corner.webp"
+            alt=""
+            draggable={false}
+            className={`absolute drop-shadow-[0_3px_5px_rgba(0,0,0,0.65)] ${c.pos}`}
+            style={{ width: 'clamp(84px, 10vw, 150px)', height: 'auto', transform: c.flip }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
 function MapPin({ 
   label, 
-  desc, 
-  top, 
-  left, 
+  desc,
+  meta,
+  stop,
+  accent,
+  tone,
+  top,
+  left,
   tooltipPos = 'bottom',
-  onClick 
-}: { 
-  label: string; 
-  desc: string; 
+  show,
+  delay,
+  reduceMotion,
+  onClick
+}: {
+  show: boolean;
+  delay: number;
+  reduceMotion: boolean | null;
+  label: string;
+  desc: string;
+  meta: string;
+  stop: string;
+  accent: string;
+  tone: string;
   top: string; 
   left: string; 
   tooltipPos?: 'bottom' | 'right' | 'left' | 'top';
@@ -451,21 +681,69 @@ function MapPin({
         onClick={onClick}
         className="relative flex items-center justify-center group w-12 h-12"
       >
-        {/* Pin dot */}
-        <div className="relative w-6 h-6 flex items-center justify-center">
-          <div className="absolute inset-0 bg-amber-400 rounded-full animate-ping opacity-60" />
-          <div className="w-3 h-3 bg-amber-300 border-2 border-slate-900 rounded-full shadow-[0_0_15px_rgba(251,191,36,1)] group-hover:bg-amber-100 transition-colors" />
-        </div>
-        
-        {/* Tooltip label */}
-        <div className={`absolute opacity-80 group-hover:opacity-100 transition-all transform group-hover:scale-110 flex ${tooltipClasses}`}>
-          <div className="text-sm font-display tracking-widest text-amber-100/90 group-hover:text-amber-300 uppercase bg-slate-950/90 group-hover:bg-slate-900 px-3 py-1.5 rounded border border-amber-500/30 group-hover:border-amber-400/80 backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.7)] group-hover:shadow-[0_0_25px_rgba(251,191,36,0.3)] whitespace-nowrap transition-all duration-300">
+        {/* 황동 핀: 남색 에나멜 메달 + 맥박. 지도에 도착하면 화면 밖(관객 쪽)에서 안으로 차례로 쾅 박힌다 */}
+        <motion.div
+          className="relative flex h-9 w-9 items-center justify-center"
+          initial={false}
+          animate={show ? { scale: [3.4, 1, 0.93, 1.02, 1], opacity: [0, 1, 1, 1, 1], filter: ['blur(8px)', 'blur(0px)', 'blur(0px)', 'blur(0px)', 'blur(0px)'] } : { scale: 3.4, opacity: 0, filter: 'blur(8px)' }}
+          transition={
+            !show || reduceMotion
+              ? { duration: 0 }
+              : {
+                  // 사람이 지도 위에 내려놓듯 부드럽게 내려와(0~0.7초) 살짝 눌렸다가 가라앉는다
+                  duration: 1.4,
+                  delay,
+                  times: [0, 0.5, 0.66, 0.84, 1],
+                  ease: ['easeInOut', 'easeOut', 'easeInOut', 'easeOut'],
+                }
+          }
+        >
+          {/* 박히는 순간 번지는 충격 고리 */}
+          <motion.span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-full border-2"
+            style={{ borderColor: accent }}
+            initial={false}
+            animate={show && !reduceMotion ? { scale: [0.9, 3.4], opacity: [0.95, 0] } : { scale: 0.9, opacity: 0 }}
+            transition={show && !reduceMotion ? { duration: 0.9, delay: delay + 0.68, ease: 'easeOut' } : { duration: 0 }}
+          />
+          <div className="absolute inset-0 animate-ping rounded-full" style={{ backgroundColor: accent, opacity: 0.35 }} />
+          <img
+            src="/ui/ui_pin.webp"
+            alt=""
+            draggable={false}
+            className="relative h-full w-full rounded-full object-contain transition-transform duration-300 group-hover:scale-125 group-hover:brightness-125"
+            style={{ boxShadow: `0 0 0 2.5px ${accent}, 0 0 0 4px rgba(184,154,91,0.9), 0 3px 6px rgba(40,25,10,0.55)` }}
+          />
+          {/* 항해 순서 표시: 로마 숫자 */}
+          <span
+            className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border px-1 font-display text-[9px] font-bold leading-none text-[#f3e8c8]"
+            style={{ backgroundColor: accent, borderColor: 'rgba(184,154,91,0.9)' }}
+          >
+            {stop}
+          </span>
+        </motion.div>
+
+        {/* 명판 툴팁: 핀이 박힌 뒤에 나타난다 */}
+        <motion.div
+          className="absolute inset-0"
+          initial={false}
+          animate={{ opacity: show ? 1 : 0 }}
+          transition={show && !reduceMotion ? { duration: 0.4, delay: delay + 1.0 } : { duration: 0 }}
+        >
+        <div className={`absolute flex opacity-90 transition-all duration-300 group-hover:scale-105 group-hover:opacity-100 ${tooltipClasses}`}>
+          <div
+            className="whitespace-nowrap rounded-[3px] border border-brass bg-[linear-gradient(180deg,#0e1f29,#07111a)] px-3 py-1.5 font-display text-sm font-semibold uppercase tracking-[0.25em] text-bright-brass shadow-[inset_0_0_0_2px_#07111a,inset_0_0_0_3px_rgba(184,154,91,0.5),0_4px_12px_rgba(0,0,0,0.7)] transition-colors duration-300 group-hover:text-[#f6e8b6]"
+            style={{ borderTopColor: tone, borderTopWidth: 3 }}
+          >
             {label}
           </div>
-          <div className="text-xs text-slate-300 group-hover:text-amber-100/90 tracking-wider mt-1 bg-slate-900/90 group-hover:bg-slate-800 px-2 py-1 rounded hidden md:block whitespace-nowrap transition-colors duration-300">
+          <div className="mt-1 hidden whitespace-nowrap rounded-[3px] border border-brass/30 bg-[#07111a]/90 px-2 py-1 font-serif text-xs italic tracking-wide text-[#cdbf9c] md:block">
             {desc}
+            <span className="mt-0.5 block text-[10px] not-italic tracking-[0.12em]" style={{ color: tone }}>{meta}</span>
           </div>
         </div>
+        </motion.div>
       </button>
     </div>
   );

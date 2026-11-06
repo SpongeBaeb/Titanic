@@ -18,11 +18,16 @@ interface Props {
   nextElapsed?: (option: CineOption) => number | undefined;
   timerEnabled: boolean;
   onChoose: (option: CineOption, ms: number) => void;
+  /** 실제 시간이 게임 속 시간으로 흐르기 시작한 시각(ms). 없으면 선택의 소모 시간으로만 흐른다 */
+  liveStart?: number;
+  /** 실제 1분당 흐르는 게임 속 분 (개발용 가속, 기본 1) */
+  liveSpeed?: number;
+  /** 선택 없이 실제 시간만으로 침몰 시각에 닿았을 때 */
+  onSink?: () => void;
 }
 
 const CHARS_PER_TICK = 2;
 const TICK_MS = 22;
-const LAMPS = 10; // 선내 전등 개수 (남은 시간 표시)
 
 // 시계 클로즈업에서 분침이 도는 시간: 흐르는 시간이 길수록 조금 더 오래
 const sweepMs = (minutes: number) => Math.min(3200, 1400 + minutes * 30);
@@ -36,10 +41,24 @@ const STYLE = `
 @keyframes cine-timer { from { transform: scaleX(1) } to { transform: scaleX(0) } }
 `;
 
-export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timerEnabled, onChoose }: Props) {
+export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timerEnabled, onChoose, liveStart, liveSpeed = 1, onSink }: Props) {
   const reduce = !!useReducedMotion();
-  const segments = useMemo(() => scene.story(ctx), [scene, ctx]);
-  const options = useMemo(() => scene.options(ctx), [scene, ctx]);
+  // 실제로 흐른 시간(게임 속 분). 시작 시각 기준의 절대값이라 탭이 백그라운드여도, 뒤로 갔다 와도 어긋나지 않는다
+  const [live, setLive] = useState(0);
+  const [liveEntry, setLiveEntry] = useState<number | null>(null);
+  useEffect(() => {
+    if (!liveStart) return;
+    const id = setInterval(() => {
+      const v = Math.max(0, ((Date.now() - liveStart) / 60000) * liveSpeed);
+      setLive(v);
+      setLiveEntry((e) => e ?? v);
+    }, 250);
+    return () => clearInterval(id);
+  }, [liveStart, liveSpeed]);
+  // 장면 문장과 선택지는 들어올 때까지 흐른 실제 시간을 반영해 정한다
+  const storyCtx = useMemo<Ctx>(() => (liveEntry ? { ...ctx, elapsed: (ctx.elapsed ?? 0) + liveEntry } : ctx), [ctx, liveEntry]);
+  const segments = useMemo(() => scene.story(storyCtx), [scene, storyCtx]);
+  const options = useMemo(() => scene.options(storyCtx), [scene, storyCtx]);
   const total = useMemo(() => segments.reduce((n, s) => n + s.text.length, 0), [segments]);
 
   const [shown, setShown] = useState(reduce ? total : 0);
@@ -140,7 +159,14 @@ export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timer, textDone, chosen]);
 
-  const late = (o: CineOption) => o.until !== undefined && elapsed > o.until;
+  const shownAll = shownMin + live; // 화면 시계에 보이는 경과 분
+  const late = (o: CineOption) => o.until !== undefined && elapsed + live > o.until;
+
+  // 선택 없이 실제 시간만으로 침몰 시각이 되면 (들어올 때 이미 지난 경우는 제외)
+  useEffect(() => {
+    if (!onSink || chosen || elapsed >= SINK_AFTER_MIN) return;
+    if (shownAll >= SINK_AFTER_MIN) onSink();
+  }, [onSink, chosen, elapsed, shownAll]);
   const fx = (name: CineScene['fx'][number]) => !reduce && scene.fx.includes(name);
   // 각 문장 조각이 시작되는 글자 위치
   const starts = useMemo(() => segments.map((_, i) => segments.slice(0, i).reduce((n, s) => n + s.text.length, 0)), [segments]);
@@ -157,7 +183,7 @@ export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timer
         {(() => {
           const stages = (scene.bgStages ?? []).filter((st) => loaded.includes(st.url));
           const layers = stages.length ? stages : [{ from: 0, url: scene.bg }];
-          const active = layers.reduce((a, st, i) => (st.from <= shownMin ? i : a), 0);
+          const active = layers.reduce((a, st, i) => (st.from <= shownAll ? i : a), 0);
           return layers.map((st, i) => (
             <div
               key={st.url}
@@ -196,18 +222,11 @@ export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timer
 
       {/* 시계 (작게) */}
       <div className="absolute left-4 top-[8%] z-[7] flex items-center gap-3">
-        <AnalogClock elapsed={shownMin} size={64} />
+        <AnalogClock elapsed={shownAll} size={64} />
         <div>
           <div className="font-display text-xs tracking-[0.2em] text-bright-brass [text-shadow:0_1px_8px_#000]">R.M.S. TITANIC</div>
           <div className="mt-1 text-sm text-danger-text [text-shadow:0_1px_8px_#000]">
-            침몰까지 <span className="font-numeric font-bold [font-variant-numeric:lining-nums]">{formatRemaining(shownMin)}</span>
-          </div>
-          {/* 선내 전등: 시간이 지날수록 하나씩 꺼진다 */}
-          <div className="mt-1.5 flex gap-1" aria-hidden>
-            {Array.from({ length: LAMPS }, (_, i) => {
-              const lit = i < Math.ceil(Math.max(0, SINK_AFTER_MIN - shownMin) / (SINK_AFTER_MIN / LAMPS));
-              return <span key={i} className="h-1.5 w-1.5 rounded-full transition-all duration-700" style={{ background: lit ? '#F2C766' : '#3a3a3a', boxShadow: lit ? '0 0 6px 1px rgba(242,199,102,.7)' : 'none' }} />;
-            })}
+            침몰까지 <span className="font-numeric font-bold [font-variant-numeric:lining-nums]">{formatRemaining(shownAll)}</span>
           </div>
         </div>
       </div>
@@ -231,11 +250,11 @@ export default function CinematicPanel({ scene, ctx, elapsed, nextElapsed, timer
         className={`absolute inset-0 z-[9] flex flex-col items-center justify-center bg-black/85 transition-opacity duration-300 ${closeup ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         aria-hidden={!closeup}
       >
-        <AnalogClock elapsed={shownMin} size={240} numerals />
+        <AnalogClock elapsed={shownAll} size={240} />
         <div className="mt-4 text-center">
-          <div className="font-numeric text-3xl font-bold text-ivory [font-variant-numeric:lining-nums]">{wallClock(shownMin)}</div>
+          <div className="font-numeric text-3xl font-bold text-ivory [font-variant-numeric:lining-nums]">{wallClock(shownAll)}</div>
           <div className="mt-1 text-sm text-muted-ivory">{delta > 0 ? `${Math.round(delta)}분이 흘렀습니다` : ''}</div>
-          <div className="mt-1 text-sm text-danger-text">침몰까지 {formatRemaining(shownMin)}</div>
+          <div className="mt-1 text-sm text-danger-text">침몰까지 {formatRemaining(shownAll)}</div>
         </div>
       </div>
 

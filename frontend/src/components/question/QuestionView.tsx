@@ -5,8 +5,10 @@ import AnswerOption from '@/components/ui/AnswerOption';
 import ProgressLine from '@/components/ui/ProgressLine';
 import MoneyParticles from '@/components/ui/MoneyParticles';
 import StarlitBackground from '@/components/ui/StarlitBackground';
+import ScrollCue from '@/components/ui/ScrollCue';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { unlock } from '@/engine/achievements';
 import AnalogClock from '@/components/cinematic/AnalogClock';
 import { wallClock } from '@/engine/cinematic';
 import { scenes } from '@/engine/scenes';
@@ -23,6 +25,25 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
   const clock = scenes[question.id]?.clock;
   const isQ4 = question.id === 'Q4';
   const isQ5 = question.id === 'Q5';
+
+  // Q5 이스터에그: 37초(빙산 발견에서 충돌까지) 동안 아무것도 고르지 않고 기다리면 업적.
+  // 탭이 보일 때만 센다. 힌트는 주지 않는다.
+  const [watch, setWatch] = useState(false);
+  useEffect(() => {
+    if (!isQ5) return;
+    let seen = 0;
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      seen += 1;
+      if (seen >= 37) {
+        window.clearInterval(id);
+        unlock('watchtower');
+        setWatch(true);
+        window.setTimeout(() => setWatch(false), 6500);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [isQ5]);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -98,10 +119,32 @@ export default function QuestionView({ question, onAnswer, onBack }: QuestionVie
         </AnimatePresence>
       )}
 
+      {/* 37초 이스터에그 연출 */}
+      <AnimatePresence>
+        {watch && (
+          <motion.div
+            key="watch37"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 1.4 }}
+            className="fixed inset-0 z-[60] pointer-events-none flex items-center justify-center bg-black/85 px-8 text-center"
+            aria-live="polite"
+          >
+            <motion.p
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.2, duration: 1.4 }}
+              className="font-title text-xl md:text-2xl leading-loose text-ivory"
+            >
+              당신은 37초 동안 바다를 바라보았습니다.<br />
+              <span className="text-muted-ivory text-base md:text-lg">누군가는 같은 시간에 빙산을 보았습니다.</span>
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ScrollCue />
       {/* Back Button */}
       <button 
         onClick={onBack}
-        className="fixed bottom-8 left-8 z-50 flex items-center text-slate-400 hover:text-amber-400 transition-colors group"
+        className="fixed left-4 top-3 md:bottom-8 md:left-8 md:top-auto z-50 flex items-center text-slate-400 hover:text-amber-400 transition-colors group"
       >
         <span className="mr-2 group-hover:-translate-x-1 transition-transform">←</span>
         <span className="text-sm font-sans tracking-widest uppercase">Back</span>

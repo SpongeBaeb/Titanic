@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface ProbabilityNumberProps {
-  value: number;
+  value: number | string;
   size?: 'xl' | 'lg';
   tone?: 'ivory' | 'survive' | 'danger';
   className?: string;
@@ -22,7 +22,7 @@ const TONE_CLASS: Record<NonNullable<ProbabilityNumberProps['tone']>, string> = 
 export function ProbabilityNumber({ value, size = 'xl', tone = 'ivory', className = '' }: ProbabilityNumberProps) {
   return (
     <span
-      className={`font-numeric font-bold leading-none tracking-[-0.03em] whitespace-nowrap ${TONE_CLASS[tone]} ${className}`}
+      className={`font-numeric font-bold leading-none tracking-[-0.03em] whitespace-nowrap transition-colors duration-700 ${TONE_CLASS[tone]} ${className}`}
       style={{
         fontSize: SIZE_STYLE[size],
         fontVariantNumeric: 'lining-nums',

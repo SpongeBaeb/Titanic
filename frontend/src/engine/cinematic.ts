@@ -48,7 +48,7 @@ export const TAG_LABEL: Record<NonNullable<CineOption['tag']>, string> = {
   memory: '이전 회차의 기억',
 };
 
-/** 충돌 시각 23:40, 침몰 약 160분 뒤 (초안 — 역사 검토 때 확정) */
+/** 충돌 시각 23:40, 침몰 약 160분 뒤 = 02:20 (초안 — 역사 검토 때 확정) */
 export const COLLISION_MIN_OF_DAY = 23 * 60 + 40;
 export const SINK_AFTER_MIN = 160;
 

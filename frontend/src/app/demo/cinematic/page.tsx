@@ -6,7 +6,6 @@ import CinematicPanel from '@/components/cinematic/CinematicPanel';
 import { demoScenes } from '@/engine/demoScenes';
 import { loadRuns, completeRun } from '@/engine/memory';
 import { emitPick } from '@/engine/events';
-import TelegramCard from '@/components/cinematic/TelegramCard';
 import { soundManager } from '@/lib/sound';
 import type { CineOption } from '@/engine/cinematic';
 import { SINK_AFTER_MIN } from '@/engine/cinematic';
@@ -96,7 +95,6 @@ export default function CinematicDemo() {
       {done ? (
         <div className="max-w-[960px] mx-auto rounded-xl border border-white/10 p-6">
           <h2 className="font-title text-xl font-bold">당신의 밤</h2>
-          <div className="mt-4"><TelegramCard flags={flags} extras={{ bagItems }} endElapsed={demoScenes[demoScenes.length - 1].at + spent} /></div>
           <ul className="mt-3 grid gap-1 text-[15px] leading-relaxed">
             {picks.map((p) => <li key={p.scene}>· {p.scene}: {p.value}</li>)}
           </ul>

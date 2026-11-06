@@ -11,10 +11,13 @@ interface Props {
   ctx: Ctx;
   timerEnabled: boolean;
   onChoose: (option: CineOption, ms: number) => void;
+  liveStart?: number;
+  liveSpeed?: number;
+  onSink?: () => void;
 }
 
 /** 실제 게임 흐름 안에서 밤 장면(N1~N3)을 보여 주는 얇은 어댑터. 시간 자원은 extras.spent 에 누적된다. */
-export default function NightScene({ cineId, ctx, timerEnabled, onChoose }: Props) {
+export default function NightScene({ cineId, ctx, timerEnabled, onChoose, liveStart, liveSpeed, onSink }: Props) {
   const idx = demoScenes.findIndex((c) => c.id === cineId);
   const scene = demoScenes[idx];
   if (!scene) return null;
@@ -31,6 +34,9 @@ export default function NightScene({ cineId, ctx, timerEnabled, onChoose }: Prop
         nextElapsed={(o) => (next ? next.at + spent + (o.timeCost ?? 0) : undefined)}
         timerEnabled={timerEnabled}
         onChoose={onChoose}
+        liveStart={liveStart}
+        liveSpeed={liveSpeed}
+        onSink={onSink}
       />
     </div>
   );

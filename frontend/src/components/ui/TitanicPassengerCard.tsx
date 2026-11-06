@@ -8,6 +8,10 @@ import { motion } from 'framer-motion';
 import { characterDB } from '@/data/characterDB';
 import { resultImage } from '@/lib/assetPath';
 import { Quote, Settings, X } from 'lucide-react';
+import { API_BASE } from '@/lib/api';
+
+// 이미지 위치 조정 도구는 개발 서버에서만 보인다
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 interface TitanicPassengerCardProps {
   passengerData: {
@@ -92,7 +96,6 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
 
   const saveImageConfigToDB = async () => {
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5000';
       const res = await fetch(`${API_BASE}/api/admin/image-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,8 +119,8 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
     >
       
       {/* 디버깅 툴 토글 버튼 */}
-      {!showDebug && (
-        <button 
+      {IS_DEV && !showDebug && (
+        <button
           onClick={() => setShowDebug(true)}
           className="fixed top-4 left-4 z-50 bg-slate-900/80 text-white p-2 rounded-full hover:bg-slate-700 transition-colors shadow-lg border border-slate-600"
           title="디버깅 도구 열기"
@@ -127,8 +130,8 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
       )}
 
       {/* 디버깅 툴 패널 */}
-      {showDebug && (
-        <div 
+      {IS_DEV && showDebug && (
+        <div
           className="fixed top-4 left-4 bg-slate-900/95 text-white p-4 rounded-xl z-50 text-[10px] flex flex-col gap-2 w-72 shadow-2xl border border-slate-600 max-h-[90vh] overflow-y-auto backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
         >

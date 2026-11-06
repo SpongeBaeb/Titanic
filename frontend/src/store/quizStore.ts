@@ -15,6 +15,12 @@ interface Answers {
   purpose?: string; // experience, stability, change
   rumorAction?: string; // calm_others, check_crew, check_escape, follow_crowd
   finalAction?: string; // yield_seat, yield_weak, secure_mine, me_first, observe
+  dogLeash?: string; // snapped (목줄이 끊긴 시작 장면을 지났다)
+  dogScent?: string; // trust, bite, struggle
+  dogKennel?: string; // befriend, share, ignore
+  dogNight?: string; // bark, scratch, wait
+  dogDeck?: string; // scent, tom, captain
+  dogFinal?: string; // leap, call, accept, return, turn, abandon
 }
 
 interface Snapshot {
@@ -47,6 +53,10 @@ interface QuizState {
   back: (fallback: QuizStep) => void;
   /** 기록 없이 이동 (개발용 바로가기, 공유 링크) */
   nextStep: (next: QuizStep) => void;
+  /** 저장된 진행을 통째로 되살린다 (새로고침 복원) */
+  restore: (s: { currentStep: QuizStep; answers: Answers; flags: Flags; picks: Pick[]; extras: Record<string, unknown>; history: Snapshot[] }) => void;
+  /** 브라우저 뒤로 가기: 기록을 len 개만 남기고 그 시점으로 되돌린다 */
+  rewindTo: (len: number) => void;
   resetQuiz: () => void;
   showDebug: boolean;
   toggleDebug: () => void;
@@ -90,6 +100,16 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     });
   },
   nextStep: (next) => set({ currentStep: next }),
+  restore: (s) => set({ ...s }),
+  rewindTo: (len) => {
+    const { history } = get();
+    if (len < 0 || len >= history.length) return;
+    const target = history[len];
+    set({
+      currentStep: target.step, answers: target.answers, flags: target.flags,
+      picks: target.picks, extras: target.extras, history: history.slice(0, len),
+    });
+  },
   resetQuiz: () => set({ currentStep: PROLOGUE, answers: {}, flags: {}, picks: [], extras: {}, history: [] }),
   toggleDebug: () => set((state) => ({ showDebug: !state.showDebug })),
 }));
