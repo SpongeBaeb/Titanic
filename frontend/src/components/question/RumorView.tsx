@@ -36,12 +36,21 @@ function walk(x: number, y: number, bottom = BOTTOM): [number, number] {
 }
 
 interface Zone { key: string; x: number; y: number; r: number }
+/** 등불을 든 승무원이 서 있는 곳: 구역을 앞뒤(원근)로 펼치려고 가운데 앞쪽으로 옮겼다 */
+const CREW = { x: 790, y: 805 };
 const ZONES: Zone[] = [
-  { key: 'check_crew', x: 800, y: 735, r: 120 }, // 갑판 가운데, 등불을 든 승무원
-  { key: 'check_escape', x: 1040, y: 615, r: 100 }, // 구명정 쪽 (구명조끼와 탈출 경로)
+  { key: 'check_crew', x: CREW.x, y: CREW.y, r: 120 }, // 갑판 가운데, 등불을 든 승무원
+  { key: 'check_escape', x: 1115, y: 692, r: 100 }, // 구명정 쪽 (구명조끼와 탈출 경로)
   { key: 'calm_others', x: 330, y: 880, r: 125 }, // 갑판 왼쪽 아래, 웅크린 사람들
   { key: 'follow_crowd', x: DOOR.x, y: DOOR.y + 12, r: 105 }, // 선내로 들어가는 사람들을 따라간다
 ];
+/** 바닥 구역 위에 항상 떠 있는 짧은 이름 */
+const SHORT: Record<string, string> = {
+  calm_others: '진정시키기',
+  check_crew: '선원에게',
+  check_escape: '탈출 경로',
+  follow_crowd: '군중 따라가기',
+};
 const DWELL = 1.8; // 한 구역에 이만큼 머물면 선택된다(초)
 
 // 소문이 퍼지며 바뀌는 말 (문구는 초안)
@@ -74,7 +83,7 @@ interface Agent {
   x: number; y: number; vx: number; vy: number;
   speed: number; phase: number; kind: number; // kind: 0 남자 1 여자 2 중절모 3 아이
   mill: boolean; tx: number; ty: number; a: number; wait: number; enter: boolean; sp: number;
-  down: number; downT: number; dir: number; say: string; sayT: number; delay: number;
+  down: number; downT: number; dir: number; say: string; sayT: number; delay: number; fs: number;
 }
 interface Phrase { agent: number; text: string; gen: number; age: number; life: number; src: number }
 
@@ -184,6 +193,8 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     const officerImg = loadImg('/q6/officer_lantern.webp');
     const huddleImgs = [loadImg('/q6/huddle_0.webp'), loadImg('/q6/huddle_1.webp')];
     const doorImg = loadImg('/q6/deck_door.webp');
+    // 쓰러진 사람 그림(선택): q6/fall_0~3.webp 가 있으면 쓰러져 누운 동안 이 그림을 쓰고, 없으면 서 있는 그림을 기울여 쓴다
+    const fallImgs = [0, 1, 2, 3].map((k) => loadImg(`/q6/fall_${k}.webp`));
     const ready = (i: HTMLImageElement) => i.complete && i.naturalWidth > 0;
     // 군중 그림은 모두 같은 비율로 줄여 두었다(키 차이가 그대로 남는다). 가장 큰 그림의 높이를 기준으로 맞춘다
     const CROWD_REF = 380;
@@ -211,7 +222,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     ro.observe(root);
 
     const small = window.innerWidth < 700;
-    const COUNT = small ? 42 : 76;
+    const COUNT = small ? 18 : 30; // 사람이 커졌으니 수는 줄인다 (내가 어디 있는지, 구역이 어디인지 보여야 한다)
     const pick = (): [number, number] => walk(340 + Math.random() * 760, FLOOR_Y + 60 + Math.random() * (BOTTOM - FLOOR_Y - 90));
     const spawn = (anywhere: boolean): Agent => {
       let x: number; let y: number;
@@ -223,7 +234,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       return {
         x, y, vx: 0, vy: 0, speed: mill ? 24 + Math.random() * 18 : 48 + Math.random() * 26, phase: Math.random() * 6.28,
         kind: Math.floor(Math.random() * 4), sp: Math.floor(Math.random() * 8), mill, tx, ty, a: anywhere ? 1 : 0, wait: Math.random() * 3, enter: false,
-        down: 0, downT: 0, dir: 1, say: '', sayT: 0, delay: 0,
+        down: 0, downT: 0, dir: 1, say: '', sayT: 0, delay: 0, fs: 0,
       };
     };
     const agents: Agent[] = Array.from({ length: COUNT }, () => spawn(true));
@@ -240,6 +251,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       a.dir = dxFromMe >= 0 ? 1 : -1;
       a.vx = a.dir * personH(a.y) * 1.6;
       a.vy = (Math.random() - 0.5) * personH(a.y) * 0.5;
+      a.fs = Math.floor(Math.random() * 4);
       a.say = OUCH[Math.floor(Math.random() * OUCH.length)];
       a.sayT = 2.3;
       if (now - lastThud > 220) { lastThud = now; playThud(); }
@@ -433,7 +445,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         ctx.fillRect(gx - r, gy - r, r * 2, r * 2);
       };
       ctx.globalCompositeOperation = 'lighter';
-      glow(800, 680, 190, 0.28 * crowdA); // 승무원의 등불
+      glow(CREW.x, CREW.y - 55, 190, 0.28 * crowdA); // 승무원의 등불
       glow(DOOR.x, DOOR.y - 50, 170, 0.34 * crowdA); // 선내로 들어가는 문의 빛
       glow(330, 850, 130, 0.08 * crowdA);
       ctx.globalCompositeOperation = 'source-over';
@@ -444,11 +456,25 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
           const dz = zs(zn.y);
           const near = nearest === zn ? clamp(1 - nearD / (zn.r * dz * 3), 0, 1) : 0;
           const prog = clamp((dwell[zn.key] ?? 0) / DWELL, 0, 1);
-          ctx.lineWidth = 2.2;
-          ctx.strokeStyle = `rgba(255,214,150,${0.08 + near * 0.38})`;
+          ctx.lineWidth = 3.4;
+          ctx.strokeStyle = `rgba(255,214,150,${0.38 + near * 0.5})`;
           ctx.beginPath();
           ctx.ellipse(zn.x, zn.y + 6, zn.r * dz, zn.r * dz * 0.36, 0, 0, Math.PI * 2);
           ctx.stroke();
+          // 바닥에서 솟는 빛기둥: 사람들 사이에서도 구역이 어디인지 멀리서 보인다
+          {
+            const ph = personH(zn.y) * 1.8;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.translate(zn.x, zn.y - ph * 0.42);
+            ctx.scale(0.3, 1);
+            const gp = ctx.createRadialGradient(0, 0, 0, 0, 0, ph * 0.6);
+            gp.addColorStop(0, `rgba(255,222,160,${0.30 + near * 0.25})`);
+            gp.addColorStop(1, 'rgba(255,222,160,0)');
+            ctx.fillStyle = gp;
+            ctx.fillRect(-ph * 0.6, -ph * 0.6, ph * 1.2, ph * 1.2);
+            ctx.restore();
+          }
           if (prog > 0) {
             ctx.lineWidth = 4.5;
             ctx.strokeStyle = 'rgba(255,226,170,0.95)';
@@ -457,6 +483,28 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
             ctx.stroke();
           }
         }
+      }
+
+      // 내 자리: 발 밑에 맥박 치는 금빛 고리 (사람들 사이에서 어디 있는지 알 수 있게)
+      if (crowdA > 0.4) {
+        const pr = personH(me.y) * 0.46;
+        const pulseR = 1 + 0.08 * Math.sin(e * 4.2);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const gg = ctx.createRadialGradient(me.x, me.y + 6, 0, me.x, me.y + 6, pr * 1.5);
+        gg.addColorStop(0, 'rgba(255,226,150,0.34)');
+        gg.addColorStop(1, 'rgba(255,226,150,0)');
+        ctx.translate(0, 0);
+        ctx.fillStyle = gg;
+        ctx.beginPath();
+        ctx.ellipse(me.x, me.y + 6, pr * 1.5, pr * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.lineWidth = 3.4;
+        ctx.strokeStyle = `rgba(255,232,170,${0.8 + 0.2 * Math.sin(e * 4.2)})`;
+        ctx.beginPath();
+        ctx.ellipse(me.x, me.y + 6, pr * pulseR, pr * pulseR * 0.34, 0, 0, Math.PI * 2);
+        ctx.stroke();
       }
 
       // 선내로 들어가는 문: 갑판실 왼쪽 끝에서 따뜻한 빛이 새어 나온다
@@ -499,7 +547,9 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       for (const a of agents) {
         if (a.a < 0.02) continue;
         items.push({ y: a.y, draw: () => {
-          ctx.globalAlpha = a.a;
+          // 내 앞(아래쪽)에서 나를 가리는 사람은 반투명하게 해서 내가 보이게 한다
+          const blocks = a.y > me.y + 8 && Math.abs(a.x - me.x) < personH(a.y) * 0.5 && a.y - me.y < personH(a.y) * 1.1;
+          ctx.globalAlpha = a.a * (blocks ? 0.32 : 1);
           const im = crowdImgs[a.sp];
           if (ready(im)) {
             const h = im.naturalHeight * (personH(a.y) / CROWD_REF);
@@ -508,7 +558,13 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
               const t = a.downT - a.down;
               const ease = (v: number) => v * v * (3 - 2 * v);
               const ang = a.dir * 1.46 * ease(Math.min(1, t / 0.22)) * ease(Math.min(1, a.down / 0.45));
-              sprite(im, a.x, a.y, h, a.dir < 0, ang);
+              const lying = fallImgs.filter(ready);
+              if (lying.length && t > 0.16 && a.down > 0.42) {
+                // 누워 있는 그림: 너비가 키의 0.95배가 되도록 맞춘다
+                const fi = lying[a.fs % lying.length];
+                const lh = fi.naturalHeight * ((personH(a.y) * 0.95) / fi.naturalWidth);
+                sprite(fi, a.x, a.y + 4, lh, a.dir < 0);
+              } else sprite(im, a.x, a.y, h, a.dir < 0, ang);
             } else sprite(im, a.x, a.y - Math.abs(Math.sin(a.phase)) * h * 0.012, h, a.vx < -1, Math.sin(a.phase) * 0.012);
           } else figure(ctx, a.x, a.y, (a.kind === 3 ? 0.6 : 0.93) * personH(a.y), a.phase, a.kind, 'rgba(255,170,90,0.55)');
           ctx.globalAlpha = 1;
@@ -527,16 +583,16 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         } });
       }
       // 승무원과 웅크린 사람들(고정)
-      items.push({ y: 735, draw: () => {
+      items.push({ y: CREW.y, draw: () => {
         ctx.globalAlpha = crowdA;
         if (ready(officerImg)) {
-          const h = 138 * depth(735);
-          sprite(officerImg, 800, 735, h);
+          const h = 138 * depth(CREW.y);
+          sprite(officerImg, CREW.x, CREW.y, h);
           // 등불이 일렁인다
           const w = h * (officerImg.naturalWidth / officerImg.naturalHeight);
           const fl = 0.85 + 0.15 * Math.sin(e * 9) * Math.sin(e * 3.7);
-          glow(800 + w * 0.26, 735 - h * 0.5, 150, 0.4 * fl * crowdA);
-        } else figure(ctx, 800, 735, 122 * depth(735), 0, 2, 'rgba(255,200,120,0.8)', '#0a0d16');
+          glow(CREW.x + w * 0.26, CREW.y - h * 0.5, 150, 0.4 * fl * crowdA);
+        } else figure(ctx, CREW.x, CREW.y, 122 * depth(CREW.y), 0, 2, 'rgba(255,200,120,0.8)', '#0a0d16');
         ctx.globalAlpha = 1;
       } });
       if (ready(huddleImgs[0]) && ready(huddleImgs[1])) {
@@ -550,14 +606,14 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       }
       if (officerSay && now < officerSay.until) {
         const os = officerSay;
-        items.push({ y: 736, draw: () => {
-          ctx.font = `700 ${26 * clamp(depth(735), 1, 1.6)}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+        items.push({ y: CREW.y + 1, draw: () => {
+          ctx.font = `700 ${26 * clamp(depth(CREW.y), 1, 1.6)}px "Noto Serif KR", "Nanum Myeongjo", serif`;
           ctx.textAlign = 'center';
           ctx.lineWidth = 6;
           ctx.strokeStyle = 'rgba(0,0,0,0.9)';
           ctx.fillStyle = 'rgba(255,214,150,1)';
-          ctx.strokeText(os.text, 800, 735 - personH(735) * 1.45);
-          ctx.fillText(os.text, 800, 735 - personH(735) * 1.45);
+          ctx.strokeText(os.text, CREW.x, CREW.y - personH(CREW.y) * 1.45);
+          ctx.fillText(os.text, CREW.x, CREW.y - personH(CREW.y) * 1.45);
         } });
       }
       // 나: 따뜻한 윤곽으로 구분한다
@@ -597,18 +653,64 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         ctx.shadowBlur = 0;
       }
 
-      // 가까운 구역의 이름
-      if (activeRef.current && !ch && nearest && nearD < nearest.r * zs(nearest.y) * 3) {
-        const opt = question.options.find((o) => o.value === nearest!.key);
-        if (opt) {
-          const k = clamp(1 - nearD / (nearest.r * zs(nearest.y) * 3), 0, 1);
-          ctx.font = `600 ${26 * clamp(zs(nearest.y) + 0.2, 0.95, 1.3)}px "Noto Serif KR", "Nanum Myeongjo", serif`;
-          ctx.fillStyle = `rgba(255,236,200,${0.25 + k * 0.7})`;
-          ctx.shadowColor = 'rgba(0,0,0,0.95)';
-          ctx.shadowBlur = 10;
-          ctx.fillText(opt.label.replace(/\.$/, ''), nearest.x, nearest.y - personH(nearest.y) * 1.1 - 24);
-          ctx.shadowBlur = 0;
+      // 구역 이름: 항상 떠 있다. 가까이 가면 또렷해지고 번호(키 1~4)가 같이 보인다. 서로 겹치면 위로 밀어낸다.
+      if (crowdA > 0.5) {
+        type Lab = { zn: Zone; text: string; fs: number; w: number; h: number; x: number; y: number };
+        const labs: Lab[] = ZONES.map((zn) => {
+          const num = question.options.findIndex((o) => o.value === zn.key) + 1;
+          const text = `${num > 0 ? num + '  ' : ''}${SHORT[zn.key] ?? zn.key}`;
+          const fs = 24 * clamp(zs(zn.y) + 0.15, 0.9, 1.3);
+          ctx.font = `700 ${fs}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+          const w = ctx.measureText(text).width + fs * 1.1;
+          return { zn, text, fs, w, h: fs * 1.55, x: zn.x, y: zn.y - personH(zn.y) * 1.2 - 26 };
+        }).sort((p1, p2) => p1.y - p2.y);
+        const placed: Lab[] = [];
+        for (const lb of labs) {
+          for (let k = 0; k < 6; k++) {
+            const hit = placed.find((q) => Math.abs(q.x - lb.x) < (q.w + lb.w) / 2 + 8 && Math.abs(q.y - lb.y) < (q.h + lb.h) / 2 + 4);
+            if (!hit) break;
+            lb.y = hit.y - (hit.h + lb.h) / 2 - 8;
+          }
+          placed.push(lb);
         }
+        for (const lb of placed) {
+          const near = nearest === lb.zn ? clamp(1 - nearD / (lb.zn.r * zs(lb.zn.y) * 3), 0, 1) : 0;
+          const al = (0.78 + near * 0.22) * crowdA;
+          ctx.font = `700 ${lb.fs}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = `rgba(8,10,18,${0.66 * al})`;
+          ctx.strokeStyle = `rgba(255,214,150,${0.55 * al + near * 0.4})`;
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.roundRect(lb.x - lb.w / 2, lb.y - lb.h * 0.72, lb.w, lb.h, lb.h / 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = `rgba(255,238,205,${al})`;
+          ctx.fillText(lb.text, lb.x, lb.y + lb.fs * 0.1);
+        }
+      }
+
+      // 나: 머리 위에 '나' 표시 (모두의 위에 그린다)
+      if (crowdA > 0.4) {
+        const my = me.y - personH(me.y) * 1.08 - 12 + Math.sin(e * 4.2) * 3;
+        const fs = 26 * clamp(depth(me.y), 0.9, 1.5);
+        ctx.fillStyle = 'rgba(255,226,150,0.98)';
+        ctx.strokeStyle = 'rgba(30,20,0,0.9)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(me.x, my + fs * 0.1);
+        ctx.lineTo(me.x - fs * 0.5, my - fs * 0.62);
+        ctx.lineTo(me.x + fs * 0.5, my - fs * 0.62);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = `800 ${fs}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+        ctx.textAlign = 'center';
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+        ctx.strokeText('나', me.x, my - fs * 0.78);
+        ctx.fillStyle = 'rgba(255,240,190,1)';
+        ctx.fillText('나', me.x, my - fs * 0.78);
       }
 
       // 가장자리 어둠과 붉은 맥박(소문의 불안)
