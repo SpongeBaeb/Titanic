@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, useMotionValue, useSpring, AnimatePresence, useReducedMotion } from 'framer-motion';
 import SteamField, { SteamBurst } from './SteamField';
 import GaugeLayer from './GaugeLayer';
@@ -407,31 +407,23 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  // 피스톤 크기와 올라오는 거리: 머리가 제목 아래(약 250px)에 오도록, 바닥 밑동에서 그 높이까지
-  const [pistonBox, setPistonBox] = useState({ pw: 62, h: 260, travel: 150 });
+  // 피스톤 자리: 배경 그림 속 나이 어르신 의자의 오른쪽 바닥(그림 좌표 약 1035, 590)에서 머리가 멈춘다. 화면 크기가 바뀌어도 의자 옆에 머문다
+  const [pistonBox, setPistonBox] = useState({ pw: 52, left: 700, h: 200, travel: 140 });
   useEffect(() => {
-    const m = () => {
-      const pw = Math.round(Math.min(54, Math.max(40, window.innerWidth * 0.06)));
-      const headTop = Math.min(250, Math.max(120, window.innerHeight - 300));
-      const h = Math.max(150, window.innerHeight + 16 - headTop);
-      const ph = pw * 1.033;
-      setPistonBox({ pw, h, travel: h - ph });
-    };
-    m();
-    window.addEventListener('resize', m);
-    return () => window.removeEventListener('resize', m);
-  }, []);
-  // 전광판은 처음엔 없다가, 천장에서 증기를 내뿜은 뒤 서서히 내려온다
+    const pw = Math.round(Math.min(64, Math.max(40, 84 * bg.s)));
+    const headTop = bg.toY(590);
+    const h = Math.max(110, window.innerHeight + 16 - headTop);
+    setPistonBox({ pw, left: Math.round(bg.toX(1035)), h, travel: h - pw * 1.033 });
+  }, [bg.s, bg.ox, bg.oy]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 전광판은 처음엔 없다가, 천장에서 증기를 내뿜은 뒤 서서히 내려온다 (증기는 위에서 아래로 흘러내린다)
   useEffect(() => {
     if (reduceMotion) return;
-    const ts = [700, 1100, 1700].map((ms, i) => setTimeout(() => {
-      if (i === 0) playSteamHiss(0.9);
-      const x = window.innerWidth / 2;
-      steamBurst.current?.(x - 120, 44, 0.9 + i * 0.25, -1);
-      steamBurst.current?.(x + 120, 44, 0.9 + i * 0.25, 1);
-    }, ms));
-    return () => ts.forEach(clearTimeout);
+    const t = setTimeout(() => playSteamHiss(0.9), 700);
+    return () => clearTimeout(t);
   }, [reduceMotion]);
+  const topSteam = useMemo(() => Array.from({ length: 12 }, (_, k) => ({
+    k, x: (Math.random() - 0.5) * 360, size: 70 + Math.random() * 60, delay: 0.55 + Math.random() * 1.7, drop: 150 + Math.random() * 120,
+  })), []);
   const ageLabel = exactAge === null ? '' : exactAge === 0 ? '0세' : `${exactAge}세`;
   
   let finalBgImage = activeOption?.bgImage;
@@ -525,6 +517,22 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       <div className="absolute inset-x-0 top-0 h-72 z-[2] bg-gradient-to-b from-[#050302]/90 via-[#050302]/60 to-transparent pointer-events-none" />
 
       {/* 나이 전광판: 천장 지지대에 매달려 있고, 숫자만 바뀐다 */}
+      {/* 천장에서 내뿜는 증기: 위에서 아래로 흘러내리며 퍼지고 사라진다 */}
+      {!reduceMotion && (
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 z-[52] h-0 w-0">
+          {topSteam.map((p) => (
+            <motion.span
+              key={p.k}
+              className="absolute rounded-full bg-white/55 blur-[12px]"
+              style={{ left: p.x - p.size / 2, top: 6, width: p.size, height: p.size }}
+              initial={{ opacity: 0, y: 0, scale: 0.5 }}
+              animate={{ opacity: [0, 0.6, 0.35, 0], y: p.drop, scale: [0.5, 1.5, 2.2] }}
+              transition={{ delay: p.delay, duration: 2.0, ease: 'easeOut' }}
+            />
+          ))}
+        </div>
+      )}
+
       <motion.div
         className="pointer-events-none absolute left-1/2 top-[68px] z-[50] -translate-x-1/2"
         initial={reduceMotion ? false : { y: -230, opacity: 0 }}
@@ -592,7 +600,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
       {/* Header Info */}
       {/* 한 살씩 세밀하게: 나이 레버 오른쪽, 바닥에서 증기 피스톤 두 개가 나란히 올라온다. 머리가 곧 −, + 버튼이다 (키보드 −, + 도 된다) */}
-      <div className="absolute z-[55] flex items-end gap-[6px]" style={{ right: 54, bottom: -16, height: pistonBox.h }}>
+      <div className="absolute z-[55] flex items-end gap-[6px]" style={{ left: pistonBox.left, bottom: -16, height: pistonBox.h }}>
         <Piston kind="minus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge <= ageRange[0]} onPress={() => stepAge(-1)} pw={pistonBox.pw} travel={pistonBox.travel} />
         <Piston kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepAge(1)} pw={pistonBox.pw} travel={pistonBox.travel} />
       </div>
