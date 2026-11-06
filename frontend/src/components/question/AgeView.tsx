@@ -55,6 +55,72 @@ const { PRINT_Y, PRINT_TIMES } = (() => {
   return { PRINT_Y: y, PRINT_TIMES: t };
 })();
 
+/** 증기 피스톤: 아래에서 레일 없이 덜컹이며 올라오고(기둥이 늘어나 보인다), 머리(− 또는 + 버튼)를 누르면 눌린 그림으로 바뀌며 한 칸 들어갔다 나온다 */
+function Piston({ side, kind, show, disabled, onPress }: { side: 'left' | 'right'; kind: 'minus' | 'plus'; show: boolean; disabled: boolean; onPress: () => void }) {
+  const [down, setDown] = useState(false);
+  const [shake, setShake] = useState(0);
+  const press = () => {
+    if (!show) return;
+    if (disabled) { setShake((n) => n + 1); playRatchet(); return; } // 끝에 닿았다: 덜컹 막힌다
+    setDown(true);
+    setTimeout(() => setDown(false), 170);
+    onPress();
+  };
+  // 올라올 때 두세 번 끊어 가며 덜컹이는 소리 (나타날 때만)
+  useEffect(() => {
+    if (!show) return;
+    const ts = [160, 330, 620, 740].map((ms) => setTimeout(() => playRatchet(), ms));
+    return () => ts.forEach(clearTimeout);
+  }, [show]);
+  const RISE = 150;
+  return (
+    <div className="relative shrink-0" data-piston={side} style={{ width: 'var(--pw)', height: 'calc(var(--pw) * 1.03)' }}>
+      <motion.div
+        className="relative h-full w-full"
+        initial={{ y: RISE, opacity: 0 }}
+        animate={show ? { y: [RISE, RISE * 0.62, RISE * 0.68, RISE * 0.26, RISE * 0.3, 0], opacity: [0, 1, 1, 1, 1, 1] } : { y: RISE, opacity: 0 }}
+        transition={show ? { duration: 1.0, times: [0, 0.2, 0.32, 0.62, 0.74, 1], ease: 'easeOut' } : { duration: 0.45, ease: 'easeIn' }}
+      >
+        {/* 기둥: 머리 아래로 길게. 반복되는 한 토막을 이어 붙이고 아래쪽은 흐려져 바닥 속으로 사라진다 */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2"
+          style={{
+            top: 'calc(var(--pw) * 0.96)',
+            width: 'calc(var(--pw) * 0.4)',
+            height: 78 + RISE * 0.3,
+            backgroundImage: "url('/ui/age_piston_rod_tile.webp')",
+            backgroundRepeat: 'repeat-y',
+            backgroundSize: '100% auto',
+            backgroundPosition: 'center top',
+            WebkitMaskImage: 'linear-gradient(#000 0, #000 35%, transparent 100%)',
+            maskImage: 'linear-gradient(#000 0, #000 35%, transparent 100%)',
+            filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.5))',
+          }}
+        />
+        <motion.button
+          key={shake}
+          type="button"
+          aria-label={kind === 'minus' ? '나이 한 살 줄이기' : '나이 한 살 늘리기'}
+          aria-disabled={disabled}
+          onClick={press}
+          className="pointer-events-auto relative block h-full w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+          style={{ filter: disabled ? 'brightness(0.62) saturate(0.7)' : 'drop-shadow(0 6px 8px rgba(0,0,0,0.55))' }}
+          animate={shake ? { y: [0, 3, 0] } : undefined} // 끝에 닿아 안 눌릴 때는 좌우로 흔들지 않고 살짝 눌렸다 돌아온다
+          transition={{ duration: 0.18 }}
+          whileTap={disabled ? undefined : { y: 3 }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/ui/age_piston_${kind}_${down ? 'down' : 'up'}.webp`} alt="" draggable={false} className="pointer-events-none block h-full w-full select-none" />
+          {/* 눌린 그림도 미리 불러 두어 처음 누를 때 깜빡이지 않게 한다 */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/ui/age_piston_${kind}_down.webp`} alt="" aria-hidden className="pointer-events-none absolute h-0 w-0 opacity-0" />
+        </motion.button>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   // --- Physics & Mechanics ---
   const dragAngle = useMotionValue(0);
@@ -435,25 +501,6 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         <div className="relative">
           {/* 지지대: 천장 고정판에서 내려와 보드 윗틀을 단단히 잡는 굵은 황동 기둥 하나 (이미지가 있으면 이미지, 없으면 코드로 그린 기둥) */}
           <BoardPost />
-          {/* 한 살씩 세밀하게: 전광판 양옆의 −, + (키보드 −, + 도 된다). 레버로 고른 구간 안에서만 움직인다 */}
-          {activeOption && exactAge !== null && ageRange && !confirming && (
-            <>
-              <button
-                type="button"
-                aria-label="나이 한 살 줄이기"
-                disabled={exactAge <= ageRange[0]}
-                onClick={() => stepAge(-1)}
-                className="pointer-events-auto absolute -left-[3.2rem] top-1/2 z-[60] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border-2 border-[#c9a24a]/80 bg-[#1a120a]/90 text-2xl font-bold leading-none text-[#ffc060] shadow-[0_0_10px_rgba(255,150,30,0.35)] transition-opacity hover:bg-[#2a1c0e] active:scale-95 disabled:opacity-30"
-              >−</button>
-              <button
-                type="button"
-                aria-label="나이 한 살 늘리기"
-                disabled={exactAge >= ageRange[1]}
-                onClick={() => stepAge(1)}
-                className="pointer-events-auto absolute -right-[3.2rem] top-1/2 z-[60] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border-2 border-[#c9a24a]/80 bg-[#1a120a]/90 text-2xl font-bold leading-none text-[#ffc060] shadow-[0_0_10px_rgba(255,150,30,0.35)] transition-opacity hover:bg-[#2a1c0e] active:scale-95 disabled:opacity-30"
-              >+</button>
-            </>
-          )}
 
         <div
           role="status"
@@ -511,6 +558,15 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       </div>
 
       {/* Header Info */}
+      {/* 한 살씩 세밀하게: 나이 레버 오른쪽에 증기 피스톤 두 개가 나란히 아래에서 올라온다. 머리가 곧 −, + 버튼이다 (키보드 −, + 도 된다) */}
+      <div
+        className="absolute z-[55] flex items-start gap-[10px]"
+        style={{ ['--pw' as string]: 'clamp(46px, 8.5vw, 62px)', left: 'calc(50% + 78px)', top: 250 }}
+      >
+        <Piston side="left" kind="minus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge <= ageRange[0]} onPress={() => stepAge(-1)} />
+        <Piston side="right" kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepAge(1)} />
+      </div>
+
       <div className="absolute top-[184px] left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
         <motion.h2 
           initial={{ opacity: 0, y: -10 }}
