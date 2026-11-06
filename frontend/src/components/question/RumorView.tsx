@@ -21,27 +21,27 @@ import { playGlassRattle, startMurmur, playThud, type Murmur } from '@/lib/synth
  * 카드로 고르기(키보드 1~4 포함)는 언제나 쓸 수 있다. 동작 줄이기 설정에서는 카드만 보여 준다.
  */
 
-const IMG = { w: 1920, h: 1047 }; // crash.webp
-const FLOOR_Y = 560; // 갑판 바닥이 시작되는 높이
-const DOOR = { x: 458, y: 598 }; // 선내로 들어가는 입구(갑판실 왼쪽 끝): 일부 사람들이 이쪽으로 들어간다
+const IMG = { w: 1918, h: 820 }; // rumor_q6.webp (밤 갑판, 오른쪽에 빙산)
+const FLOOR_Y = 455; // 갑판 바닥이 시작되는 높이
+const DOOR = { x: 1235, y: 478 }; // 선내로 들어가는 입구(갑판실 왼쪽 끝): 일부 사람들이 이쪽으로 들어간다
 const GOAL = DOOR;
 
 /** 갑판 바닥의 오른쪽 끝(난간 안쪽). 이보다 오른쪽은 바다다 */
-const xMax = (y: number) => Math.min(1500, 1150 + 0.573 * (y - 600));
+const xMax = (y: number) => Math.min(1720, 1450 + 0.68 * (y - 450));
 /** 걸을 수 있는 곳으로 밀어 넣는다 (왼쪽 위의 환기구 상자와 난간 밖 바다는 제외) */
 function walk(x: number, y: number, bottom = BOTTOM): [number, number] {
   const yy = clamp(y, FLOOR_Y + 20, bottom);
-  const minX = yy < 735 ? 285 : 30;
+  const minX = yy < 580 ? 330 : yy < 720 ? 170 : 40; // 왼쪽 위의 밧줄 통과 상자, 닻감개를 피한다
   return [clamp(x, minX, xMax(yy) - 10), yy];
 }
 
 interface Zone { key: string; x: number; y: number; r: number }
 /** 등불을 든 승무원이 서 있는 곳: 구역을 앞뒤(원근)로 펼치려고 가운데 앞쪽으로 옮겼다 */
-const CREW = { x: 790, y: 805 };
+const CREW = { x: 760, y: 690 };
 const ZONES: Zone[] = [
   { key: 'check_crew', x: CREW.x, y: CREW.y, r: 120 }, // 갑판 가운데, 등불을 든 승무원
-  { key: 'check_escape', x: 1115, y: 692, r: 100 }, // 구명정 쪽 (구명조끼와 탈출 경로)
-  { key: 'calm_others', x: 330, y: 880, r: 125 }, // 갑판 왼쪽 아래, 웅크린 사람들
+  { key: 'check_escape', x: 450, y: 545, r: 100 }, // 구명정 쪽 (구명조끼와 탈출 경로)
+  { key: 'calm_others', x: 1380, y: 730, r: 125 }, // 갑판 왼쪽 아래, 웅크린 사람들
   { key: 'follow_crowd', x: DOOR.x, y: DOOR.y + 12, r: 105 }, // 선내로 들어가는 사람들을 따라간다
 ];
 /** 바닥 구역 위에 항상 떠 있는 짧은 이름 */
@@ -68,13 +68,13 @@ const RUMORS = [
  * 커진다(대략 (y-520)*0.79: 먼 끝 y≈545 에서 30px, y≈750 에서 190px, y≈1010 에서 370px). 사람은 난간(약 1m)보다 크므로
  * 키는 같은 y 의 난간 높이에 비례해 (y-495) 로 잡는다. 화면 가까이(아래)일수록 훨씬 크고, 멀수록 작아진다.
  */
-const personH = (y: number) => Math.max(40, y - 495);
+const personH = (y: number) => Math.max(36, 0.49 * y - 170);
 /** 예전 기준(키 110px)에 대한 배율: 걸음 속도, 간격 같은 값에 곱한다 */
 const depth = (y: number) => personH(y) / 110;
 /** 구역 표시(바닥의 원)와 이름 글자 크기에 쓰는 완만한 배율 */
 const zs = (y: number) => Math.min(1.3, Math.max(0.6, personH(y) / 200));
 /** 사람이 서 있을 수 있는 가장 아래쪽 (이보다 아래는 너무 커진다) */
-const BOTTOM = 930;
+const BOTTOM = 795;
 /** 부딪혀 쓰러진 사람들이 하는 말 */
 const OUCH = ['아야!', '밀지 마세요!', '조심해요!', '어디 보고 다니는 거요!', '제발 진정해요!', '내 모자!', '아이가 있어요!', '무슨 짓이오!', '왜 뛰는 거요?', '아이고 허리야…', '이러다 다 넘어져요!', '다들 침착해요!'];
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -139,7 +139,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
   const chosenRef = useRef<{ key: string; at: number } | null>(null);
   const activeRef = useRef(false);
   const sizeRef = useRef({ vw: 1280, vh: 720, dpr: 1 });
-  const target = useRef({ x: 900, y: 900 });
+  const target = useRef({ x: 960, y: 740 });
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -187,7 +187,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     if (!ctx) return;
 
     const bg = new Image();
-    bg.src = '/bg/crash.webp';
+    bg.src = '/bg/rumor_q6.webp';
     const loadImg = (src: string) => { const i = new Image(); i.src = src; return i; };
     const crowdImgs = Array.from({ length: 8 }, (_, k) => loadImg(`/q6/crowd_${k}.webp`));
     const officerImg = loadImg('/q6/officer_lantern.webp');
@@ -223,11 +223,11 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
 
     const small = window.innerWidth < 700;
     const COUNT = small ? 18 : 30; // 사람이 커졌으니 수는 줄인다 (내가 어디 있는지, 구역이 어디인지 보여야 한다)
-    const pick = (): [number, number] => walk(340 + Math.random() * 760, FLOOR_Y + 60 + Math.random() * (BOTTOM - FLOOR_Y - 90));
+    const pick = (): [number, number] => walk(300 + Math.random() * 1200, FLOOR_Y + 60 + Math.random() * (BOTTOM - FLOOR_Y - 90));
     const spawn = (anywhere: boolean): Agent => {
       let x: number; let y: number;
       if (anywhere) { [x, y] = pick(); }
-      else { y = BOTTOM + 30; x = 250 + Math.random() * 950; }
+      else { y = BOTTOM + 30; x = 300 + Math.random() * 1200; }
       // 대부분은 갑판에서 서성이고, 일부만 선내로 들어간다 (충돌 직후에는 구명정으로 달려가지 않았다)
       const mill = Math.random() < 0.7;
       const [tx, ty] = mill ? pick() : [DOOR.x, DOOR.y];
@@ -239,7 +239,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     };
     const agents: Agent[] = Array.from({ length: COUNT }, () => spawn(true));
     const phrases: Phrase[] = [];
-    const me = { x: 900, y: 880, phase: 0, moving: 0 };
+    const me = { x: 960, y: 740, phase: 0, moving: 0 };
     // 빨리 움직여서 사람들에게 부딪히면 쓰러지고 한마디 한다. 여러 명이 연달아 쓰러지면 주변 군중이 줄줄이 넘어진다.
     const knocks: number[] = [];
     let waveCool = 0;
@@ -433,7 +433,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       ctx.fillRect(0, 0, vw, vh);
       ctx.setTransform(dpr * A, 0, 0, dpr * A, dpr * E, dpr * F);
       if (bg.complete && bg.naturalWidth) ctx.drawImage(bg, 0, 0, IMG.w, IMG.h);
-      ctx.fillStyle = 'rgba(4,6,14,0.34)';
+      ctx.fillStyle = 'rgba(4,6,14,0.12)';
       ctx.fillRect(0, 0, IMG.w, IMG.h);
 
       // 바닥 등불의 빛
@@ -596,12 +596,12 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         ctx.globalAlpha = 1;
       } });
       if (ready(huddleImgs[0]) && ready(huddleImgs[1])) {
-        const k = (122 * depth(880)) / 480;
-        items.push({ y: 892, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[0], 292, 892, huddleImgs[0].naturalHeight * k); ctx.globalAlpha = 1; } });
-        items.push({ y: 884, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[1], 400, 884, huddleImgs[1].naturalHeight * k); ctx.globalAlpha = 1; } });
+        const k = (122 * depth(735)) / 480;
+        items.push({ y: 742, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[0], 1345, 742, huddleImgs[0].naturalHeight * k); ctx.globalAlpha = 1; } });
+        items.push({ y: 734, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[1], 1450, 734, huddleImgs[1].naturalHeight * k); ctx.globalAlpha = 1; } });
       } else {
         for (const [dx, k, h] of [[-26, 1, 84], [10, 0, 90], [40, 3, 58]] as const) {
-          items.push({ y: 880 + dx * 0.02, draw: () => { ctx.globalAlpha = crowdA; figure(ctx, 330 + dx * 1.6, 880, h * depth(880), 0, k, 'rgba(255,170,90,0.45)'); ctx.globalAlpha = 1; } });
+          items.push({ y: 735 + dx * 0.02, draw: () => { ctx.globalAlpha = crowdA; figure(ctx, 1380 + dx * 1.6, 735, h * depth(735), 0, k, 'rgba(255,170,90,0.45)'); ctx.globalAlpha = 1; } });
         }
       }
       if (officerSay && now < officerSay.until) {
