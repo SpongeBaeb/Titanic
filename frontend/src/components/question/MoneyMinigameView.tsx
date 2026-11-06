@@ -566,6 +566,23 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     const item = souvenirItems.find(i => i.id === itemId);
     if (!item) return;
 
+    // 찻잔(shop2): 놓은 곳이 과녁 근처면 알아서 날아가 깨진다
+    if (item.img.includes('shop2')) {
+      const targetEl2 = dropZoneRefs.current['target'];
+      const tr = targetEl2?.getBoundingClientRect();
+      const px2 = info.point.x; const py2 = info.point.y;
+      if (tr && px2 >= tr.left - 70 && px2 <= tr.right + 70 && py2 >= tr.top - 70 && py2 <= tr.bottom + 70) {
+        const tcx = tr.left + tr.width * (debugHitX / 100);
+        const tcy = tr.top + tr.height * (debugHitY / 100);
+        const relX = item.targetX + info.offset.x + (tcx - px2);
+        const relY = item.targetY + info.offset.y + (tcy - py2);
+        setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: relX, targetY: relY, rotation: i.rotation + 720, isThrown: true } : i));
+        playSound('snap');
+        setTimeout(() => shatterTeacup(relX, relY, itemId), 210);
+        return;
+      }
+    }
+
     // 칼(shop1): 놓은 곳이 표적 근처면 겨냥해 줄 필요 없이 알아서 날아가 꽂힌다 (속도나 정확한 방향은 보지 않는다)
     if (item.img.includes('shop1')) {
       const px = info.point.x; const py = info.point.y;
@@ -1796,7 +1813,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                         drag={true}
                         dragMomentum={false}
                         onDragStart={() => {
-                          if (item.img.includes('shop1')) setHeldKnife(item.id);
+                          if (item.img.includes('shop1') || item.img.includes('shop2')) setHeldKnife(item.id); // 칼과 찻잔은 쥐고 있는 동안 빙빙 돈다
                           if (item.isStuck) {
                             setSouvenirItems(prev => prev.map(i => i.id === item.id ? { ...i, isStuck: false } : i));
                           }
