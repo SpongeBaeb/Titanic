@@ -43,7 +43,7 @@ const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number; 
   change: { src: '/q5/obj_telescope.webp', foot: [825, 740], h: 215, flip: true },
 };
 /** 구명환 (선택지가 아니라 챙길 수 있는 물건): 계단 앞 하얀 기둥에 작게 걸려 있다. foot 은 아래 끝 */
-const BUOY = { foot: [503, 511] as [number, number], h: 54 };
+const BUOY = { foot: [503, 497] as [number, number], h: 36 };
 const ORDER = ['experience', 'stability', 'change'] as const;
 type Choice = (typeof ORDER)[number];
 
@@ -832,7 +832,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
               draggable={false}
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
               className="pointer-events-none absolute max-w-none"
-              style={{ left: o.foot[0], top: o.foot[1], height: o.h, transform: `translate(-50%, -100%) scale(${o.flip ? -1 : 1}, 1) scale(${on ? 1.04 : 1})`, transformOrigin: '50% 100%', transition: 'transform 0.4s, filter 0.4s', filter: on ? 'sepia(0.3) saturate(1.2) brightness(1.28) drop-shadow(0 0 14px rgba(255,214,140,0.55))' : 'sepia(0.3) saturate(1.2) brightness(1.02)' }}
+              style={{ left: o.foot[0], top: o.foot[1], height: o.h, transform: `translate(-50%, -100%) scale(${o.flip ? -1 : 1}, 1)`, transformOrigin: '50% 100%', transition: 'transform 0.4s, filter 0.4s', filter: on ? 'sepia(0.3) saturate(1.2) brightness(1.14) drop-shadow(0 0 9px rgba(255,214,140,0.4))' : 'sepia(0.3) saturate(1.2) brightness(1.02)' }}
             />
           );
         })}
@@ -853,7 +853,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
             type="button"
             aria-label="난간에 걸린 구명환을 챙긴다"
             className="absolute cursor-pointer bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-amber-300/80"
-            style={{ left: BUOY.foot[0] - 34, top: BUOY.foot[1] - BUOY.h - 8, width: 68, height: BUOY.h + 16 }}
+            style={{ left: BUOY.foot[0] - 24, top: BUOY.foot[1] - BUOY.h - 8, width: 48, height: BUOY.h + 16 }}
             onPointerEnter={(e) => { if (e.pointerType === 'mouse') setBuoyHover(true); }}
             onPointerLeave={() => setBuoyHover(false)}
             onFocus={() => setBuoyHover(true)}
@@ -871,7 +871,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
                 aria-hidden
                 className="pointer-events-none absolute rounded-full"
                 style={{ left: sp.ax - 70, top: sp.ay - 70, width: 140, height: 140, background: 'radial-gradient(circle, rgba(255,226,160,0.55) 0%, rgba(255,200,110,0.18) 40%, rgba(255,200,110,0) 70%)', mixBlendMode: 'screen' }}
-                animate={{ opacity: on ? 1 : [0.18, 0.55, 0.18], scale: on ? 1.5 : [0.8, 1.15, 0.8] }}
+                animate={{ opacity: on ? 0.8 : [0.18, 0.5, 0.18] }}
                 transition={on ? { duration: 0.4 } : { duration: 3.4, repeat: Infinity, ease: 'easeInOut', delay: ORDER.indexOf(v) * 0.9 }}
               />
               <button
@@ -986,29 +986,35 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         )}
       </motion.div>
 
+      {/* 하늘에 띄운 선택지 설명: 물건에 올리면 이곳에 떠오른다 */}
+      {!chosen && (
+        <div className="pointer-events-none absolute inset-x-0 top-[40%] z-30 flex justify-center px-4">
+          <AnimatePresence mode="wait">
+              {hoverOpt && (
+                <motion.div
+                  key={hoverOpt.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.35 }}
+                  className="max-w-xl rounded-2xl bg-slate-950/30 px-6 py-3 text-center backdrop-blur-[3px]"
+                >
+                  <p className="font-title text-xl font-bold text-ivory md:text-2xl" style={{ textShadow: '0 2px 14px rgba(0,0,0,0.75), 0 0 28px rgba(20,24,50,0.6)' }}>{hoverOpt.label}</p>
+                  {hoverOpt.description && <p className="mt-1.5 text-sm leading-relaxed text-ivory/90 md:text-base" style={{ textShadow: '0 1px 10px rgba(0,0,0,0.8)' }}>{hoverOpt.description}</p>}
+                  {coarse && hovered && (
+                    <button type="button" onClick={() => choose(hovered)} className="pointer-events-auto mt-3 rounded-full border border-amber-300/60 bg-amber-300/15 px-5 py-1.5 text-sm text-amber-100">
+                      이걸로 정한다
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+      )}
+
       {/* 아래쪽: 올려 둔 물건의 선택지, 좁은 화면에서는 물건으로 이동하는 버튼 */}
       {!chosen && (
         <div className="absolute inset-x-0 bottom-4 z-30 flex flex-col items-center gap-3 px-4">
-          <AnimatePresence mode="wait">
-            {hoverOpt && (
-              <motion.div
-                key={hoverOpt.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.35 }}
-                className="w-full max-w-xl rounded-xl border border-amber-200/25 bg-slate-950/70 px-5 py-4 text-center backdrop-blur-md"
-              >
-                <p className="font-title text-lg font-bold text-ivory md:text-xl">{hoverOpt.label}</p>
-                {hoverOpt.description && <p className="mt-1 text-sm leading-relaxed text-muted-ivory">{hoverOpt.description}</p>}
-                {coarse && hovered && (
-                  <button type="button" onClick={() => choose(hovered)} className="pointer-events-auto mt-3 rounded-full border border-amber-300/60 bg-amber-300/15 px-5 py-1.5 text-sm text-amber-100">
-                    이걸로 정한다
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
           {(needPan || coarse) && (
             <div className="flex gap-2">
               {ORDER.map((v) => (
