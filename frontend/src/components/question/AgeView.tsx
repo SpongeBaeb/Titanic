@@ -407,13 +407,13 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  // 피스톤 자리: 배경 그림 속 나이 어르신 의자의 오른쪽 바닥(그림 좌표 약 1035, 590)에서 머리가 멈춘다. 화면 크기가 바뀌어도 의자 옆에 머문다
+  // 피스톤 자리: 배경 그림 속 나이 어르신 의자의 오른쪽 바닥(그림 좌표 약 985, 545)에서 머리가 멈춘다. 화면 크기가 바뀌어도 의자 옆에 머문다
   const [pistonBox, setPistonBox] = useState({ pw: 52, left: 700, h: 200, travel: 140 });
   useEffect(() => {
     const pw = Math.round(Math.min(64, Math.max(40, 84 * bg.s)));
-    const headTop = bg.toY(590);
+    const headTop = bg.toY(545);
     const h = Math.max(110, window.innerHeight + 16 - headTop);
-    setPistonBox({ pw, left: Math.round(bg.toX(1035)), h, travel: h - pw * 1.033 });
+    setPistonBox({ pw, left: Math.round(bg.toX(985)), h, travel: h - pw * 1.033 });
   }, [bg.s, bg.ox, bg.oy]); // eslint-disable-line react-hooks/exhaustive-deps
   // 전광판은 처음엔 없다가, 천장에서 증기를 내뿜은 뒤 서서히 내려온다 (증기는 위에서 아래로 흘러내린다)
   useEffect(() => {
