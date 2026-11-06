@@ -465,6 +465,35 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     }, 1000);
   };
 
+  // ── 사용법 시범: 화면에 들어오면 지폐 한 장이 시설로 끌려가는 모습을 먼저 보여 준다 ──
+  // 지폐를 직접 끌기 시작하거나 한 장이라도 쓰면 멈춘다. 최대 3번만 보여 준다. 동작 줄이기 설정에서는 보이지 않는다.
+  const billStackRef = useRef<HTMLDivElement>(null);
+  const [demo, setDemo] = useState<{ sx: number; sy: number; dx: number; dy: number; n: number } | null>(null);
+  const demoStopped = useRef(false);
+  const facIndexRef = useRef(facIndex);
+  facIndexRef.current = facIndex;
+  const billsRef = useRef(billsAvailable);
+  billsRef.current = billsAvailable;
+  const stopDemo = () => { demoStopped.current = true; setDemo(null); };
+  useEffect(() => {
+    try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch { /* 무시 */ }
+    let loops = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const play = () => {
+      if (demoStopped.current || billsRef.current < 5 || loops >= 3) { setDemo(null); return; }
+      const from = billStackRef.current?.getBoundingClientRect();
+      const toEl = dropZoneRefs.current[FACILITIES[facIndexRef.current].id];
+      const to = toEl?.getBoundingClientRect();
+      if (!from || !to || from.width === 0 || to.width === 0) { timer = setTimeout(play, 900); return; }
+      loops += 1;
+      const sx = from.left + from.width / 2; const sy = from.top + from.height / 2;
+      setDemo({ sx, sy, dx: to.left + to.width / 2 - sx, dy: to.top + to.height / 2 - sy, n: loops });
+      timer = setTimeout(() => { setDemo(null); timer = setTimeout(play, 1100); }, 3100);
+    };
+    timer = setTimeout(play, 2600);
+    return () => clearTimeout(timer);
+  }, []);
+
   // ── 오리 이스터에그: 기념품 가게의 칼로 오리 사무장을 두 번 위협하면 ──
   // 첫 번째는 경고(권총이 나온다), 두 번째는 발사. 총에 맞으면 사망 카드 뒤에 처음부터 다시 시작한다.
   const [duckArmed, setDuckArmed] = useState(false);
@@ -995,17 +1024,21 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   };
 
   // Render draggable bills
-  const renderBills = () => {
+  const renderBills = (inline = false) => {
     const displayCount = Math.min(billsAvailable, 5);
     const hasMore = billsAvailable > 5;
     
     return (
-      <div className="relative w-full h-32 flex justify-center items-center mt-12 z-50 pointer-events-none">
+      <div
+        ref={inline ? billStackRef : undefined}
+        className={inline ? 'relative h-44 w-56 shrink-0 flex justify-center items-center z-50 pointer-events-none' : 'relative w-full h-32 flex justify-center items-center mt-12 z-50 pointer-events-none'}
+      >
         {Array.from({ length: displayCount }).map((_, i) => (
           <motion.div
             key={`bill-${i}`}
             drag
             dragSnapToOrigin
+            onDragStart={stopDemo}
             onDrag={handleDrag}
             onDragEnd={handleDragEnd}
             whileHover={{ scale: 1.1, y: -10 }}
@@ -1038,7 +1071,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
               </motion.div>
             )}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-              <ClassicButton onClick={handleSubmitFinal} className="px-12 text-base">선택 완료</ClassicButton>
+              <ClassicButton onClick={handleSubmitFinal} className={inline ? 'px-8 text-base' : 'px-12 text-base'}>선택 완료</ClassicButton>
             </motion.div>
           </div>
         )}
@@ -1655,6 +1688,17 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         
         {/* 회전 선반(시설) + 오른쪽의 오리 사무장 */}
         <div className="flex w-full items-end justify-center gap-6 px-4">
+          {/* 지폐: 시설 왼쪽에 둔다. 여기서 시설로 끌어다 놓는다 */}
+          <div className="hidden shrink-0 flex-col items-center gap-3 self-center md:flex">
+            <motion.div
+              className="max-w-[14rem] rounded-full border border-amber-500/30 bg-black/40 px-4 py-2 text-center text-sm font-bold text-amber-300 backdrop-blur-sm pointer-events-none"
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              지폐를 끌어서 시설에 놓으세요
+            </motion.div>
+            {renderBills(true)}
+          </div>
           <FacilityWheel
             items={FACILITIES}
             index={facIndex}
@@ -1855,13 +1899,13 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
 
       {/* Inventory Area */}
       <motion.div 
-        className="text-center text-sm md:text-base text-amber-300 font-bold bg-black/40 py-2 px-4 rounded-full border border-amber-500/30 backdrop-blur-sm z-50 mb-2 mt-8 pointer-events-none"
+        className="md:hidden text-center text-sm md:text-base text-amber-300 font-bold bg-black/40 py-2 px-4 rounded-full border border-amber-500/30 backdrop-blur-sm z-50 mb-2 mt-8 pointer-events-none"
         animate={{ opacity: [0.6, 1, 0.6], scale: [0.98, 1.02, 0.98] }}
         transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
       >
         지폐를 드래그해서 원하는 시설에 투자하세요!
       </motion.div>
-      {renderBills()}
+      <div className="md:hidden w-full">{renderBills(false)}</div>
 
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-6 pointer-events-none z-[1]">
         <ProgressLine />
@@ -2378,6 +2422,36 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
           </AnimatePresence>
         </div>
       )}
+
+      {/* 사용법 시범: 지폐 한 장이 시설로 끌려가는 모습 */}
+      <AnimatePresence>
+        {demo && (
+          <>
+            <motion.div
+              key={`demo-${demo.n}`}
+              aria-hidden
+              className="pointer-events-none fixed z-[140]"
+              style={{ left: demo.sx, top: demo.sy, marginLeft: -96, marginTop: -48 }}
+              initial={{ opacity: 0, x: 0, y: 0, scale: 1 }}
+              animate={{ opacity: [0, 1, 1, 1, 0], x: [0, 0, demo.dx, demo.dx, demo.dx], y: [0, -8, demo.dy, demo.dy, demo.dy], scale: [1, 1.15, 1.15, 1.02, 0.85] }}
+              transition={{ duration: 2.9, times: [0, 0.12, 0.62, 0.86, 1], ease: 'easeInOut' }}
+            >
+              <img src="/spend/bill.webp" alt="" draggable={false} className="w-48 h-auto opacity-90 drop-shadow-[0_10px_15px_rgba(0,0,0,0.5)]" />
+              {/* 손가락으로 누른 자리를 나타내는 원 */}
+              <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/90 bg-white/25 shadow-[0_0_14px_rgba(255,255,255,0.7)]" />
+            </motion.div>
+            <motion.div
+              key={`demo-ring-${demo.n}`}
+              aria-hidden
+              className="pointer-events-none fixed z-[139] h-24 w-24 rounded-full border-4 border-amber-300"
+              style={{ left: demo.sx + demo.dx - 48, top: demo.sy + demo.dy - 48 }}
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: [0, 0.9, 0], scale: [0.5, 1, 1.5] }}
+              transition={{ delay: 1.7, duration: 0.9, ease: 'easeOut' }}
+            />
+          </>
+        )}
+      </AnimatePresence>
 
       {/* 총에 맞았을 때: 사망 카드가 나온 뒤 처음부터 다시 시작한다 */}
       {dead && <DeathCard onDone={restartJourney} />}

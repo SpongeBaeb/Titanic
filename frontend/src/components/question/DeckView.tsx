@@ -75,6 +75,7 @@ uniform vec2 uRes; uniform float uTime; uniform vec2 uOff; uniform float uScale;
 uniform float uZoom; uniform vec2 uCenter;
 uniform float uCalm; uniform float uStar; uniform float uMilky; uniform float uDawn; uniform float uGlow; uniform vec3 uGlowCol;
 uniform vec4 uRip[4];
+uniform sampler2D uSky; uniform float uHasSky;
 out vec4 o;
 const float HY = ${HY.toFixed(1)};
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -84,10 +85,16 @@ float fbm(vec2 p){ float v = 0., a = .5; for(int i=0;i<4;i++){ v += a*noise(p); 
 
 vec3 sky(vec2 p){
   float h = clamp((HY - p.y) / HY, 0., 1.);
-  vec3 hor = vec3(.25, .29, .38), top = vec3(.27, .38, .52);
-  vec3 c = mix(hor, top, pow(h, .7));
-  // 해 진 뒤 수평선에 남은 따뜻한 빛: 배가 있는 오른쪽이 더 붉다
-  c = mix(c, vec3(.95, .58, .44), exp(-h * 11.) * (.2 + .6 * smoothstep(250., 900., p.x)));
+  vec3 c;
+  if (uHasSky > .5) {
+    // 하늘 사진: 구름과 수평선의 노을이 그대로 깔린다 (위에 별과 은하수가 얹힌다)
+    c = texture(uSky, vec2(clamp(p.x / 1376., 0., 1.), clamp(p.y / HY, 0., .995))).rgb;
+  } else {
+    vec3 hor = vec3(.25, .29, .38), top = vec3(.27, .38, .52);
+    c = mix(hor, top, pow(h, .7));
+    // 해 진 뒤 수평선에 남은 따뜻한 빛: 배가 있는 오른쪽이 더 붉다
+    c = mix(c, vec3(.95, .58, .44), exp(-h * 11.) * (.2 + .6 * smoothstep(250., 900., p.x)));
+  }
   c = mix(c, vec3(1., .55, .30), uDawn * exp(-h * 5.5) * .85);
   c *= mix(1., .55, uMilky * .5);
   // 별: 많고 또렷하게 반짝인다. 일부는 십자 빛줄기와 번지는 빛이 있는 큰 별이다
@@ -136,12 +143,12 @@ vec3 sea(vec2 p){
     }
   }
   h += rh;
-  vec3 deepFar = vec3(.20, .24, .31), deepNear = vec3(.08, .14, .21);
+  vec3 deepFar = vec3(.15, .20, .28), deepNear = vec3(.06, .11, .18);
   vec3 base = mix(deepFar, deepNear, smoothstep(0., 170., d));
   vec2 pr = vec2(p.x + h * 38., HY - d * .85 + h * 20.);
   vec3 refl = sky(pr);
   float fres = pow(1. - clamp(d / 280., 0., 1.), 1.4) * .75 + .16;
-  vec3 col = base + refl * fres * (.40 + uCalm * .30);
+  vec3 col = base + refl * fres * (.19 + uCalm * .16);
   float glint = smoothstep(.55, .95, h + rh * 1.5) * (.12 + uStar * .1);
   col += vec3(.9, .8, .6) * glint;
   // 눈에 띄게 일렁이는 큰 너울과 물결선: 밝고 어두운 띠가 천천히 밀려온다
@@ -328,11 +335,36 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         const a = gl.getAttribLocation(prog, 'a');
         gl.enableVertexAttribArray(a);
         gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
-        for (const n of ['uRes', 'uTime', 'uOff', 'uScale', 'uZoom', 'uCenter', 'uCalm', 'uStar', 'uMilky', 'uDawn', 'uGlow', 'uGlowCol', 'uRip']) loc[n] = gl.getUniformLocation(prog, n);
+        for (const n of ['uRes', 'uTime', 'uOff', 'uScale', 'uZoom', 'uCenter', 'uCalm', 'uStar', 'uMilky', 'uDawn', 'uGlow', 'uGlowCol', 'uRip', 'uSky', 'uHasSky']) loc[n] = gl.getUniformLocation(prog, n);
       } else setNoGL(true);
     } catch {
       gl = null;
       setNoGL(true);
+    }
+
+    // 하늘 사진 판 (bg/sky_q5.webp): 올라오면 셰이더가 쓰고, 그 전에는 기본 그라데이션을 쓴다
+    let skyTex: WebGLTexture | null = null;
+    let hasSky = 0;
+    if (gl && prog) {
+      const g2 = gl;
+      const img = new Image();
+      img.onload = () => {
+        try {
+          skyTex = g2.createTexture();
+          g2.activeTexture(g2.TEXTURE0);
+          g2.bindTexture(g2.TEXTURE_2D, skyTex);
+          g2.pixelStorei(g2.UNPACK_FLIP_Y_WEBGL, false);
+          g2.texImage2D(g2.TEXTURE_2D, 0, g2.RGBA, g2.RGBA, g2.UNSIGNED_BYTE, img);
+          g2.texParameteri(g2.TEXTURE_2D, g2.TEXTURE_MIN_FILTER, g2.LINEAR);
+          g2.texParameteri(g2.TEXTURE_2D, g2.TEXTURE_MAG_FILTER, g2.LINEAR);
+          g2.texParameteri(g2.TEXTURE_2D, g2.TEXTURE_WRAP_S, g2.CLAMP_TO_EDGE);
+          g2.texParameteri(g2.TEXTURE_2D, g2.TEXTURE_WRAP_T, g2.CLAMP_TO_EDGE);
+          hasSky = 1;
+        } catch {
+          hasSky = 0;
+        }
+      };
+      img.src = '/bg/sky_q5.webp';
     }
 
     const fit = () => {
@@ -588,6 +620,10 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         gl.uniform1f(loc.uGlow, cur.glow);
         gl.uniform3f(loc.uGlowCol, cur.gr, cur.gg, cur.gb);
         gl.uniform4fv(loc.uRip, rip);
+        gl.activeTexture(gl.TEXTURE0);
+        if (skyTex) gl.bindTexture(gl.TEXTURE_2D, skyTex);
+        gl.uniform1i(loc.uSky, 0);
+        gl.uniform1f(loc.uHasSky, hasSky);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       }
 
@@ -682,6 +718,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       glCanvas.removeEventListener('webglcontextlost', onLost);
       // 컨텍스트를 강제로 닫지 않는다: 개발 모드의 Strict Mode 가 같은 캔버스로 효과를 두 번 실행하는데,
       // 닫아 버리면 두 번째 실행이 죽은 컨텍스트를 받아 늘 대체 경로로 떨어진다. 프로그램만 지운다.
+      if (gl && skyTex) gl.deleteTexture(skyTex);
       if (gl && prog) gl.deleteProgram(prog);
     };
   }, [reduce]);

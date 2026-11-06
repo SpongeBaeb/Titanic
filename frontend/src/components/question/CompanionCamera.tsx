@@ -61,13 +61,15 @@ const RET_Y = 0.62;
 
 // 사진이 나오는 움직임: 3번 끊어 가며 밀려 나온다 (소리도 같은 박자)
 const PHOTO_STEPS = 3;
+// 사진이 투입구 위로 밀려 나오는 높이(사진 높이의 %). 100 이상이어야 아래쪽 테두리까지 잘리지 않고 다 보인다
+const PHOTO_RISE = 102;
 const { PHOTO_Y, PHOTO_TIMES } = (() => {
   const y: string[] = ['0%'];
   const t: number[] = [0];
   for (let i = 1; i <= PHOTO_STEPS; i++) {
-    y.push(`${-((i - 1) / PHOTO_STEPS) * 96}%`);
+    y.push(`${-((i - 1) / PHOTO_STEPS) * PHOTO_RISE}%`);
     t.push((i - 1 + 0.5) / PHOTO_STEPS);
-    y.push(`${-(i / PHOTO_STEPS) * 96}%`);
+    y.push(`${-(i / PHOTO_STEPS) * PHOTO_RISE}%`);
     t.push(i / PHOTO_STEPS);
   }
   return { PHOTO_Y: y, PHOTO_TIMES: t };
@@ -263,6 +265,11 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
     if (!reduce) setTimeout(() => playPhotoEject(), 650);
     setTimeout(() => onAnswer(key), reduce ? 400 : 3500);
   }, [onAnswer, reduce]);
+
+  // 개발 서버에서만: 조준 없이 촬영을 시험할 수 있게 한다
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') (window as unknown as { __cam?: unknown }).__cam = { shoot: (k: string) => { focusRef.current = k as never; shoot(); } };
+  }, [shoot]);
 
   // 키보드
   useEffect(() => {
@@ -535,7 +542,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
                 className="absolute left-0 top-0 drop-shadow-[0_10px_18px_rgba(0,0,0,0.6)]"
                 style={{ width: PHOTO_W, height: PHOTO_H }}
                 initial={{ y: '0%' }}
-                animate={reduce ? { y: '-96%' } : { y: PHOTO_Y }}
+                animate={reduce ? { y: `-${PHOTO_RISE}%` } : { y: PHOTO_Y }}
                 transition={reduce ? { duration: 0.2 } : { delay: 0.7, duration: 1.7, times: PHOTO_TIMES, ease: 'easeOut' }}
               >
                 {/* 사진 칸: 인화지의 비어 있는 자리에 찍은 장면을 끼운다 */}

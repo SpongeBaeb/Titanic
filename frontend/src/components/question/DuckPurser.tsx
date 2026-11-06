@@ -16,6 +16,10 @@ export type PurserPose = (typeof POSES)[number];
 const STAMP_FRAMES = [0, 1, 2, 3] as const;
 const STAMP_AT = [0, 150, 310, 470]; // 각 컷이 나타나는 시각(ms)
 
+/** 말풍선 크기(px): 글자가 읽히도록 크게 잡는다 */
+const BUBBLE_W = 400;
+const BUBBLE_H = Math.round((BUBBLE_W * 596) / 985);
+
 export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed = false, firing = false }: { line: string | null; lineKey: number; pose?: PurserPose; onPoke?: () => void; armed?: boolean; firing?: boolean }) {
   // 도장 포즈일 때는 정지 이미지 대신 4컷이 이어져 움직인다. 마지막 컷에서 "쿵" 소리와 함께 멈춘다.
   const [stampFrame, setStampFrame] = useState(0);
@@ -27,7 +31,9 @@ export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed
   }, [pose, lineKey]);
 
   return (
-    <div data-duck className="pointer-events-none relative hidden shrink-0 flex-col items-center md:flex">
+    <div className="pointer-events-none relative hidden shrink-0 flex-col items-center md:flex">
+      {/* 말풍선 자리: 오리 머리 위에 높이를 따로 잡아 둔다. 제목 쪽으로 넘어가 겹치는 일이 없다 */}
+      <div className="relative z-20" style={{ width: 0, height: BUBBLE_H - 36 }}>
       <AnimatePresence mode="wait">
         {line && (
           <motion.div
@@ -36,28 +42,30 @@ export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.25 }}
-            className="pointer-events-none absolute z-20 w-[330px]"
-            style={{ aspectRatio: '985 / 596', left: -150, bottom: 'calc(100% - 36px)' }}
+            className="pointer-events-none absolute z-20"
+            style={{ width: BUBBLE_W, aspectRatio: '985 / 596', left: -Math.round(BUBBLE_W * 0.873), bottom: -36 }}
             role="status"
             aria-live="polite"
           >
             <img src="/ui/ui_speech_bubble_gold.webp" alt="" draggable={false} className="absolute inset-0 h-full w-full drop-shadow-[0_8px_12px_rgba(0,0,0,0.6)]" />
             {/* 말풍선 안쪽(투명 구멍) 위치에 남색 판과 글자를 얹는다 */}
             <div className="absolute rounded-[16px] bg-[#0a1630]/95" style={{ left: '4.6%', right: '4.2%', top: '6.8%', height: '67%' }} />
-            <p className="absolute flex items-center justify-center px-[8%] text-center font-serif text-[13px] leading-snug text-bright-brass" style={{ left: '4.6%', right: '4.2%', top: '6.8%', height: '67%' }}>
+            <p className="absolute flex items-center justify-center px-[7%] text-center font-serif text-[18px] leading-snug text-bright-brass" style={{ left: '4.6%', right: '4.2%', top: '6.8%', height: '67%' }}>
               {line}
             </p>
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       {/* 포즈 이미지는 모두 같은 크기·위치의 캔버스라 바꿔도 흔들리지 않는다. 겹쳐 두고 투명도로 전환한다 */}
       <button
         type="button"
+        data-duck
         onClick={onPoke}
         aria-label="오리 사무장에게 말 걸기"
         className="pointer-events-auto relative z-10 cursor-pointer drop-shadow-[0_14px_16px_rgba(0,0,0,0.55)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-bright-brass"
-        style={{ aspectRatio: '655 / 1114', height: 'min(56vh, 470px)' }}
+        style={{ aspectRatio: '655 / 1114', height: 'min(46vh, 440px)' }}
       >
         {POSES.map((p) => (
           <img
