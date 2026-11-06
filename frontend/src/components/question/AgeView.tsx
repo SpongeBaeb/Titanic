@@ -605,7 +605,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         <Piston kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepAge(1)} pw={pistonBox.pw} travel={pistonBox.travel} />
       </div>
 
-      <div className="absolute top-[184px] left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
+      <div className="absolute top-[214px] left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
         <motion.h2 
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
