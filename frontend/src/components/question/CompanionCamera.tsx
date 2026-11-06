@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Question } from '@/data/questions';
+import { useQuizStore } from '@/store/quizStore';
 import { playShutter, playPhotoEject, playShipHorn } from '@/lib/synth';
 import { unlock } from '@/engine/achievements';
 import ProgressLine from '@/components/ui/ProgressLine';
@@ -33,17 +34,22 @@ const SPOTS: Record<string, Spot> = {
 };
 
 // 선택과 상관없이 찍을 수 있는 곳: 사진만 남고 다음으로 넘어가지 않는다 (그림 크기에 대한 % 좌표). 앞쪽에 적은 것이 먼저 맞는다
-interface Extra extends Spot { caption: string; unlock?: string; horn?: boolean }
+type Port = 'S' | 'C' | 'Q'; // 맨 처음 고른 승선 항구: 사우샘프턴, 셰르부르, 퀸스타운
+interface Extra extends Spot { caption: string; byPort?: Partial<Record<Port, string>>; unlock?: string; horn?: boolean }
 const EXTRAS: Record<string, Extra> = {
   sternCrew: { x: 19.5, y: 20.5, w: 7, h: 6.5, caption: '선미 난간의 세 사람. 이름은 어느 명부에도 없다.' },
   stern: { x: 13, y: 21, w: 16, h: 17, caption: '리버풀 등록. 이 배는 한 번도 리버풀에 닿지 못했다.', unlock: 'never-liverpool', horn: true },
   funnels: { x: 38.5, y: 1, w: 15, h: 25, caption: '굴뚝은 네 개. 그중 네 번째는 환기용 가짜였다.' },
-  tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '출항 날, 예인선이 SS 뉴욕을 간신히 막았다.' },
+  tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '출항 날, 예인선이 SS 뉴욕을 간신히 막았다.', byPort: { C: '연락선 노마딕이 승객을 배까지 실어 날랐다.', Q: '연락선 아메리카와 아일랜드가 승객을 날랐다.' } },
   horseCart: { x: 77, y: 50, w: 9, h: 18, caption: '짐은 아직 말이 나르던 시대였다.' },
-  gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 오른 승객은 약 900명.' },
+  gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 오른 승객은 약 900명.', byPort: { C: '셰르부르에서 오른 승객은 약 270명.', Q: '퀸스타운에서 오른 승객은 약 120명.' } },
 };
 // 사진 아래 글은 작은 칸에 두 줄로 들어가야 해서 25자 안쪽으로 쓴다
-const FREE_CAPTION = '1912년 4월 10일, 사우샘프턴 부두.';
+const FREE_CAPTION: Record<Port, string> = {
+  S: '1912년 4월 10일, 사우샘프턴 부두.',
+  C: '1912년 4월 10일 밤, 셰르부르.',
+  Q: '1912년 4월 11일, 퀸스타운 앞바다.',
+};
 
 // 숨은 강아지 (이스터에그): fellow/dog_hidden.webp 가 있을 때만 월드에 나타나고 찍을 수 있다.
 // 위치는 파노라마 그림에 맞춰 다시 잡는다 (그림 크기에 대한 % 좌표).
@@ -101,6 +107,10 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
   const [photoSpot, setPhotoSpot] = useState<Spot | null>(null); // 사진에 담긴 부분 (그림 %)
   const [photoCaption, setPhotoCaption] = useState<string | null>(null); // 동행이 아닌 곳을 찍었을 때의 한 줄
   const extraRef = useRef<string | null>(null);
+  const embarked = useQuizStore((st) => st.answers.embarked);
+  const port: Port = embarked === 'C' || embarked === 'Q' ? embarked : 'S';
+  const portRef = useRef<Port>(port);
+  portRef.current = port;
   const [flash, setFlash] = useState(false);
   const [nudge, setNudge] = useState(false);
   const [hint, setHint] = useState(true);
@@ -285,7 +295,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
       const ek = extraRef.current;
       const ex = ek ? EXTRAS[ek] : null;
       setPhotoSpot(ex ?? { x: aim.x - 5, y: aim.y - 5, w: 10, h: 10 });
-      setPhotoCaption(ex ? ex.caption : FREE_CAPTION);
+      setPhotoCaption(ex ? (ex.byPort?.[portRef.current] ?? ex.caption) : FREE_CAPTION[portRef.current]);
       setPhoto('free');
       if (ex?.unlock) unlock(ex.unlock);
       if (ex?.horn) setTimeout(() => playShipHorn(), 500);
@@ -425,7 +435,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
 
   const findOption = (v: string | null) => (v === 'dog' ? DOG_OPTION : question.options.find((o) => o.value === v));
   const focusData = focusKey ? findOption(focusKey) : undefined;
-  const photoData = photo === 'free' ? { label: photoCaption ?? FREE_CAPTION } : photo ? findOption(photo) : null;
+  const photoData = photo === 'free' ? { label: photoCaption ?? FREE_CAPTION[port] } : photo ? findOption(photo) : null;
 
   return (
     <div
