@@ -38,9 +38,10 @@ const EXTRAS: Record<string, Extra> = {
   sternCrew: { x: 19.5, y: 20.5, w: 7, h: 6.5, caption: '선미 난간의 세 사람. 이름은 어느 명부에도 없다.' },
   stern: { x: 13, y: 21, w: 16, h: 17, caption: '리버풀 등록. 이 배는 한 번도 리버풀에 닿지 못했다.', unlock: 'never-liverpool', horn: true },
   funnels: { x: 38.5, y: 1, w: 15, h: 25, caption: '굴뚝은 네 개. 그중 네 번째는 환기용 가짜였다.' },
-  tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '예인선들. 출항하던 날, 곁을 지나던 배 SS 뉴욕이 끌려 들어오는 것을 간신히 막았다.' },
-  gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 이 배에 오른 승객은 약 900명이었다.' },
+  tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '출항 날, 예인선이 SS 뉴욕을 간신히 막았다.' },
+  gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 오른 승객은 약 900명.' },
 };
+// 사진 아래 글은 작은 칸에 두 줄로 들어가야 해서 25자 안쪽으로 쓴다
 const FREE_CAPTION = '1912년 4월 10일, 사우샘프턴 부두.';
 
 // 숨은 강아지 (이스터에그): fellow/dog_hidden.webp 가 있을 때만 월드에 나타나고 찍을 수 있다.
