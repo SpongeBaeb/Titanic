@@ -71,7 +71,7 @@ def main():
     print('탁자', w, h)
     ch = cv2.imread(os.path.join(SRC, 'champagne_only.webp'), cv2.IMREAD_UNCHANGED)
     # 양동이 지름이 윗판 너비의 약 20% 가 되도록 줄이고, 윗판 가운데보다 약간 왼쪽에 올린다
-    sc = (w * 0.29) / (ch.shape[1] * 0.66)
+    sc = (w * 0.42) / (ch.shape[1] * 0.66)
     ch = cv2.resize(ch, (int(ch.shape[1] * sc), int(ch.shape[0] * sc)), interpolation=cv2.INTER_AREA)
     # 윗판은 y 가 위에서 약 8%~28% 사이에 있다 (타원의 가운데 약 18%)
     top_c = int(h * 0.155)

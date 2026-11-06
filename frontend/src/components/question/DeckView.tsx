@@ -29,21 +29,21 @@ const WATER_Y = 503; // 고래가 솟는 수면
 
 interface Spot { x: number; y: number; w: number; h: number; ax: number; ay: number }
 const SPOTS: Record<string, Spot> = {
-  experience: { x: 560, y: 490, w: 140, h: 190, ax: 630, ay: 590 }, // 앞쪽 벤치 왼쪽 (샴페인)
+  experience: { x: 560, y: 470, w: 140, h: 210, ax: 630, ay: 600 }, // 앞쪽 벤치 왼쪽 (샴페인)
   stability: { x: 355, y: 485, w: 160, h: 175, ax: 430, ay: 585 }, // 앞쪽 벤치 오른쪽 (별자리 도감)
-  change: { x: 746, y: 450, w: 215, h: 270, ax: 836, ay: 610 }, // 난간 앞 갑판 (망원경)
+  change: { x: 745, y: 505, w: 170, h: 245, ax: 825, ay: 640 }, // 난간 앞 갑판 (망원경)
 };
 /**
  * 선택지 물건은 배경과 따로 그린 그림(투명 배경)이다. 그림이 아직 없으면 보이지 않고 빛과 눌리는 자리만 남는다.
  * foot: 물건이 바닥에 닿는 점(1376x768 기준), h: 높이.
  */
 const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number; flip?: boolean }> = {
-  experience: { src: '/q5/obj_champagne.webp', foot: [630, 670], h: 190 },
+  experience: { src: '/q5/obj_champagne.webp', foot: [630, 670], h: 217 },
   stability: { src: '/q5/obj_atlas.webp', foot: [430, 655], h: 170 },
-  change: { src: '/q5/obj_telescope.webp', foot: [836, 706], h: 240, flip: true },
+  change: { src: '/q5/obj_telescope.webp', foot: [825, 740], h: 215, flip: true },
 };
-/** 난간에 걸린 구명환 (선택지가 아니라 챙길 수 있는 물건): 걸린 고리(위) 쪽이 아니라 아래 끝의 위치와 높이 */
-const BUOY = { foot: [1085, 668] as [number, number], h: 160 };
+/** 구명환 (선택지가 아니라 챙길 수 있는 물건): 계단 앞 하얀 기둥에 작게 걸려 있다. foot 은 아래 끝 */
+const BUOY = { foot: [503, 511] as [number, number], h: 54 };
 const ORDER = ['experience', 'stability', 'change'] as const;
 type Choice = (typeof ORDER)[number];
 
@@ -837,28 +837,23 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
           );
         })}
         {/* 난간에 걸린 구명환: 눌러서 챙길 수 있다 (선택과는 별개) */}
-        <img
+        <motion.img
           src="/q5/obj_lifebuoy.webp"
           alt=""
           aria-hidden
           draggable={false}
           onError={(e) => { e.currentTarget.style.display = 'none'; }}
           className="pointer-events-none absolute max-w-none"
-          style={{
-            left: BUOY.foot[0], top: BUOY.foot[1], height: BUOY.h,
-            transform: `translate(-50%, -100%) rotate(${buoyHover ? 3 : 0}deg) scale(${buoy ? 0.6 : buoyHover ? 1.05 : 1})`,
-            transformOrigin: '50% 0%',
-            opacity: buoy ? 0 : 1,
-            transition: 'transform 0.5s, opacity 0.6s, filter 0.4s',
-            filter: buoyHover ? 'sepia(0.25) saturate(1.2) brightness(1.3) drop-shadow(0 0 12px rgba(255,214,140,0.6))' : 'sepia(0.25) saturate(1.15) brightness(0.98)',
-          }}
+          style={{ left: BUOY.foot[0], top: BUOY.foot[1], height: BUOY.h, translateX: '-50%', translateY: '-100%', transformOrigin: '50% 0%', filter: 'sepia(0.25) saturate(1.15) brightness(0.98)' }}
+          animate={{ rotate: buoy ? 0 : buoyHover ? [0, 6, -5, 3.5, -2, 0] : 0, scale: buoy ? 0.5 : 1, opacity: buoy ? 0 : 1 }}
+          transition={{ rotate: { duration: 1.3, ease: 'easeInOut' }, scale: { duration: 0.5 }, opacity: { duration: 0.6 } }}
         />
         {!buoy && (
           <button
             type="button"
             aria-label="난간에 걸린 구명환을 챙긴다"
-            className="absolute cursor-pointer rounded-2xl bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-amber-300/80"
-            style={{ left: BUOY.foot[0] - 90, top: BUOY.foot[1] - BUOY.h - 10, width: 180, height: BUOY.h + 20 }}
+            className="absolute cursor-pointer bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-amber-300/80"
+            style={{ left: BUOY.foot[0] - 34, top: BUOY.foot[1] - BUOY.h - 8, width: 68, height: BUOY.h + 16 }}
             onPointerEnter={(e) => { if (e.pointerType === 'mouse') setBuoyHover(true); }}
             onPointerLeave={() => setBuoyHover(false)}
             onFocus={() => setBuoyHover(true)}
