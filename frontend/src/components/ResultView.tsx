@@ -155,7 +155,7 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
       const timer = setTimeout(() => {
         setStage('STAGE_SUMMARY');
         soundManager.playThud();
-      }, 10500);
+      }, 6500);
       return () => clearTimeout(timer);
     }
     
@@ -174,11 +174,50 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
     }
   }, [stage, sharedResultId, traits]);
 
+  // ── 공유 ──
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+  const shareUrl = () => (resultData?.id ? `${window.location.origin}/?result=${resultData.id}${traitCode ? `&t=${traitCode}` : ''}` : window.location.origin);
+  const shareText = () => (traits && resultData
+    ? `나는 '${traits.type.ko}' — 타이타닉에서 살아남을 확률 ${resultData.adjusted_probability}%. 너는 어떤 사람이었을까?`
+    : '타이타닉에서 나는 어떤 사람이었을까?');
+  /** 모바일: 시스템 공유 시트(인스타그램 스토리, 카카오톡, 메시지)로 카드 이미지와 함께 보낸다. 안 되는 환경에서는 링크를 복사한다 */
+  const handleShare = async () => {
+    if (!resultData) return;
+    const url = shareUrl();
+    const text = shareText();
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        let files: File[] | undefined;
+        if (traitRef.current && typeof navigator.canShare === 'function') {
+          try {
+            const canvas = await html2canvas(traitRef.current, { backgroundColor: '#020617' });
+            const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+            if (blob) {
+              const f = new File([blob], `titanic_${traits ? traits.type.en.replace(/\s+/g, '_') : 'result'}.png`, { type: 'image/png' });
+              if (navigator.canShare({ files: [f] })) files = [f];
+            }
+          } catch { /* 이미지 없이 링크만 보낸다 */ }
+        }
+        await navigator.share({ title: '타이타닉 생존 시뮬레이터', text: `${text}\n${url}`, ...(files ? { files } : { url }) });
+        return;
+      }
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return; // 사용자가 닫았다
+    }
+    try {
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      showToast('문구와 링크를 복사했어요. 붙여넣어 보내 보세요!');
+    } catch {
+      showToast('링크를 복사하지 못했어요.');
+    }
+  };
+
   const handleCopyLink = () => {
     if (!resultData?.id) return;
     const url = `${window.location.origin}/?result=${resultData.id}${traitCode ? `&t=${traitCode}` : ''}`;
-    navigator.clipboard.writeText(url).then(() => {
-      alert('결과 링크가 복사되었습니다!');
+    navigator.clipboard.writeText(`${shareText()}\n${url}`).then(() => {
+      showToast('문구와 링크를 복사했어요!');
     });
   };
 
@@ -290,16 +329,16 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
           >
             <p className="text-sm tracking-[0.3em] text-slate-400 uppercase">그날 밤, 당신은 이런 사람이었습니다</p>
             <div className="mt-2">
-              <TraitHexagon values={traits.axes} top={traits.top} duration={2.6} delay={0.7} />
+              <TraitHexagon values={traits.axes} top={traits.top} duration={1.5} delay={0.3} />
             </div>
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 3.8, duration: 1.1 }}>
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.7, duration: 0.9 }}>
               <p className="font-sans text-xs uppercase tracking-[0.35em] text-amber-200/70">{traits.type.en}</p>
               <h3 className="mt-2 font-title text-3xl md:text-4xl text-amber-100 drop-shadow-[0_0_15px_rgba(251,191,36,0.35)]">{traits.type.ko}</h3>
             </motion.div>
             <motion.p
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 5.0, duration: 1 }}
+              transition={{ delay: 2.6, duration: 0.9 }}
               className="mx-auto mt-4 max-w-md break-keep font-serif text-base leading-8 text-slate-200"
             >
               {traits.type.desc}
@@ -324,19 +363,35 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
               <p className="mx-auto max-w-md break-keep font-serif text-base leading-8 text-slate-200">{traits.type.desc}</p>
 
               {/* 생존 확률은 참고 정보: 한 줄로 보여 주고, 숫자는 점진적으로 오르내린다 */}
-              <div className="mx-auto mt-6 flex max-w-md items-center justify-center gap-5 border-t border-slate-700/60 pt-5">
+              <div className="relative mx-auto mt-6 flex max-w-md items-center justify-center gap-6 border-t border-slate-700/60 pt-5">
                 <div className="text-left">
                   <p className="text-[11px] tracking-widest text-slate-500 uppercase">타고난 생존 확률</p>
-                  <p className="mt-1 font-numeric text-xl text-slate-300">{resultData.statistical_probability}%</p>
+                  <p className="mt-1 font-numeric text-3xl text-slate-300">{resultData.statistical_probability}%</p>
                 </div>
                 <span className="text-slate-600" aria-hidden>→</span>
                 <div className="text-left">
                   <p className="text-[11px] tracking-widest text-slate-500 uppercase">그날 밤의 선택 이후</p>
                   <div className="mt-1">
-                    <CountingProbability from={resultData.statistical_probability} to={resultData.adjusted_probability} size="lg" duration={2} delay={1.2} />
+                    <CountingProbability from={resultData.statistical_probability} to={resultData.adjusted_probability} size="xl" duration={1.6} delay={0.8} />
                   </div>
                 </div>
               </div>
+              {/* 판정 도장: 선택 이후의 확률이 절반을 넘는지로 정한다 */}
+              {(() => {
+                const alive = resultData.adjusted_probability >= 50;
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 2.4, rotate: -22 }}
+                    animate={{ opacity: 1, scale: 1, rotate: -7 }}
+                    transition={{ delay: 2.0, duration: 0.35, ease: 'easeIn' }}
+                    className={`mx-auto mt-5 w-fit select-none rounded-md border-[3px] border-double px-5 py-1 font-display text-2xl font-black tracking-[0.3em] ${alive ? 'border-amber-300/80 text-amber-300' : 'border-sky-300/70 text-sky-300'}`}
+                    style={{ textShadow: '0 0 12px currentColor' }}
+                  >
+                    {alive ? 'SURVIVED' : 'PERISHED'}
+                    <span className="mt-0.5 block text-[10px] font-normal tracking-[0.25em] opacity-80">이 확률이라면</span>
+                  </motion.div>
+                );
+              })()}
             </div>
 
             {/* 나의 항해 기록 */}
@@ -355,13 +410,6 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
                   </div>
                 ))}
               </div>
-            </motion.div>
-
-            {/* 공유 */}
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1, duration: 1 }} className="mt-8 flex flex-col justify-center gap-4 md:flex-row">
-              <button onClick={handleCopyLink} className="flex items-center justify-center gap-2 rounded bg-slate-800 px-6 py-3 text-sm font-bold tracking-widest text-amber-400 transition-colors hover:bg-slate-700">링크 복사</button>
-              <button onClick={handleSaveImage} className="flex items-center justify-center gap-2 rounded border border-amber-500/50 bg-amber-500/20 px-6 py-3 text-sm font-bold tracking-widest text-amber-100 transition-colors hover:bg-amber-500/40">이미지 저장</button>
-              <button onClick={handleKakaoShare} className="flex items-center justify-center gap-2 rounded bg-[#FEE500] px-6 py-3 text-sm font-bold tracking-widest text-[#000000] transition-colors hover:bg-[#FEE500]/90">카카오톡 공유</button>
             </motion.div>
 
             {/* 닮은 승객은 참고 정보: 원하면 열어 본다 */}
@@ -604,8 +652,38 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-6">
+    <div className={`min-h-[80vh] flex items-center justify-center px-6 ${resultData && traits && (stage === 'STAGE_TRAITS' || stage === 'STAGE_SUMMARY') ? 'pb-32' : ''}`}>
       {renderContent()}
+
+      {/* 연출 건너뛰기 */}
+      {stage === 'STAGE_TRAITS' && resultData && (
+        <button onClick={() => { setStage('STAGE_SUMMARY'); soundManager.playThud(); }} className="fixed right-[4.5rem] top-5 z-40 rounded-full border border-slate-600/70 bg-slate-950/60 px-4 py-1.5 text-xs tracking-widest text-slate-400 backdrop-blur-sm transition-colors hover:text-amber-200">
+          건너뛰기 ▸
+        </button>
+      )}
+
+      {/* 고정 공유 막대: 결과가 나오는 순간부터 화면 아래에 계속 떠 있다 */}
+      {resultData && traits && (stage === 'STAGE_TRAITS' || stage === 'STAGE_SUMMARY') && (
+        <motion.div
+          initial={{ y: 80, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: stage === 'STAGE_TRAITS' ? 2.4 : 0.2, duration: 0.5 }}
+          className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-200/15 bg-slate-950/90 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md"
+        >
+          <div className="mx-auto flex max-w-xl items-center gap-2">
+            <button onClick={handleShare} className="flex-1 rounded-lg bg-amber-400 px-4 py-3 text-sm font-bold tracking-wide text-slate-950 shadow-[0_0_18px_rgba(251,191,36,0.35)] transition-colors hover:bg-amber-300">
+              친구에게 내 결과 보내기
+            </button>
+            <button onClick={handleSaveImage} aria-label="이미지 저장" title="이미지 저장" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-xs font-bold text-amber-100 transition-colors hover:bg-amber-500/25">저장</button>
+            <button onClick={handleCopyLink} aria-label="링크 복사" title="링크 복사" className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-3 text-xs font-bold text-slate-200 transition-colors hover:bg-slate-800">링크</button>
+            <button onClick={handleKakaoShare} aria-label="카카오톡 공유" title="카카오톡 공유" className="rounded-lg bg-[#FEE500] px-3 py-3 text-xs font-bold text-black transition-colors hover:bg-[#FEE500]/90">카톡</button>
+          </div>
+        </motion.div>
+      )}
+
+      {toast && (
+        <div role="status" className="fixed inset-x-0 bottom-24 z-[60] mx-auto w-fit max-w-[90vw] rounded-full bg-slate-100 px-5 py-2 text-sm font-medium text-slate-900 shadow-lg">{toast}</div>
+      )}
     </div>
   );
 }
