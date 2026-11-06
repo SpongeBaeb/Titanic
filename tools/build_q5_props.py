@@ -70,14 +70,17 @@ def main():
     h, w = table.shape[:2]
     print('탁자', w, h)
     ch = cv2.imread(os.path.join(SRC, 'champagne_only.webp'), cv2.IMREAD_UNCHANGED)
-    # 양동이 지름이 윗판 너비의 약 20% 가 되도록 줄이고, 윗판 가운데보다 약간 왼쪽에 올린다
-    sc = (w * 0.42) / (ch.shape[1] * 0.66)
+    # 오른쪽의 샴페인 잔은 지운다 (양동이와 병만 쓴다)
+    ch[int(ch.shape[0] * 0.46):, int(ch.shape[1] * 0.66):, 3] = 0
+    ys, xs = np.where(ch[..., 3] > 8)
+    ch = ch[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    # 양동이 지름이 윗판 너비의 약 34% 가 되도록 줄이고, 윗판 가운데에 올린다
+    sc = (w * 0.34) / ch.shape[1]
     ch = cv2.resize(ch, (int(ch.shape[1] * sc), int(ch.shape[0] * sc)), interpolation=cv2.INTER_AREA)
-    # 윗판은 y 가 위에서 약 8%~28% 사이에 있다 (타원의 가운데 약 18%)
+    # 윗판 타원의 가운데는 위에서 약 10% 높이다. 양동이 바닥이 거기에 오도록 맞춘다
     top_c = int(h * 0.10)
-    # 양동이 바닥이 윗판 타원 가운데에 오도록: 샴페인 그림의 바닥 근처(키의 94%)를 맞춘다
-    x = int(w * 0.5 - ch.shape[1] * 0.52)
-    y = int(top_c - ch.shape[0] * 0.94)
+    x = int(w * 0.5 - ch.shape[1] * 0.5)
+    y = int(top_c - ch.shape[0] * 0.97)
     base = over(table.copy(), ch, x, y)
     save(base, 'obj_champagne.webp')
     print('탁자 윗판 기준 샴페인 위치', x, y)

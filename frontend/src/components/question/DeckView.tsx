@@ -29,7 +29,7 @@ const WATER_Y = 503; // 고래가 솟는 수면
 
 interface Spot { x: number; y: number; w: number; h: number; ax: number; ay: number }
 const SPOTS: Record<string, Spot> = {
-  experience: { x: 560, y: 450, w: 140, h: 230, ax: 630, ay: 600 }, // 앞쪽 벤치 왼쪽 (샴페인)
+  experience: { x: 560, y: 470, w: 140, h: 210, ax: 630, ay: 600 }, // 앞쪽 벤치 왼쪽 (샴페인)
   stability: { x: 355, y: 485, w: 160, h: 175, ax: 430, ay: 585 }, // 앞쪽 벤치 오른쪽 (별자리 도감)
   change: { x: 745, y: 505, w: 170, h: 245, ax: 825, ay: 640 }, // 난간 앞 갑판 (망원경)
 };
@@ -38,7 +38,7 @@ const SPOTS: Record<string, Spot> = {
  * foot: 물건이 바닥에 닿는 점(1376x768 기준), h: 높이.
  */
 const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number; flip?: boolean }> = {
-  experience: { src: '/q5/obj_champagne.webp', foot: [630, 670], h: 225 },
+  experience: { src: '/q5/obj_champagne.webp', foot: [630, 670], h: 195 },
   stability: { src: '/q5/obj_atlas.webp', foot: [430, 655], h: 170 },
   change: { src: '/q5/obj_telescope.webp', foot: [825, 740], h: 215, flip: true },
 };
