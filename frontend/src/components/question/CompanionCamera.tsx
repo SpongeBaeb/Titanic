@@ -550,7 +550,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
                   className="absolute overflow-hidden"
                   style={{ left: FRAME.hole.x * PHOTO_W, top: FRAME.hole.y * PHOTO_H, width: FRAME.hole.w * PHOTO_W, height: FRAME.hole.h * PHOTO_H }}
                 >
-                  <PhotoCrop spot={photo === 'dog' ? DOG_SPOT : SPOTS[photo]} withDog={dogReady} box={FRAME.hole.w * PHOTO_W} />
+                  <PhotoCrop spot={photo === 'dog' ? DOG_SPOT : SPOTS[photo]} withDog={dogReady} boxW={FRAME.hole.w * PHOTO_W} boxH={FRAME.hole.h * PHOTO_H} />
                 </div>
                 <img src={FRAME.src} alt="" draggable={false} className="absolute inset-0 block h-full w-full select-none" />
                 <p className="absolute inset-x-0 text-center font-serif text-[11px] leading-snug text-[#4a3a1c]" style={{ top: (FRAME.hole.y + FRAME.hole.h) * PHOTO_H + 10 }}>
@@ -565,16 +565,18 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
   );
 }
 
-/** 폴라로이드 사진 부분: 월드 그림에서 찍힌 사람 주변만 잘라 보여 준다 (숨은 강아지가 월드에 있으면 함께 찍힌다) */
-function PhotoCrop({ spot, withDog, box }: { spot: Spot; withDog: boolean; box: number }) {
+/** 폴라로이드 사진 부분: 월드 그림에서 찍힌 사람 주변만 잘라 보여 준다. 그림 가장자리(특히 아래쪽)의 사람을 찍어도 그림 밖이 비어 투명해지지 않도록 위치를 그림 안으로 묶는다. (숨은 강아지가 월드에 있으면 함께 찍힌다) */
+function PhotoCrop({ spot, withDog, boxW, boxH }: { spot: Spot; withDog: boolean; boxW: number; boxH: number }) {
   const cx = (spot.x + spot.w / 2) / 100;
   const cy = (spot.y + spot.h / 2) / 100;
   const frac = Math.min(0.5, Math.max(0.16, (spot.w / 100) * 3));
-  const bgW = box / frac;
+  // 사진 칸은 정사각형이 아니라 인화지 구멍(가로 0.845 x 세로 0.856 PHOTO_W)과 똑같은 크기로 채운다. 예전에는 정사각형이라 아래가 비어 투명하게 보였다
+  // 세로도 사진 칸을 다 덮도록: 그림이 가로로 길어서(약 2.4:1) 많이 확대하지 않으면 세로가 모자라 아래가 비었다
+  const bgW = Math.max(boxW / frac, boxH * (WORLD.w / WORLD.h));
   const bgH = bgW * (WORLD.h / WORLD.w);
   return (
-    <div className="relative overflow-hidden" style={{ width: box, height: box, filter: 'grayscale(1) contrast(1.12)' }}>
-      <div className="absolute" style={{ width: bgW, height: bgH, left: -(cx * bgW - box / 2), top: -(cy * bgH - box / 2) }}>
+    <div className="relative overflow-hidden" style={{ width: boxW, height: boxH, filter: 'grayscale(1) contrast(1.12)' }}>
+      <div className="absolute" style={{ width: bgW, height: bgH, left: Math.min(0, Math.max(boxW - bgW, -(cx * bgW - boxW / 2))), top: Math.min(0, Math.max(boxH - bgH, -(cy * bgH - boxH / 2))) }}>
         <img src={WORLD.src} alt="" draggable={false} className="block h-full w-full" />
         {withDog && (
           <img

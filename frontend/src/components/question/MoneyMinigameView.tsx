@@ -31,9 +31,9 @@ const FACILITIES = [
 ];
 
 // 도박 범위: 좁게 맞출수록 확률은 낮고 보상은 크다 (기댓값이 거의 0이 되도록 맞춤)
-// 확률은 480~550 해리 71개 값 중 범위에 드는 비율. 보상은 순이익 지폐 수.
+// 확률은 480~550 해리 71개 값 중 범위에 드는 비율(안전 ±11 = 23개 → 32%). 보상은 순이익 지폐 수.
 const GAMBLE_TIERS = [
-  { id: 'safe', name: '안전', tol: 17, net: 2, odds: '약 49%', zone: 'bg-green-500/35' },
+  { id: 'safe', name: '안전', tol: 11, net: 2, odds: '약 32%', zone: 'bg-green-500/35' },
   { id: 'mid', name: '보통', tol: 8, net: 3, odds: '약 24%', zone: 'bg-yellow-400/40' },
   { id: 'risky', name: '위험', tol: 2, net: 12, odds: '약 7%', zone: 'bg-red-500/45' },
 ] as const;
@@ -44,6 +44,18 @@ const REVEAL_MS = 5200;
 const SWORD_W = 44; // 칼 이미지(640x1173) 표시 너비(px)
 const PAPER = { l: 5, r: 5, t: 16, b: 16 };
 const REVEAL_TIMES = [0, 0.28, 0.5, 0.7, 0.86, 1];
+/** 오리배 그림은 왼쪽을 보고 있다. 오른쪽으로 갈 때는 뒤집어(scaleX -1) 가는 쪽을 보게 한다. 방향이 바뀌는 지점에서만 빠르게 돈다 */
+function shipFlipKeys(path: number[]) {
+  const n = Math.min(path.length, REVEAL_TIMES.length);
+  if (n < 2) return { vals: [1, 1], times: [0, 1] };
+  const dir = (i: number) => (path[i] >= path[i - 1] ? -1 : 1);
+  const vals: number[] = []; const times: number[] = [];
+  for (let i = 1; i < n; i++) {
+    const a = REVEAL_TIMES[i - 1]; const b = REVEAL_TIMES[i]; const d = (b - a) * 0.04;
+    vals.push(dir(i), dir(i)); times.push(i === 1 ? 0 : a + d, i === n - 1 ? 1 : b - d);
+  }
+  return { vals, times };
+}
 const TICK_AT = [300, 700, 1150, 1650, 2200, 2800, 3450, 4150, 4800];
 
 export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyMinigameViewProps) {
@@ -2119,8 +2131,8 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   {gamblingState !== 'idle' && (
                     <motion.div
                       initial={{ left: 0 }}
-                      animate={{ left: shipPath.map((d) => `${((d - 480) / 70) * 100}%`) }}
-                      transition={{ duration: REVEAL_MS / 1000, times: REVEAL_TIMES, ease: 'easeInOut' }}
+                      animate={{ left: shipPath.map((d) => `${((d - 480) / 70) * 100}%`), scaleX: shipFlipKeys(shipPath).vals }}
+                      transition={{ left: { duration: REVEAL_MS / 1000, times: REVEAL_TIMES, ease: 'easeInOut' }, scaleX: { duration: REVEAL_MS / 1000, times: shipFlipKeys(shipPath).times, ease: 'easeInOut' } }}
                       className="absolute top-1/2 -translate-y-1/2 -ml-6 z-20"
                     >
                       <img src="/spend/titanic_duck.webp" alt="Ship" className="w-12 h-12 object-contain drop-shadow-lg" />
