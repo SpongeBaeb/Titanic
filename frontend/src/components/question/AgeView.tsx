@@ -63,13 +63,35 @@ const { PRINT_Y, PRINT_TIMES } = (() => {
 function Piston({ kind, show, disabled, onPress, pw, travel }: { kind: 'minus' | 'plus'; show: boolean; disabled: boolean; onPress: () => void; pw: number; travel: number }) {
   const [down, setDown] = useState(false);
   const [bump, setBump] = useState(0);
-  const press = () => {
+  // 꾹 누르면 숫자가 다라락 올라가거나 내려간다: 처음엔 한 칸, 잠시 뒤부터 점점 빨라진다. 끝에 닿으면 멈춘다
+  const onPressRef = useRef(onPress); onPressRef.current = onPress;
+  const disabledRef = useRef(disabled); disabledRef.current = disabled;
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endHold = () => {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
+    setDown(false);
+  };
+  const startHold = () => {
     if (!show) return;
     if (disabled) { setBump((n) => n + 1); playRatchet(); return; } // 끝에 닿았다
     setDown(true);
-    setTimeout(() => setDown(false), 170);
     onPress();
+    let n = 0;
+    const tick = () => {
+      if (disabledRef.current) { endHold(); return; }
+      n += 1;
+      onPressRef.current();
+      holdTimer.current = setTimeout(tick, n < 5 ? 110 : n < 12 ? 70 : n < 24 ? 45 : 30);
+    };
+    holdTimer.current = setTimeout(tick, 380);
   };
+  useEffect(() => {
+    const up = () => endHold();
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => { window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); if (holdTimer.current) clearTimeout(holdTimer.current); };
+  }, []);
+  useEffect(() => { if (!show) endHold(); }, [show]);
   // 천천히 올라오는 동안 낮게 철컥거린다
   useEffect(() => {
     if (!show) return;
@@ -107,7 +129,10 @@ function Piston({ kind, show, disabled, onPress, pw, travel }: { kind: 'minus' |
           type="button"
           aria-label={kind === 'minus' ? '나이 한 살 줄이기' : '나이 한 살 늘리기'}
           aria-disabled={disabled}
-          onClick={press}
+          onPointerDown={(e) => { e.preventDefault(); startHold(); }}
+          onPointerLeave={endHold}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!e.repeat) startHold(); } }}
+          onKeyUp={endHold}
           className="pointer-events-auto relative block h-full w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
           style={{ filter: disabled ? 'brightness(0.62) saturate(0.7)' : 'drop-shadow(0 6px 8px rgba(0,0,0,0.55))' }}
           animate={bump ? { y: [0, 3, 0] } : undefined}
@@ -395,8 +420,10 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     const nx = Math.max(ageRange[0], Math.min(ageRange[1], exactAge + d));
     if (nx === exactAge) return;
     setExactAges((p) => ({ ...p, [activeOption.id]: nx }));
-    playRatchet();
+    const nowMs = performance.now();
+    if (nowMs - lastStepSound.current > 55) { playRatchet(); lastStepSound.current = nowMs; }
   };
+  const lastStepSound = useRef(0);
   const stepRef = useRef(stepAge);
   stepRef.current = stepAge;
   useEffect(() => {
@@ -601,8 +628,8 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       {/* Header Info */}
       {/* 한 살씩 세밀하게: 나이 레버 오른쪽, 바닥에서 증기 피스톤 두 개가 나란히 올라온다. 머리가 곧 −, + 버튼이다 (키보드 −, + 도 된다) */}
       <div className="absolute z-[55] flex items-end gap-[6px]" style={{ left: pistonBox.left, bottom: -16, height: pistonBox.h }}>
-        <Piston kind="minus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge <= ageRange[0]} onPress={() => stepAge(-1)} pw={pistonBox.pw} travel={pistonBox.travel} />
-        <Piston kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepAge(1)} pw={pistonBox.pw} travel={pistonBox.travel} />
+        <Piston kind="minus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge <= ageRange[0]} onPress={() => stepRef.current(-1)} pw={pistonBox.pw} travel={pistonBox.travel} />
+        <Piston kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepRef.current(1)} pw={pistonBox.pw} travel={pistonBox.travel} />
       </div>
 
       <div className="absolute top-[214px] left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
