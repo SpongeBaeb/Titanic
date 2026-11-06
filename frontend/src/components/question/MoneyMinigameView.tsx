@@ -465,6 +465,16 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     }, 1000);
   };
 
+  // 화면 폭(md 이상이면 지폐와 가방을 시설 왼쪽 열에 둔다). 가방 드롭 영역 참조가 하나만 있도록 한 곳에만 그린다.
+  const [isMd, setIsMd] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const f = () => setIsMd(mq.matches);
+    f();
+    mq.addEventListener('change', f);
+    return () => mq.removeEventListener('change', f);
+  }, []);
+
   // ── 사용법 시범: 화면에 들어오면 지폐 한 장이 시설로 끌려가는 모습을 먼저 보여 준다 ──
   // 지폐를 직접 끌기 시작하거나 한 장이라도 쓰면 멈춘다. 최대 3번만 보여 준다. 동작 줄이기 설정에서는 보이지 않는다.
   const billStackRef = useRef<HTMLDivElement>(null);
@@ -1022,6 +1032,23 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       setLightningStrikes(prev => prev.filter(strike => strike.id !== id));
     }, 600);
   };
+
+  // 내 가방(저축 드롭 영역): 지폐 아래에 둔다. 좁은 화면에서는 예전 자리(오른쪽)에 둔다.
+  const renderBag = (inline: boolean) => (
+    <div
+      ref={el => { dropZoneRefs.current['mybag'] = el; }}
+      className={`${inline ? 'w-56' : 'ml-auto w-56 md:w-80'} flex flex-col items-center justify-end gap-2 transition-all duration-300 select-none pointer-events-auto cursor-pointer ${hoveredDropZone === 'mybag' ? 'scale-110 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)]' : ''}`}
+      draggable={false}
+    >
+      <img
+        src={hoveredDropZone === 'mybag' ? '/spend/my_bag_open.webp' : '/spend/my_bag.webp'}
+        alt="내 가방"
+        draggable={false}
+        className={`${inline ? 'h-28' : 'h-32'} w-auto drop-shadow-xl pointer-events-none transition-all`}
+      />
+      <div className="font-bold text-amber-200 text-lg z-10 bg-black/50 px-4 py-2 rounded pointer-events-none opacity-0 select-none">내 가방</div>
+    </div>
+  );
 
   // Render draggable bills
   const renderBills = (inline = false) => {
@@ -1698,6 +1725,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
               지폐를 끌어서 시설에 놓으세요
             </motion.div>
             {renderBills(true)}
+            {isMd && renderBag(true)}
           </div>
           <FacilityWheel
             items={FACILITIES}
@@ -1881,20 +1909,8 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             )}
           </AnimatePresence>
 
-          {/* My Bag (Right) */}
-          <div 
-            ref={el => { dropZoneRefs.current['mybag'] = el; }}
-            className={`ml-auto w-56 md:w-80 flex flex-col items-center justify-end gap-2 transition-all duration-300 select-none pointer-events-auto cursor-pointer ${hoveredDropZone === 'mybag' ? 'scale-110 drop-shadow-[0_0_20px_rgba(245,158,11,0.8)]' : ''}`}
-            draggable={false}
-          >
-          <img 
-            src={hoveredDropZone === 'mybag' ? '/spend/my_bag_open.webp' : '/spend/my_bag.webp'} 
-            alt="My Bag" 
-            draggable={false}
-            className="h-32 w-auto drop-shadow-xl pointer-events-none transition-all"
-          />
-          <div className="font-bold text-amber-200 text-lg z-10 bg-black/50 px-4 py-2 rounded pointer-events-none opacity-0 select-none">내 가방</div>
-        </div>
+          {/* 내 가방: 좁은 화면에서만 예전 자리(오른쪽)에 둔다. 넓은 화면에서는 지폐 아래(왼쪽 열) */}
+          {!isMd && renderBag(false)}
       </div>
 
       {/* Inventory Area */}
