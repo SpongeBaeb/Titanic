@@ -31,7 +31,7 @@ float fbm(vec2 p){ float v = 0., a = .5; for(int i = 0; i < 4; i++){ v += a * no
 
 vec3 skyCol(vec3 d, float t){
   float h = clamp(d.y / .06, 0., 1.);
-  vec3 hor = vec3(.99, .68, .45), mid = vec3(.58, .60, .74), top = vec3(.15, .24, .47);
+  vec3 hor = vec3(.98, .66, .36), mid = vec3(.52, .54, .64), top = vec3(.17, .28, .50);
   vec3 c = mix(hor, mid, smoothstep(0., .3, h));
   c = mix(c, top, smoothstep(.22, 1., h));
   float sd = max(dot(d, SUN), 0.);
@@ -150,9 +150,13 @@ void main(){
     float fres = pow(1. - max(dot(-rd, n), 0.), 5.);
     float F = .05 + .95 * fres;
     vec3 refl = skyCol(rr, t);
-    vec3 deep = mix(vec3(.05, .14, .17), vec3(.02, .07, .10), clamp(tW / 900., 0., 1.));
-    deep *= .6 + .6 * max(dot(n, SUN), 0.);
-    col = mix(deep, refl, clamp(F * 1.1, 0., 1.));
+    // 바다 색은 Q5 갑판의 바다와 같다: 청록 바탕에 하늘 반사가 얇게 얹힌다
+    vec3 deep = mix(vec3(.08, .24, .27), vec3(.03, .12, .16), smoothstep(0., 700., tW));
+    col = deep + refl * (.12 + .32 * F);
+    float swell = sin(pw.x * .11 + pw.z * .07 + t * 1.5) * .5 + sin(pw.x * .2 - pw.z * .13 - t * 2.) * .5;
+    col *= 1. + swell * .12;
+    // Q5 바다처럼 금빛 잔물결이 해 쪽에서 반짝인다
+    col += vec3(1., .80, .50) * smoothstep(.74, .97, noise(pw.xz * .12 + vec2(t * .8, -t * .5)) + swell * .1) * (.05 + .12 * pow(max(dot(rr, SUN), 0.), 6.));
     // 수면에 비친 고래
     if(uAct > .5){
       float tr = marchWhale(pw + n * .05, rr);
