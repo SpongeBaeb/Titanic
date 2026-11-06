@@ -103,6 +103,17 @@ vec3 sky(vec2 p){
     c = mix(gold, night, uNight);
   }
   c = mix(c, vec3(1., .55, .30), uDawn * exp(-h * 5.5) * .85);
+  // 구름: 천천히 흘러가는 얇은 구름 띠. 노을에는 해 쪽 가장자리가 주황으로 빛나고, 밤에는 어둡고 푸르다
+  vec2 cp = vec2(p.x * .0042 + uTime * .005, p.y * .0105);
+  float cn = fbm(cp * 1.3 + 4.);
+  float cn2 = fbm(cp * 2.7 + vec2(9., uTime * .008));
+  float dens = smoothstep(.50, .76, cn * .72 + cn2 * .38);
+  dens *= smoothstep(.02, .14, h) * (1. - .55 * smoothstep(.55, .95, h));
+  float edge = clamp((cn - fbm(cp * 1.3 + 4. + vec2(.06, -.07))) * 10. + .5, 0., 1.);
+  vec3 cLit = mix(vec3(1., .60, .34), vec3(.96, .74, .66), smoothstep(0., .4, h));
+  vec3 ccol = mix(vec3(.34, .30, .44), cLit, .3 + .7 * edge);
+  ccol = mix(ccol, mix(vec3(.09, .11, .19), vec3(.22, .25, .38), edge), uNight);
+  c = mix(c, ccol, dens * .8);
   c *= mix(1., .55, uMilky * .5);
   // 별: 많고 또렷하게 반짝인다. 일부는 십자 빛줄기와 번지는 빛이 있는 큰 별이다
   float sc = 30.;
@@ -120,7 +131,7 @@ vec3 sky(vec2 p){
   float halo = smoothstep(.26, .0, d) * .30;
   float cross = smoothstep(.025, .0, abs(e2.x)) * smoothstep(.36, .0, abs(e2.y)) + smoothstep(.025, .0, abs(e2.y)) * smoothstep(.36, .0, abs(e2.x));
   st += big * (halo + cross * .7) * (.4 + .6 * tw2) * bright * 1.3;
-  c += mix(vec3(.85, .9, 1.), vec3(1., .9, .75), hash(id + 11.)) * st;
+  c += mix(vec3(.85, .9, 1.), vec3(1., .9, .75), hash(id + 11.)) * st * (1. - dens * .9);
   // 은하수
   float dd = (p.y - (.34 * p.x - 30.));
   float band = exp(-dd * dd / (2. * 80. * 80.));
