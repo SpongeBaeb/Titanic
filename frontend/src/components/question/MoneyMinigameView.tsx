@@ -926,7 +926,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       setBillsAvailable(prev => prev - 1);
       setSpentOn(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
       triggerVFX(id);
-      purserSay(billsAvailable === 1 ? purserLast(runIndex, false) : purserLine(id, spentOn[id] ?? 0), billsAvailable === 1 ? 'bow' : (spentOn[id] ?? 0) > 0 ? 'ledger' : 'stamp');
+      purserSay(billsAvailable === 1 ? purserLast(runIndex, false) : purserLine(id, spentOn[id] ?? 0), billsAvailable === 1 ? 'calc' : (spentOn[id] ?? 0) > 0 ? 'calc' : 'stamp');
     }
   };
 

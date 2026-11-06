@@ -2,15 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { playStamp } from '@/lib/synth';
+import { playStamp, playAbacus } from '@/lib/synth';
 
 /**
  * 오리 사무장: 돈 쓰기 단계의 안내자. 고지식하고 뻔뻔한 신사 말투로 지출마다 한마디 한다.
  * 낮 단계에서만 쓴다. 밤 장면에는 나오지 않는다(없다는 것 자체가 분위기를 바꾼다).
  * 좁은 화면에서는 자리가 없어 숨긴다.
  */
-const POSES = ['idle', 'greet', 'receive', 'ledger', 'stamp', 'point', 'refuse', 'shrug', 'bow'] as const;
+const POSES = ['idle', 'greet', 'receive', 'ledger', 'stamp', 'calc', 'point', 'refuse', 'shrug', 'bow'] as const;
 export type PurserPose = (typeof POSES)[number];
+/** 한 장짜리 그림이 있는 포즈 (stamp 와 calc 는 여러 컷이 이어진다) */
+const STILL_POSES = POSES.filter((p) => p !== 'stamp' && p !== 'calc');
+
+/** 주판 계산 컷: 0 근엄하게 훑어보다, 1 중얼거리며 튕기다, 2 흡족하게 웃는다. 손가락이 오가다 마지막에 흡족한 표정으로 멈춘다 */
+const CALC_ORDER = [0, 1, 0, 1, 2] as const;
+const CALC_AT = [0, 520, 980, 1480, 2150]; // ms
 
 /** 도장 찍기 애니메이션 컷 (순서대로: 들고 → 더 높이 → 장부로 내림 → 찍음) */
 const STAMP_FRAMES = [0, 1, 2, 3] as const;
@@ -23,6 +29,30 @@ const BUBBLE_H = Math.round((BUBBLE_W * 596) / 985);
 export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed = false, firing = false }: { line: string | null; lineKey: number; pose?: PurserPose; onPoke?: () => void; armed?: boolean; firing?: boolean }) {
   // 도장 포즈일 때는 정지 이미지 대신 4컷이 이어져 움직인다. 마지막 컷에서 "쿵" 소리와 함께 멈춘다.
   const [stampFrame, setStampFrame] = useState(0);
+  // 가만히 있을 때도 가끔 주판을 튕긴다 (대사가 없는 idle 에서만)
+  const [flick, setFlick] = useState(0);
+  useEffect(() => {
+    if (pose !== 'idle') return;
+    let t: ReturnType<typeof setTimeout>;
+    const next = () => { t = setTimeout(() => { setFlick((n) => n + 1); next(); }, 9000 + Math.random() * 6000); };
+    next();
+    return () => clearTimeout(t);
+  }, [pose]);
+  const [flickOn, setFlickOn] = useState(false);
+  useEffect(() => {
+    if (!flick) return;
+    setFlickOn(true);
+    const t = setTimeout(() => setFlickOn(false), 2700);
+    return () => clearTimeout(t);
+  }, [flick]);
+  const shown: PurserPose = pose === 'idle' && flickOn ? 'calc' : pose;
+  const [calcFrame, setCalcFrame] = useState(0);
+  useEffect(() => {
+    if (shown !== 'calc') return;
+    setCalcFrame(CALC_ORDER[0]);
+    const ts = CALC_AT.map((ms, i) => setTimeout(() => { setCalcFrame(CALC_ORDER[i]); if (i > 0) playAbacus(i === CALC_AT.length - 1); }, ms));
+    return () => ts.forEach(clearTimeout);
+  }, [shown, lineKey]);
   useEffect(() => {
     if (pose !== 'stamp') return;
     setStampFrame(0);
@@ -67,15 +97,27 @@ export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed
         className="pointer-events-auto relative z-10 cursor-pointer drop-shadow-[0_14px_16px_rgba(0,0,0,0.55)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-bright-brass"
         style={{ aspectRatio: '655 / 1114', height: 'min(46vh, 440px)' }}
       >
-        {POSES.map((p) => (
+        {STILL_POSES.map((p) => (
           <img
             key={p}
             src={`/spend/purser_${p}.webp`}
-            alt={p === pose && p !== 'stamp' ? '오리 사무장' : ''}
-            aria-hidden={p !== pose || p === 'stamp'}
+            alt={p === shown ? '오리 사무장' : ''}
+            aria-hidden={p !== shown}
             draggable={false}
             className="absolute inset-0 h-full w-full object-contain transition-opacity duration-200"
-            style={{ opacity: p === pose && p !== 'stamp' ? 1 : 0 }}
+            style={{ opacity: p === shown ? 1 : 0 }}
+          />
+        ))}
+        {/* 주판 컷: 컷 사이는 짧게 겹쳐 섞여서 끊겨 보이지 않는다 */}
+        {([0, 1, 2] as const).map((i) => (
+          <img
+            key={`calc-${i}`}
+            src={`/spend/purser_calc_${i}.webp`}
+            alt={shown === 'calc' && calcFrame === i ? '오리 사무장' : ''}
+            aria-hidden={!(shown === 'calc' && calcFrame === i)}
+            draggable={false}
+            className="absolute inset-0 h-full w-full object-contain transition-opacity duration-150"
+            style={{ opacity: shown === 'calc' && calcFrame === i ? 1 : 0 }}
           />
         ))}
         {STAMP_FRAMES.map((i) => (
@@ -138,7 +180,7 @@ const POKE = [
   '구명정 이야기라면 나중에 합시다. 아직 이르오.',
   '오리라서 놀랐소? 당신이 타임머신에서 내렸을 때만큼은 아닐 것이오.',
 ];
-const POKE_POSES: PurserPose[] = ['idle', 'shrug', 'refuse', 'point', 'ledger', 'greet'];
+const POKE_POSES: PurserPose[] = ['idle', 'shrug', 'refuse', 'point', 'ledger', 'greet', 'calc', 'calc'];
 
 // ── 눈치 ──────────────────────────────────────────────────────────
 // 오리는 아무것도 모르는 척하지만, 처음부터 어렴풋이 이상함을 느끼고, 항해를 거듭할수록 낌새를 챈다.

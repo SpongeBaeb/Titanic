@@ -586,3 +586,28 @@ export function playStamp() {
   n.connect(f).connect(ng).connect(c.destination);
   n.start(t);
 }
+
+
+/** 주판 알이 나무 막대에 부딪히는 소리. last 면 한 번에 몰아 치는 마무리 */
+export function playAbacus(last = false) {
+  const c = ctx();
+  if (!c) return;
+  const n = last ? 4 : 2;
+  for (let i = 0; i < n; i++) {
+    const t = c.currentTime + i * 0.055;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    const f = c.createBiquadFilter();
+    o.type = 'square';
+    o.frequency.setValueAtTime(1500 + Math.random() * 900, t);
+    o.frequency.exponentialRampToValueAtTime(700, t + 0.03);
+    f.type = 'bandpass';
+    f.frequency.value = 2100;
+    f.Q.value = 3;
+    g.gain.setValueAtTime(0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+    o.connect(f).connect(g).connect(c.destination);
+    o.start(t);
+    o.stop(t + 0.06);
+  }
+}
