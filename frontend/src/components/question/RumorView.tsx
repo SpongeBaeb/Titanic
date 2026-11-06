@@ -287,7 +287,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     ro.observe(root);
 
     const small = window.innerWidth < 700;
-    const COUNT = small ? 18 : 30; // 사람이 커졌으니 수는 줄인다 (내가 어디 있는지, 구역이 어디인지 보여야 한다)
+    const COUNT = small ? 26 : 50; // 배경이 넓어졌으니 군중을 다시 늘린다 (쓰러뜨리는 맛). 내 자리 고리와 구역 빛기둥이 있어 사람이 많아도 찾을 수 있다
     const pick = (): [number, number] => walk(300 + Math.random() * 1200, FLOOR_Y + 60 + Math.random() * (BOTTOM - FLOOR_Y - 90));
     const spawn = (anywhere: boolean): Agent => {
       let x: number; let y: number;
