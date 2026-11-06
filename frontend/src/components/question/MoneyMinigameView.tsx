@@ -501,7 +501,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   useEffect(() => () => { if (knifeTimer.current) clearTimeout(knifeTimer.current); }, []);
   // 개발 서버에서만: 브라우저 콘솔에서 위협을 시험할 수 있게 한다
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') (window as unknown as { __duck?: unknown }).__duck = { threat: () => onKnifeAtDuck() };
+    if (process.env.NODE_ENV === 'development') (window as unknown as { __duck?: unknown }).__duck = { threat: () => onKnifeAtDuck(), stamp: () => purserSay('도장 시험이오. 받았소.', 'stamp', 3500) };
   });
 
   const handleSouvenirDragEnd = (e: any, info: PanInfo, itemId: number) => {
@@ -875,7 +875,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       setBillsAvailable(prev => prev - 1);
       setSpentOn(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
       triggerVFX(id);
-      purserSay(billsAvailable === 1 ? purserLast(runIndex, false) : purserLine(id, spentOn[id] ?? 0), billsAvailable === 1 ? 'bow' : (spentOn[id] ?? 0) > 0 ? 'ledger' : 'receive');
+      purserSay(billsAvailable === 1 ? purserLast(runIndex, false) : purserLine(id, spentOn[id] ?? 0), billsAvailable === 1 ? 'bow' : (spentOn[id] ?? 0) > 0 ? 'ledger' : 'stamp');
     }
   };
 

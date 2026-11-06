@@ -90,16 +90,23 @@ vec3 sky(vec2 p){
   c = mix(c, vec3(.95, .58, .44), exp(-h * 11.) * (.2 + .6 * smoothstep(250., 900., p.x)));
   c = mix(c, vec3(1., .55, .30), uDawn * exp(-h * 5.5) * .85);
   c *= mix(1., .55, uMilky * .5);
-  // 별
-  float sc = 36.;
+  // 별: 많고 또렷하게 반짝인다. 일부는 십자 빛줄기와 번지는 빛이 있는 큰 별이다
+  float sc = 30.;
   vec2 g = p / sc, id = floor(g), f = fract(g) - .5;
   float r = hash(id);
-  float on = step(.935 - uStar * .13, r);
+  float on = step(.90 - uStar * .12, r);
   vec2 off = (vec2(hash(id + 3.1), hash(id + 7.7)) - .5) * .6;
-  float d = length(f - off);
-  float tw = .65 + .35 * sin(uTime * (1. + r * 3.) + r * 40.);
-  float st = on * smoothstep(.10, .0, d) * tw * (.30 + uStar * 1.1) * (.25 + .75 * h);
-  c += vec3(.85, .9, 1.) * st;
+  vec2 e2 = f - off;
+  float d = length(e2);
+  float tw = .5 + .5 * sin(uTime * (1.3 + r * 4.) + r * 40.);
+  float tw2 = .5 + .5 * sin(uTime * (.7 + r * 2.) + r * 17.);
+  float bright = (0.85 + uStar * 1.1) * (.45 + .55 * h);
+  float st = on * smoothstep(.10, .0, d) * (.35 + .65 * tw) * bright;
+  float big = step(.975, r);
+  float halo = smoothstep(.26, .0, d) * .30;
+  float cross = smoothstep(.025, .0, abs(e2.x)) * smoothstep(.36, .0, abs(e2.y)) + smoothstep(.025, .0, abs(e2.y)) * smoothstep(.36, .0, abs(e2.x));
+  st += big * (halo + cross * .7) * (.4 + .6 * tw2) * bright * 1.3;
+  c += mix(vec3(.85, .9, 1.), vec3(1., .9, .75), hash(id + 11.)) * st;
   // 은하수
   float dd = (p.y - (.34 * p.x - 30.));
   float band = exp(-dd * dd / (2. * 80. * 80.));
@@ -115,9 +122,9 @@ vec3 sea(vec2 p){
   vec2 q = vec2((p.x - 688.) * persp * .004, persp * 1.2);
   float amp = mix(1., .05, uCalm);
   float h = 0.;
-  h += sin(q.x * 7. + q.y * 3. + uTime * .8) * .5;
-  h += sin(q.x * 13. - q.y * 5. + uTime * 1.1 + 1.7) * .3;
-  h += (noise(q * 9. + vec2(uTime * .3, uTime * .2)) - .5) * .5;
+  h += sin(q.x * 7. + q.y * 3. + uTime * 1.2) * .55;
+  h += sin(q.x * 13. - q.y * 5. + uTime * 1.7 + 1.7) * .38;
+  h += (noise(q * 9. + vec2(uTime * .5, uTime * .32)) - .5) * .6;
   h *= amp;
   float rh = 0.;
   for(int i = 0; i < 4; i++){
@@ -131,12 +138,21 @@ vec3 sea(vec2 p){
   h += rh;
   vec3 deepFar = vec3(.20, .24, .31), deepNear = vec3(.08, .14, .21);
   vec3 base = mix(deepFar, deepNear, smoothstep(0., 170., d));
-  vec2 pr = vec2(p.x + h * 16., HY - d * .85 + h * 9.);
+  vec2 pr = vec2(p.x + h * 38., HY - d * .85 + h * 20.);
   vec3 refl = sky(pr);
   float fres = pow(1. - clamp(d / 280., 0., 1.), 1.4) * .75 + .16;
-  vec3 col = base + refl * fres * (.55 + uCalm * .45);
+  vec3 col = base + refl * fres * (.40 + uCalm * .30);
   float glint = smoothstep(.55, .95, h + rh * 1.5) * (.12 + uStar * .1);
   col += vec3(.9, .8, .6) * glint;
+  // 눈에 띄게 일렁이는 큰 너울과 물결선: 밝고 어두운 띠가 천천히 밀려온다
+  float swell = sin(q.x * 3.4 + q.y * 2.1 + uTime * 1.5) * .5 + sin(q.x * 6.3 - q.y * 3.6 - uTime * 2.0) * .5;
+  col *= 1. + swell * .13 * amp * (.5 + .5 * smoothstep(0., 140., d));
+  float lines = smoothstep(.62, 1., sin(q.y * 26. + h * 6. + uTime * 2.2) * .5 + .5);
+  col += mix(vec3(.45, .6, .9), vec3(.95, .72, .55), .2 + .6 * smoothstep(250., 900., p.x)) * lines * .035 * amp * exp(-d * .006);
+  // 일렁이는 물결 위로 반짝이는 잔빛: 해 진 수평선 쪽(오른쪽)이 더 붉고, 가까울수록 어둡게 사그라든다
+  float gl2 = smoothstep(.74, .97, noise(q * 14. + vec2(uTime * .8, -uTime * .5)) + h * .28);
+  vec3 gcol = mix(vec3(.62, .76, 1.), vec3(1., .82, .64), .25 + .75 * smoothstep(250., 900., p.x));
+  col += gcol * gl2 * (.025 + .10 * exp(-d * .011)) * (.6 + .4 * (1. - uCalm));
   col += vec3(.7, .85, 1.) * rh * .22 * exp(-d * .004);
   col += uGlowCol * uGlow * exp(-d * .005) * (.35 + .65 * noise(q * 6. + uTime * .5));
   col = mix(col, col * vec3(1.15, .92, .78) + vec3(.07, .03, 0.), uDawn * .55);
@@ -290,7 +306,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
     try {
       // 개발용: 주소에 ?nogl 을 붙이면 WebGL 없이 그림 한 장으로 대신하는 경로를 시험할 수 있다
       const forceNoGL = process.env.NODE_ENV === 'development' && new URLSearchParams(window.location.search).has('nogl');
-      gl = forceNoGL ? null : glCanvas.getContext('webgl2', { antialias: false, alpha: false });
+      gl = forceNoGL ? null : glCanvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: process.env.NODE_ENV === 'development' });
       if (forceNoGL) setNoGL(true);
       else if (gl) {
         const mk = (type: number, src: string) => {
@@ -501,10 +517,11 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
           cur.star = 0.2 * smooth(0, 3, e);
           cur.dawn = 0.18 * smooth(0, 2, e);
         } else if (phase === 'stability') {
-          const z = smooth(0.2, 3.2, e);
-          view.cx = 688; view.cy = 150; view.zoom = lerp(1, 1.55, z);
-          fgA = 1 - smooth(0.2, 2.2, e);
-          fgY = smooth(0.2, 2.4, e) * vh * 0.2;
+          // 고개를 드는 연출: 갑판은 아래로 완전히 밀려 나가고, 하늘이 올라온다 (사진이 잘려 보이지 않도록 흐리게 지우지 않는다)
+          const z = smooth(0.2, 3.4, e);
+          view.cx = 688; view.cy = 130; view.zoom = lerp(1, 1.45, z);
+          fgA = 1;
+          fgY = smooth(0.15, 2.7, e) * (vh + 140);
           cur.star = smooth(0.2, 2.6, e);
           cur.milky = 0.9 * smooth(0.6, 3.6, e);
           cur.calm = lerp(0.55, 1, smooth(0, 2, e));
@@ -663,7 +680,9 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       cancelAnimationFrame(raf);
       ro.disconnect();
       glCanvas.removeEventListener('webglcontextlost', onLost);
-      if (gl) gl.getExtension('WEBGL_lose_context')?.loseContext();
+      // 컨텍스트를 강제로 닫지 않는다: 개발 모드의 Strict Mode 가 같은 캔버스로 효과를 두 번 실행하는데,
+      // 닫아 버리면 두 번째 실행이 죽은 컨텍스트를 받아 늘 대체 경로로 떨어진다. 프로그램만 지운다.
+      if (gl && prog) gl.deleteProgram(prog);
     };
   }, [reduce]);
 
@@ -790,7 +809,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
 
       {/* 위쪽: 진행과 질문 */}
       <motion.div
-        className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-slate-950/80 via-slate-950/35 to-transparent px-6 pb-14 pt-12"
+        className="pointer-events-none absolute inset-x-0 top-0 z-30 bg-gradient-to-b from-slate-950/55 via-slate-950/20 to-transparent px-6 pb-14 pt-12"
         animate={{ opacity: chosen ? 0 : hovered ? 0.4 : 1 }}
         transition={{ duration: 0.6 }}
       >

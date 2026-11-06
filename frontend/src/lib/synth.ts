@@ -560,3 +560,29 @@ export function playFadingHeartbeat() {
     o.stop(at + 0.3);
   });
 }
+
+/** 장부에 도장을 찍는 소리: 짧고 묵직한 "쿵" + 종이 스치는 소리 */
+export function playStamp() {
+  const c = ctx();
+  if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(190, t);
+  o.frequency.exponentialRampToValueAtTime(55, t + 0.14);
+  g.gain.setValueAtTime(0.28, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  o.connect(g).connect(c.destination);
+  o.start(t);
+  o.stop(t + 0.22);
+  const n = noise(c, 0.1);
+  const f = c.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = 1800;
+  const ng = c.createGain();
+  ng.gain.setValueAtTime(0.1, t);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+  n.connect(f).connect(ng).connect(c.destination);
+  n.start(t);
+}

@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { playStamp } from '@/lib/synth';
 
 /**
  * 오리 사무장: 돈 쓰기 단계의 안내자. 고지식하고 뻔뻔한 신사 말투로 지출마다 한마디 한다.
@@ -10,7 +12,20 @@ import { AnimatePresence, motion } from 'framer-motion';
 const POSES = ['idle', 'greet', 'receive', 'ledger', 'stamp', 'point', 'refuse', 'shrug', 'bow'] as const;
 export type PurserPose = (typeof POSES)[number];
 
+/** 도장 찍기 애니메이션 컷 (순서대로: 들고 → 더 높이 → 장부로 내림 → 찍음) */
+const STAMP_FRAMES = [0, 1, 2, 3] as const;
+const STAMP_AT = [0, 150, 310, 470]; // 각 컷이 나타나는 시각(ms)
+
 export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed = false, firing = false }: { line: string | null; lineKey: number; pose?: PurserPose; onPoke?: () => void; armed?: boolean; firing?: boolean }) {
+  // 도장 포즈일 때는 정지 이미지 대신 4컷이 이어져 움직인다. 마지막 컷에서 "쿵" 소리와 함께 멈춘다.
+  const [stampFrame, setStampFrame] = useState(0);
+  useEffect(() => {
+    if (pose !== 'stamp') return;
+    setStampFrame(0);
+    const ts = STAMP_AT.map((ms, i) => setTimeout(() => { setStampFrame(i); if (i === STAMP_FRAMES.length - 1) playStamp(); }, ms));
+    return () => ts.forEach(clearTimeout);
+  }, [pose, lineKey]);
+
   return (
     <div data-duck className="pointer-events-none relative hidden shrink-0 flex-col items-center md:flex">
       <AnimatePresence mode="wait">
@@ -48,11 +63,22 @@ export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed
           <img
             key={p}
             src={`/spend/purser_${p}.webp`}
-            alt={p === pose ? '오리 사무장' : ''}
-            aria-hidden={p !== pose}
+            alt={p === pose && p !== 'stamp' ? '오리 사무장' : ''}
+            aria-hidden={p !== pose || p === 'stamp'}
             draggable={false}
             className="absolute inset-0 h-full w-full object-contain transition-opacity duration-200"
-            style={{ opacity: p === pose ? 1 : 0 }}
+            style={{ opacity: p === pose && p !== 'stamp' ? 1 : 0 }}
+          />
+        ))}
+        {STAMP_FRAMES.map((i) => (
+          <img
+            key={`stamp-${i}`}
+            src={`/spend/purser_stamp_${i}.webp`}
+            alt={pose === 'stamp' && stampFrame === i ? '오리 사무장' : ''}
+            aria-hidden={!(pose === 'stamp' && stampFrame === i)}
+            draggable={false}
+            className="absolute inset-0 h-full w-full object-contain"
+            style={{ opacity: pose === 'stamp' && stampFrame === i ? 1 : 0 }}
           />
         ))}
         {/* 권총: 아직 그림이 없어서 코드로 그린 임시 소품이다(정식 포즈 시트가 오면 교체한다) */}
