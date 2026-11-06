@@ -29,18 +29,18 @@ const WATER_Y = 503; // 고래가 솟는 수면
 
 interface Spot { x: number; y: number; w: number; h: number; ax: number; ay: number }
 const SPOTS: Record<string, Spot> = {
-  experience: { x: 130, y: 530, w: 150, h: 120, ax: 205, ay: 595 }, // 앞쪽 벤치 왼쪽 (샴페인)
+  experience: { x: 590, y: 500, w: 130, h: 170, ax: 650, ay: 600 }, // 앞쪽 벤치 왼쪽 (샴페인)
   stability: { x: 262, y: 486, w: 120, h: 90, ax: 322, ay: 540 }, // 앞쪽 벤치 오른쪽 (별자리 도감)
-  change: { x: 688, y: 452, w: 215, h: 255, ax: 797, ay: 585 }, // 난간 앞 갑판 (망원경)
+  change: { x: 738, y: 440, w: 215, h: 245, ax: 840, ay: 590 }, // 난간 앞 갑판 (망원경)
 };
 /**
  * 선택지 물건은 배경과 따로 그린 그림(투명 배경)이다. 그림이 아직 없으면 보이지 않고 빛과 눌리는 자리만 남는다.
  * foot: 물건이 바닥에 닿는 점(1376x768 기준), h: 높이.
  */
-const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number }> = {
-  experience: { src: '/q5/obj_champagne.webp', foot: [205, 612], h: 80 },
+const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number; flip?: boolean }> = {
+  experience: { src: '/q5/obj_champagne.webp', foot: [650, 660], h: 165 },
   stability: { src: '/q5/obj_atlas.webp', foot: [322, 556], h: 34 },
-  change: { src: '/q5/obj_telescope.webp', foot: [797, 692], h: 225 },
+  change: { src: '/q5/obj_telescope.webp', foot: [840, 672], h: 225, flip: true },
 };
 const ORDER = ['experience', 'stability', 'change'] as const;
 type Choice = (typeof ORDER)[number];
@@ -108,13 +108,13 @@ vec3 sky(vec2 p){
   float sc = 30.;
   vec2 g = p / sc, id = floor(g), f = fract(g) - .5;
   float r = hash(id);
-  float on = step(.90 - uStar * .12, r);
+  float on = step(.86 - uStar * .12, r);
   vec2 off = (vec2(hash(id + 3.1), hash(id + 7.7)) - .5) * .6;
   vec2 e2 = f - off;
   float d = length(e2);
   float tw = .5 + .5 * sin(uTime * (1.3 + r * 4.) + r * 40.);
   float tw2 = .5 + .5 * sin(uTime * (.7 + r * 2.) + r * 17.);
-  float bright = (0.85 + uStar * 1.1) * (.45 + .55 * h) * uNight;
+  float bright = (0.85 + uStar * 1.1) * (.45 + .55 * h) * mix(.7 * smoothstep(.22, .6, h), 1., uNight);
   float st = on * smoothstep(.10, .0, d) * (.35 + .65 * tw) * bright;
   float big = step(.975, r);
   float halo = smoothstep(.26, .0, d) * .30;
@@ -795,7 +795,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
               draggable={false}
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
               className="pointer-events-none absolute max-w-none"
-              style={{ left: o.foot[0], top: o.foot[1], height: o.h, transform: `translate(-50%, -100%) scale(${on ? 1.04 : 1})`, transformOrigin: '50% 100%', transition: 'transform 0.4s, filter 0.4s', filter: on ? 'sepia(0.3) saturate(1.2) brightness(1.28) drop-shadow(0 0 14px rgba(255,214,140,0.55))' : 'sepia(0.3) saturate(1.2) brightness(1.02)' }}
+              style={{ left: o.foot[0], top: o.foot[1], height: o.h, transform: `translate(-50%, -100%) scale(${o.flip ? -1 : 1}, 1) scale(${on ? 1.04 : 1})`, transformOrigin: '50% 100%', transition: 'transform 0.4s, filter 0.4s', filter: on ? 'sepia(0.3) saturate(1.2) brightness(1.28) drop-shadow(0 0 14px rgba(255,214,140,0.55))' : 'sepia(0.3) saturate(1.2) brightness(1.02)' }}
             />
           );
         })}
