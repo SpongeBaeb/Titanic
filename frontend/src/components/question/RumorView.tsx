@@ -29,7 +29,7 @@ const GOAL = DOOR;
 /** 갑판 바닥의 오른쪽 끝(난간 안쪽). 이보다 오른쪽은 바다다 */
 const xMax = (y: number) => Math.min(1500, 1150 + 0.573 * (y - 600));
 /** 걸을 수 있는 곳으로 밀어 넣는다 (왼쪽 위의 환기구 상자와 난간 밖 바다는 제외) */
-function walk(x: number, y: number, bottom = IMG.h - 20): [number, number] {
+function walk(x: number, y: number, bottom = BOTTOM): [number, number] {
   const yy = clamp(y, FLOOR_Y + 20, bottom);
   const minX = yy < 735 ? 285 : 30;
   return [clamp(x, minX, xMax(yy) - 10), yy];
@@ -54,13 +54,27 @@ const RUMORS = [
   '선장은 이미 알고 있었대.',
 ];
 
-const depth = (y: number) => Math.min(1.4, Math.max(0.45, 0.45 + 0.95 * ((y - 540) / (IMG.h - 540))));
+/**
+ * 원근: 난간 기둥을 기준으로 삼는다. crash.webp 에서 난간 기둥의 높이는 바닥에 닿는 y 가 내려갈수록 거의 일정한 비율로
+ * 커진다(대략 (y-520)*0.79: 먼 끝 y≈545 에서 30px, y≈750 에서 190px, y≈1010 에서 370px). 사람은 난간(약 1m)보다 크므로
+ * 키는 같은 y 의 난간 높이에 비례해 (y-495) 로 잡는다. 화면 가까이(아래)일수록 훨씬 크고, 멀수록 작아진다.
+ */
+const personH = (y: number) => Math.max(40, y - 495);
+/** 예전 기준(키 110px)에 대한 배율: 걸음 속도, 간격 같은 값에 곱한다 */
+const depth = (y: number) => personH(y) / 110;
+/** 구역 표시(바닥의 원)와 이름 글자 크기에 쓰는 완만한 배율 */
+const zs = (y: number) => Math.min(1.3, Math.max(0.6, personH(y) / 200));
+/** 사람이 서 있을 수 있는 가장 아래쪽 (이보다 아래는 너무 커진다) */
+const BOTTOM = 930;
+/** 부딪혀 쓰러진 사람들이 하는 말 */
+const OUCH = ['아야!', '밀지 마세요!', '조심해요!', '어디 보고 다니는 거요!', '제발 진정해요!', '내 모자!', '아이가 있어요!', '무슨 짓이오!', '왜 뛰는 거요?', '아이고 허리야…', '이러다 다 넘어져요!', '다들 침착해요!'];
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 interface Agent {
   x: number; y: number; vx: number; vy: number;
   speed: number; phase: number; kind: number; // kind: 0 남자 1 여자 2 중절모 3 아이
   mill: boolean; tx: number; ty: number; a: number; wait: number; enter: boolean; sp: number;
+  down: number; downT: number; dir: number; say: string; sayT: number; delay: number;
 }
 interface Phrase { agent: number; text: string; gen: number; age: number; life: number; src: number }
 
@@ -198,22 +212,38 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
 
     const small = window.innerWidth < 700;
     const COUNT = small ? 42 : 76;
-    const pick = (): [number, number] => walk(340 + Math.random() * 760, FLOOR_Y + 60 + Math.random() * 420);
+    const pick = (): [number, number] => walk(340 + Math.random() * 760, FLOOR_Y + 60 + Math.random() * (BOTTOM - FLOOR_Y - 90));
     const spawn = (anywhere: boolean): Agent => {
       let x: number; let y: number;
       if (anywhere) { [x, y] = pick(); }
-      else { y = IMG.h + 40; x = 250 + Math.random() * 950; }
+      else { y = BOTTOM + 30; x = 250 + Math.random() * 950; }
       // 대부분은 갑판에서 서성이고, 일부만 선내로 들어간다 (충돌 직후에는 구명정으로 달려가지 않았다)
       const mill = Math.random() < 0.7;
       const [tx, ty] = mill ? pick() : [DOOR.x, DOOR.y];
       return {
         x, y, vx: 0, vy: 0, speed: mill ? 24 + Math.random() * 18 : 48 + Math.random() * 26, phase: Math.random() * 6.28,
         kind: Math.floor(Math.random() * 4), sp: Math.floor(Math.random() * 8), mill, tx, ty, a: anywhere ? 1 : 0, wait: Math.random() * 3, enter: false,
+        down: 0, downT: 0, dir: 1, say: '', sayT: 0, delay: 0,
       };
     };
     const agents: Agent[] = Array.from({ length: COUNT }, () => spawn(true));
     const phrases: Phrase[] = [];
-    const me = { x: 900, y: 930, phase: 0, moving: 0 };
+    const me = { x: 900, y: 880, phase: 0, moving: 0 };
+    // 빨리 움직여서 사람들에게 부딪히면 쓰러지고 한마디 한다. 여러 명이 연달아 쓰러지면 주변 군중이 줄줄이 넘어진다.
+    const knocks: number[] = [];
+    let waveCool = 0;
+    let officerSay: { text: string; until: number } | null = null;
+    let lastThud = 0;
+    const knock = (a: Agent, dxFromMe: number, now: number) => {
+      if (a.down > 0 || a.enter) return;
+      a.down = a.downT = 1.8;
+      a.dir = dxFromMe >= 0 ? 1 : -1;
+      a.vx = a.dir * personH(a.y) * 1.6;
+      a.vy = (Math.random() - 0.5) * personH(a.y) * 0.5;
+      a.say = OUCH[Math.floor(Math.random() * OUCH.length)];
+      a.sayT = 2.3;
+      if (now - lastThud > 220) { lastThud = now; playThud(); }
+    };
     const cam = { ox: 0 };
     const dwell: Record<string, number> = {};
     if (process.env.NODE_ENV === 'development') (window as unknown as { __rumor?: unknown }).__rumor = { me, dwell, target, agents };
@@ -263,6 +293,16 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       const crowdA = clamp((e - 4.4) / 1.4, 0, 1); // 정적 뒤 군중이 나타난다
       for (let i = 0; i < agents.length; i++) {
         const a = agents[i];
+        if (a.sayT > 0) a.sayT -= dt;
+        if (a.delay > 0) { a.delay -= dt; if (a.delay <= 0) knock(a, a.x - me.x, now); }
+        if (a.down > 0) {
+          // 쓰러져 있는 동안: 밀려난 방향으로 미끄러지다가 멈추고, 마지막에 일어난다
+          a.down -= dt;
+          a.x += a.vx * dt; a.y += a.vy * dt;
+          a.vx *= Math.max(0, 1 - dt * 4); a.vy *= Math.max(0, 1 - dt * 4);
+          const [wx, wy] = walk(a.x, a.y, BOTTOM + 80); a.x = wx; a.y = wy;
+          continue;
+        }
         if (a.enter) a.a -= dt * 1.4; else a.a = Math.min(crowdA, a.a + dt * 0.8);
         let dx = a.tx - a.x; let dy = a.ty - a.y;
         const dist = Math.hypot(dx, dy) || 1;
@@ -283,7 +323,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         a.vy += ((dy + sy * 0.9) * sp * 0.6 - a.vy) * Math.min(1, dt * 2.2);
         a.x += a.vx * dt; a.y += a.vy * dt;
         a.phase += dt * (3 + Math.hypot(a.vx, a.vy) * 0.03);
-        if (a.y <= IMG.h - 10) { const [wx, wy] = walk(a.x, a.y, IMG.h + 50); a.x = wx; a.y = wy; }
+        if (a.y <= BOTTOM + 70) { const [wx, wy] = walk(a.x, a.y, BOTTOM + 80); a.x = wx; a.y = wy; }
         if (a.mill && dist < 30) { [a.tx, a.ty] = pick(); a.wait = 1 + Math.random() * 3.5; }
         if (!a.mill && !a.enter && dist < 40) a.enter = true; // 입구에 닿으면 안으로 들어간다
         if (a.enter && a.a <= 0) Object.assign(a, spawn(false));
@@ -292,7 +332,8 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       // 나: 마우스(터치)를 따라가지만 군중에 휩쓸린다
       const tgt = target.current;
       let density = 0;
-      for (const a of agents) if (Math.hypot(a.x - me.x, (a.y - me.y) * 1.4) < 95 * depth(me.y)) density++;
+      // 밀도: 몸 크기 안에 닿아 있는 사람 수 (원근으로 사람이 커졌으니 반경도 키에 맞춘다)
+      for (const a of agents) if (Math.hypot(a.x - me.x, (a.y - me.y) * 1.4) < 0.5 * personH(me.y)) density++;
       const fdx = GOAL.x - me.x; const fdy = GOAL.y - me.y; const fd = Math.hypot(fdx, fdy) || 1;
       const push = activeRef.current && !ch ? 60 * Math.min(1, density / 7) : 0;
       // 군중 속에서 가만히 있으면 커서 자체가 흐름에 실려 간다. 움직이는 동안에는 거스를 수 있지만 힘이 든다.
@@ -306,11 +347,34 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       me.moving = sp;
       me.phase += dt * (2 + Math.min(8, sp * 0.04));
 
+      // 달려서 부딪히면: 키의 1.4배/초 이상(군중 속에서 서두르는 속도)으로 사람에게 닿으면 그 사람이 쓰러진다
+      if (activeRef.current && !ch && sp > personH(me.y) * 1.4) {
+        for (const a of agents) {
+          if (a.down > 0 || a.delay > 0 || a.a < 0.5 || a.enter) continue;
+          const ddx = a.x - me.x; const ddy = (a.y - me.y) * 1.5; const rr = personH(Math.max(a.y, me.y)) * 0.3;
+          if (ddx * ddx + ddy * ddy < rr * rr) { knock(a, ddx, now); knocks.push(now); }
+        }
+      }
+      while (knocks.length && now - knocks[0] > 5000) knocks.shift();
+      if (waveCool > 0) waveCool -= dt;
+      if (knocks.length >= 5 && waveCool <= 0) {
+        // 연달아 여러 명이 쓰러지면 주변 사람들이 줄줄이 넘어진다
+        waveCool = 6;
+        knocks.length = 0;
+        for (const a of agents) {
+          if (a.down > 0 || a.enter || a.a < 0.4) continue;
+          const dd = Math.hypot(a.x - me.x, (a.y - me.y) * 1.5);
+          // 부딪힌 자리 근처(키의 1.3배 안)에서 대부분만 넘어진다: 군중 전체가 한꺼번에 쓰러지지는 않는다
+          if (dd < personH(me.y) * 1.3 && Math.random() < 0.75) a.delay = 0.12 + dd / 900 + Math.random() * 0.2;
+        }
+        officerSay = { text: '거기 당신! 뛰지 마시오!', until: now + 2800 };
+      }
+
       // 구역에 머무르기
       let nearest: Zone | null = null; let nearD = 1e9;
       for (const zn of ZONES) {
         const d = Math.hypot(me.x - zn.x, (me.y - zn.y) * 1.8);
-        const r = zn.r * depth(zn.y);
+        const r = zn.r * zs(zn.y);
         const inside = d < r;
         dwell[zn.key] = inside && activeRef.current && !ch ? (dwell[zn.key] ?? 0) + dt : Math.max(0, (dwell[zn.key] ?? 0) - dt * 1.6);
         if (d < nearD) { nearD = d; nearest = zn; }
@@ -377,7 +441,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       // 구역 표시: 바닥에 은은한 원. 가까이 가면 또렷해지고 머문 만큼 차오른다
       if (crowdA > 0.4) {
         for (const zn of ZONES) {
-          const dz = depth(zn.y);
+          const dz = zs(zn.y);
           const near = nearest === zn ? clamp(1 - nearD / (zn.r * dz * 3), 0, 1) : 0;
           const prog = clamp((dwell[zn.key] ?? 0) / DWELL, 0, 1);
           ctx.lineWidth = 2.2;
@@ -399,7 +463,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       if (ready(doorImg)) {
         const dd = depth(DOOR.y);
         ctx.globalAlpha = crowdA;
-        sprite(doorImg, DOOR.x, DOOR.y + 10, 170 * dd);
+        sprite(doorImg, DOOR.x, DOOR.y + 10, personH(DOOR.y) * 1.45);
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'lighter';
         const sp0 = ctx.createRadialGradient(DOOR.x, DOOR.y + 14, 0, DOOR.x, DOOR.y + 14, 120);
@@ -438,10 +502,28 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
           ctx.globalAlpha = a.a;
           const im = crowdImgs[a.sp];
           if (ready(im)) {
-            const h = im.naturalHeight * ((110 * depth(a.y)) / CROWD_REF);
-            sprite(im, a.x, a.y - Math.abs(Math.sin(a.phase)) * h * 0.012, h, a.vx < -1, Math.sin(a.phase) * 0.012);
-          } else figure(ctx, a.x, a.y, (a.kind === 3 ? 66 : 102) * depth(a.y), a.phase, a.kind, 'rgba(255,170,90,0.55)');
+            const h = im.naturalHeight * (personH(a.y) / CROWD_REF);
+            if (a.down > 0) {
+              // 쓰러지는 동작: 0.22초에 넘어지고, 마지막 0.45초에 일어난다
+              const t = a.downT - a.down;
+              const ease = (v: number) => v * v * (3 - 2 * v);
+              const ang = a.dir * 1.46 * ease(Math.min(1, t / 0.22)) * ease(Math.min(1, a.down / 0.45));
+              sprite(im, a.x, a.y, h, a.dir < 0, ang);
+            } else sprite(im, a.x, a.y - Math.abs(Math.sin(a.phase)) * h * 0.012, h, a.vx < -1, Math.sin(a.phase) * 0.012);
+          } else figure(ctx, a.x, a.y, (a.kind === 3 ? 0.6 : 0.93) * personH(a.y), a.phase, a.kind, 'rgba(255,170,90,0.55)');
           ctx.globalAlpha = 1;
+          // 쓰러진 사람의 한마디
+          if (a.sayT > 0 && a.say) {
+            const fs = 22 * clamp(depth(a.y), 0.9, 1.5);
+            ctx.font = `700 ${fs}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+            ctx.textAlign = 'center';
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.fillStyle = `rgba(255,236,200,${Math.min(1, a.sayT / 0.5)})`;
+            const ty = a.y - personH(a.y) * (a.down > 0 ? 0.55 : 1.15);
+            ctx.strokeText(a.say, a.x, ty);
+            ctx.fillText(a.say, a.x, ty);
+          }
         } });
       }
       // 승무원과 웅크린 사람들(고정)
@@ -465,6 +547,18 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         for (const [dx, k, h] of [[-26, 1, 84], [10, 0, 90], [40, 3, 58]] as const) {
           items.push({ y: 880 + dx * 0.02, draw: () => { ctx.globalAlpha = crowdA; figure(ctx, 330 + dx * 1.6, 880, h * depth(880), 0, k, 'rgba(255,170,90,0.45)'); ctx.globalAlpha = 1; } });
         }
+      }
+      if (officerSay && now < officerSay.until) {
+        const os = officerSay;
+        items.push({ y: 736, draw: () => {
+          ctx.font = `700 ${26 * clamp(depth(735), 1, 1.6)}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+          ctx.textAlign = 'center';
+          ctx.lineWidth = 6;
+          ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+          ctx.fillStyle = 'rgba(255,214,150,1)';
+          ctx.strokeText(os.text, 800, 735 - personH(735) * 1.45);
+          ctx.fillText(os.text, 800, 735 - personH(735) * 1.45);
+        } });
       }
       // 나: 따뜻한 윤곽으로 구분한다
       items.push({ y: me.y, draw: () => {
@@ -491,7 +585,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         const jit = Math.min(4, p.gen * 0.9) * (1 - near * 0.6);
         const size = (22 + near * 14) * clamp(dz, 0.85, 1.3);
         ctx.font = `600 ${size}px "Noto Serif KR", "Nanum Myeongjo", serif`;
-        const tx = a.x; const ty = a.y - 140 * dz - near * 10;
+        const tx = a.x; const ty = a.y - personH(a.y) * 1.12 - near * 10;
         for (let c2 = 0; c2 < 2; c2++) {
           const ox = (Math.sin(e * 7 + p.src + c2 * 2) * jit) * (c2 ? 1 : -1);
           const oy = Math.cos(e * 5.3 + c2) * jit * 0.6;
@@ -504,15 +598,15 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       }
 
       // 가까운 구역의 이름
-      if (activeRef.current && !ch && nearest && nearD < nearest.r * depth(nearest.y) * 3) {
+      if (activeRef.current && !ch && nearest && nearD < nearest.r * zs(nearest.y) * 3) {
         const opt = question.options.find((o) => o.value === nearest!.key);
         if (opt) {
-          const k = clamp(1 - nearD / (nearest.r * depth(nearest.y) * 3), 0, 1);
-          ctx.font = `600 ${24 * clamp(depth(nearest.y), 0.9, 1.2)}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+          const k = clamp(1 - nearD / (nearest.r * zs(nearest.y) * 3), 0, 1);
+          ctx.font = `600 ${26 * clamp(zs(nearest.y) + 0.2, 0.95, 1.3)}px "Noto Serif KR", "Nanum Myeongjo", serif`;
           ctx.fillStyle = `rgba(255,236,200,${0.25 + k * 0.7})`;
           ctx.shadowColor = 'rgba(0,0,0,0.95)';
           ctx.shadowBlur = 10;
-          ctx.fillText(opt.label.replace(/\.$/, ''), nearest.x, nearest.y - 150 * depth(nearest.y));
+          ctx.fillText(opt.label.replace(/\.$/, ''), nearest.x, nearest.y - personH(nearest.y) * 1.1 - 24);
           ctx.shadowBlur = 0;
         }
       }
