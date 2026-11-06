@@ -44,6 +44,10 @@ class SurvivalEngine:
         elif rumor == 'follow_crowd':
             score_modifier -= 5
 
+        # 1-b. 갑판에서 구명환을 챙긴 사람: 준비한 만큼 조금 유리하다
+        if answers.get('lifebuoy'):
+            score_modifier += 3
+
         # 2. finalAction modifier & persona assignment
         if final_action == 'yield_seat':
             score_modifier -= 15

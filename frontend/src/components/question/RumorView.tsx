@@ -18,7 +18,7 @@ import { playGlassRattle, startMurmur, playThud, type Murmur } from '@/lib/synth
  * 3) 클릭하지 않는다. 군중 속의 한 사람이 되어 움직이고, 한 곳에 머물면 그것이 선택이 된다.
  *    가만히 있으면 군중에 실려 "따라간다"에 닿는다. 거스르려면 힘이 든다.
  *
- * 카드로 고르기(키보드 1~4 포함)는 언제나 쓸 수 있다. 동작 줄이기 설정에서는 카드만 보여 준다.
+ * 키보드 1~4 로도 고를 수 있다. 동작 줄이기 설정에서는 카드만 보여 준다.
  */
 
 const IMG = { w: 1918, h: 820 }; // rumor_q6.webp (밤 갑판, 오른쪽에 빙산)
@@ -44,6 +44,8 @@ const ZONES: Zone[] = [
   { key: 'calm_others', x: 1380, y: 730, r: 125 }, // 갑판 왼쪽 아래, 웅크린 사람들
   { key: 'follow_crowd', x: DOOR.x, y: DOOR.y + 12, r: 105 }, // 선내로 들어가는 사람들을 따라간다
 ];
+/** 구명환을 챙겨 든 사람에게 군중이 하는 말 */
+const BUOY_QUIPS = ['벌써부터 구명환이라니?', '그건 수영장에서나 쓰는 거요.', '농담이죠? 구명환이라니.', '신중한 분이시군.', '저런 건 어디서 났대요?', '혹시 뭔가 아는 거 아니오?'];
 /** 바닥 구역 위에 항상 떠 있는 짧은 이름 */
 const SHORT: Record<string, string> = {
   calm_others: '진정시키기',
@@ -188,15 +190,20 @@ function figure(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, 
 interface RumorViewProps {
   question: Question;
   onAnswer: (value: string) => void;
+  extras?: Record<string, unknown>;
   onBack?: () => void;
 }
 
-export default function RumorView({ question, onAnswer, onBack }: RumorViewProps) {
+export default function RumorView({ question, onAnswer, onBack, extras }: RumorViewProps) {
+  const buoyRef = useRef(false); // Q5 에서 구명환을 챙겼는지
+  buoyRef.current = !!extras?.lifebuoy;
   const reduce = !!useReducedMotion();
   const [active, setActive] = useState(false);
   const [cardsOpen, setCardsOpen] = useState(reduce);
   const [chosen, setChosen] = useState<string | null>(null);
   const [title, setTitle] = useState(false);
+  const [focusKey, setFocusKey] = useState<string | null>(null); // 지금 올라서 있는 구역
+  const focusRef = useRef<string | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const cvRef = useRef<HTMLCanvasElement>(null);
@@ -254,6 +261,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     const bg = new Image();
     bg.src = '/bg/rumor_q6.webp';
     const loadImg = (src: string) => { const i = new Image(); i.src = src; return i; };
+    const buoyImg = loadImg('/q5/obj_lifebuoy.webp');
     const crowdImgs = Array.from({ length: 8 }, (_, k) => loadImg(`/q6/crowd_${k}.webp`));
     const officerImg = loadImg('/q6/officer_lantern.webp');
     const huddleImgs = [loadImg('/q6/huddle_0.webp'), loadImg('/q6/huddle_1.webp')];
@@ -332,6 +340,8 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     let lastMoveAt = performance.now();
     let phraseTimer = 0;
     let rumorIdx = 0;
+    // 구명환을 들고 있으면 사람들이 한마디씩 한다
+    const chatterAll = buoyRef.current ? [...CHATTER, ...BUOY_QUIPS, ...BUOY_QUIPS] : CHATTER;
     let chatTimer = 0;
     let chatBag: number[] = [];
 
@@ -417,7 +427,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       const push = activeRef.current && !ch ? 60 * Math.min(1, density / 7) : 0;
       // 군중 속에서 가만히 있으면 커서 자체가 흐름에 실려 간다. 움직이는 동안에는 거스를 수 있지만 힘이 든다.
       if (push > 0 && now - lastMoveAt > 900) { tgt.x += (fdx / fd) * push * 1.4 * dt; tgt.y += (fdy / fd) * push * 1.4 * dt * 0.6; }
-      const pullK = 3.4 / (1 + density * 0.12);
+      const pullK = (3.4 / (1 + density * 0.12)) * (buoyRef.current ? 0.8 : 1); // 구명환을 들고 있으면 조금 느리다
       const mx = me.x; const my = me.y;
       me.x += (tgt.x - me.x) * Math.min(1, dt * pullK) + (fdx / fd) * push * dt;
       me.y += (tgt.y - me.y) * Math.min(1, dt * pullK) + (fdy / fd) * push * dt * 0.6;
@@ -493,8 +503,8 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         if (cands.length) {
           cands.sort((k1, k2) => Math.hypot(agents[k1].x - me.x, agents[k1].y - me.y) - Math.hypot(agents[k2].x - me.x, agents[k2].y - me.y));
           const ai = cands[Math.floor(Math.pow(Math.random(), 1.6) * cands.length)];
-          if (!chatBag.length) chatBag = CHATTER.map((_, k) => k).sort(() => Math.random() - 0.5);
-          phrases.push({ agent: ai, text: CHATTER[chatBag.pop() as number], gen: 0, age: 0, life: 5.2, src: ai, chat: true });
+          if (!chatBag.length) chatBag = chatterAll.map((_, k) => k).sort(() => Math.random() - 0.5);
+          phrases.push({ agent: ai, text: chatterAll[chatBag.pop() as number], gen: 0, age: 0, life: 5.2, src: ai, chat: true });
         }
       }
       for (let i = phrases.length - 1; i >= 0; i--) { phrases[i].age += dt; if (phrases[i].age > phrases[i].life) phrases.splice(i, 1); }
@@ -643,7 +653,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
               if (lying.length && t > 0.16 && a.down > 0.42) {
                 // 누워 있는 그림: 너비가 키의 0.95배가 되도록 맞춘다
                 const fi = lying[a.fs % lying.length];
-                const lh = fi.naturalHeight * ((personH(a.y) * 0.95) / fi.naturalWidth);
+                const lh = fi.naturalHeight * ((personH(a.y) * 0.95) / 500); // 네 장의 몸 길이가 비슷하므로 같은 배율로 맞춘다 (가로 500px 기준)
                 sprite(fi, a.x, a.y + 4, lh, a.dir < 0);
               } else sprite(im, a.x, a.y, h, a.dir < 0, ang);
             } else sprite(im, a.x, a.y - Math.abs(Math.sin(a.phase)) * h * 0.012, h, a.vx < -1, Math.sin(a.phase) * 0.012);
@@ -667,7 +677,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       items.push({ y: CREW.y, draw: () => {
         ctx.globalAlpha = crowdA;
         if (ready(officerImg)) {
-          const h = 138 * depth(CREW.y);
+          const h = personH(CREW.y) * 1.0; // 군중과 같은 키 (예전 1.25배는 너무 컸다)
           sprite(officerImg, CREW.x, CREW.y, h);
           // 등불이 일렁인다
           const w = h * (officerImg.naturalWidth / officerImg.naturalHeight);
@@ -677,7 +687,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         ctx.globalAlpha = 1;
       } });
       if (ready(huddleImgs[0]) && ready(huddleImgs[1])) {
-        const k = (122 * depth(735)) / 480;
+        const k = (0.8 * personH(735)) / 460; // 웅크린 사람들은 선 사람보다 작게
         items.push({ y: 742, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[0], 1345, 742, huddleImgs[0].naturalHeight * k); ctx.globalAlpha = 1; } });
         items.push({ y: 734, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[1], 1450, 734, huddleImgs[1].naturalHeight * k); ctx.globalAlpha = 1; } });
       } else {
@@ -707,6 +717,11 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
           const facing = target.current.x < me.x - 4;
           sprite(mi, me.x, me.y - Math.abs(Math.sin(me.phase)) * h * 0.012, h, facing, Math.sin(me.phase) * 0.01, 'rgba(255,226,160,0.95)');
         } else figure(ctx, me.x, me.y, 116 * depth(me.y), me.phase, 2, 'rgba(255,225,160,0.95)', '#0d1018');
+        if (buoyRef.current && ready(buoyImg)) {
+          const bh = personH(me.y) * 0.5; const bw = buoyImg.naturalWidth * (bh / buoyImg.naturalHeight);
+          const facing = target.current.x < me.x - 4;
+          ctx.drawImage(buoyImg, me.x + (facing ? -1 : 1) * personH(me.y) * 0.18 - bw / 2, me.y - personH(me.y) * 0.62, bw, bh);
+        }
         ctx.globalAlpha = 1;
       } });
       items.sort((p, q) => p.y - q.y).forEach((it) => it.draw());
@@ -794,6 +809,36 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         ctx.fillText('나', me.x, my - fs * 0.78);
       }
 
+      // 구역 위에 올라서면 머리 위에 동그라미가 떠서 선택 중임을 알린다 (채워지면 선택된다)
+      {
+        const cz = ZONES.find((zn) => (dwell[zn.key] ?? 0) > 0.02) ?? (ch ? ZONES.find((zn) => zn.key === ch.key) : undefined);
+        const fk = cz && !ch ? cz.key : null;
+        if (focusRef.current !== fk) { focusRef.current = fk; setFocusKey(fk); }
+        if (cz && crowdA > 0.4) {
+          const prog = ch ? 1 : clamp((dwell[cz.key] ?? 0) / DWELL, 0, 1);
+          const sc = clamp(depth(me.y), 0.9, 1.5);
+          const R = 27 * sc;
+          const rx = me.x; const ry = me.y - personH(me.y) * 1.08 - 12 - 26 * sc - R - 14 + Math.sin(e * 4.2) * 3;
+          const num = question.options.findIndex((o) => o.value === cz.key) + 1;
+          ctx.save();
+          ctx.fillStyle = 'rgba(8,10,18,0.78)';
+          ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.fill();
+          ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(255,226,170,0.28)';
+          ctx.beginPath(); ctx.arc(rx, ry, R, 0, Math.PI * 2); ctx.stroke();
+          ctx.lineWidth = 7 * Math.min(1.2, sc); ctx.lineCap = 'round';
+          ctx.strokeStyle = prog >= 1 ? 'rgba(255,240,170,1)' : 'rgba(255,214,120,0.98)';
+          ctx.shadowColor = 'rgba(255,200,90,0.9)'; ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.arc(rx, ry, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog); ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.font = `800 ${R * 1.05}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(255,240,200,1)';
+          ctx.fillText(prog >= 1 ? '✓' : num > 0 ? String(num) : '·', rx, ry + 1);
+          ctx.textBaseline = 'alphabetic';
+          ctx.restore();
+        }
+      }
+
       // 가장자리 어둠과 붉은 맥박(소문의 불안)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const g = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.3, vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
@@ -871,7 +916,7 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       {!reduce && !chosen && (
         <motion.p
           initial={{ opacity: 0 }}
-          animate={{ opacity: active ? 0.85 : 0 }}
+          animate={{ opacity: active && !focusKey ? 0.85 : 0 }}
           transition={{ duration: 1.6, delay: 0.4 }}
           className="pointer-events-none absolute inset-x-0 bottom-16 z-30 px-6 text-center text-sm tracking-wide text-white/80 md:bottom-8"
           style={{ textShadow: '0 1px 10px #000' }}
@@ -880,16 +925,29 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         </motion.p>
       )}
 
-      {/* 카드로 고르기: 언제나 쓸 수 있다 */}
-      {!chosen && !reduce && (
-        <button
-          type="button"
-          onClick={() => setCardsOpen((v) => !v)}
-          className="absolute bottom-4 right-4 z-40 rounded-full border border-white/30 bg-black/55 px-4 py-1.5 text-sm text-white/85 backdrop-blur-sm transition-colors hover:border-amber-200/70 hover:text-amber-100"
-        >
-          {cardsOpen ? '닫기' : '카드로 고르기'}
-        </button>
-      )}
+      {/* 구역에 올라서면 어떤 행동을 하게 되는지 분명히 알려 준다 */}
+      <AnimatePresence>
+        {!reduce && !chosen && focusKey && (() => {
+          const o = question.options.find((q) => q.value === focusKey);
+          if (!o) return null;
+          const num = question.options.indexOf(o) + 1;
+          return (
+            <motion.div
+              key={focusKey}
+              initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.25 }}
+              className="pointer-events-none absolute inset-x-0 bottom-20 z-40 flex justify-center px-4 md:bottom-12"
+            >
+              <div className="max-w-xl rounded-2xl border border-amber-200/60 bg-black/80 px-6 py-4 text-center shadow-[0_0_30px_rgba(255,200,110,0.25)] backdrop-blur-sm">
+                <p className="font-title text-lg font-bold text-amber-100 md:text-xl"><span className="mr-2 text-amber-300">{num}</span>{o.label}</p>
+                {o.description && <p className="mt-1.5 text-sm leading-relaxed text-muted-ivory md:text-base">{o.description}</p>}
+                <p className="mt-2 text-xs tracking-wide text-amber-200/80">이대로 머무르면 이 행동을 하게 됩니다. 벗어나면 취소됩니다.</p>
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
       <AnimatePresence>
         {cardsOpen && !chosen && (
           <motion.div

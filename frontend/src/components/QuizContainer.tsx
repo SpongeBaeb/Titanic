@@ -278,6 +278,7 @@ export default function QuizContainer() {
           question={question}
           onAnswer={handleAnswer}
           onBack={() => back(scene.prev)}
+          extras={extras}
         />
       );
     }

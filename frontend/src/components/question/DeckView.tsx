@@ -42,6 +42,8 @@ const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number; 
   stability: { src: '/q5/obj_atlas.webp', foot: [322, 556], h: 34 },
   change: { src: '/q5/obj_telescope.webp', foot: [790, 708], h: 240, flip: true },
 };
+/** 난간에 걸린 구명환 (선택지가 아니라 챙길 수 있는 물건): 걸린 고리(위) 쪽이 아니라 아래 끝의 위치와 높이 */
+const BUOY = { foot: [1055, 668] as [number, number], h: 160 };
 const ORDER = ['experience', 'stability', 'change'] as const;
 type Choice = (typeof ORDER)[number];
 
@@ -210,7 +212,7 @@ interface Rocket { x: number; y: number; tx: number; ty: number; vy: number; col
 
 interface DeckViewProps {
   question: Question;
-  onAnswer: (value: string) => void;
+  onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   onBack?: () => void;
 }
 
@@ -219,6 +221,18 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
   const [hovered, setHovered] = useState<Choice | null>(null);
   const [chosen, setChosen] = useState<Choice | null>(null);
   const [noGL, setNoGL] = useState(false);
+  const [buoy, setBuoy] = useState(false); // 구명환을 챙겼는지
+  const buoyRef = useRef(false);
+  const [buoyMsg, setBuoyMsg] = useState(false);
+  const [buoyHover, setBuoyHover] = useState(false);
+  const takeBuoy = () => {
+    if (buoyRef.current || chosenRef.current) return;
+    buoyRef.current = true;
+    setBuoy(true);
+    setBuoyMsg(true);
+    playStarChime(5);
+    timers.current.push(setTimeout(() => setBuoyMsg(false), 3200));
+  };
   const [coarse, setCoarse] = useState(false);
   const [needPan, setNeedPan] = useState(false);
   const [watch, setWatch] = useState(false);
@@ -281,10 +295,10 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       if (Wd > vw) panTarget.current = clamp01(((v === 'change' ? 900 : 688) * sc - vw / 2) / (Wd - vw));
     }
     if (reduce) {
-      timers.current.push(setTimeout(() => onAnswer(v), 350));
+      timers.current.push(setTimeout(() => onAnswer(v, buoyRef.current ? { lifebuoy: true } : undefined), 350));
       return;
     }
-    timers.current.push(setTimeout(() => onAnswer(v), (DUR[v] + 0.3) * 1000));
+    timers.current.push(setTimeout(() => onAnswer(v, buoyRef.current ? { lifebuoy: true } : undefined), (DUR[v] + 0.3) * 1000));
     timers.current.push(setTimeout(() => setLineOn(true), (v === 'experience' ? 3.0 : v === 'stability' ? 4.2 : 5.2) * 1000));
   }, [onAnswer, reduce]);
 
@@ -822,6 +836,36 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
             />
           );
         })}
+        {/* 난간에 걸린 구명환: 눌러서 챙길 수 있다 (선택과는 별개) */}
+        <img
+          src="/q5/obj_lifebuoy.webp"
+          alt=""
+          aria-hidden
+          draggable={false}
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          className="pointer-events-none absolute max-w-none"
+          style={{
+            left: BUOY.foot[0], top: BUOY.foot[1], height: BUOY.h,
+            transform: `translate(-50%, -100%) rotate(${buoyHover ? 3 : 0}deg) scale(${buoy ? 0.6 : buoyHover ? 1.05 : 1})`,
+            transformOrigin: '50% 0%',
+            opacity: buoy ? 0 : 1,
+            transition: 'transform 0.5s, opacity 0.6s, filter 0.4s',
+            filter: buoyHover ? 'sepia(0.25) saturate(1.2) brightness(1.3) drop-shadow(0 0 12px rgba(255,214,140,0.6))' : 'sepia(0.25) saturate(1.15) brightness(0.98)',
+          }}
+        />
+        {!buoy && (
+          <button
+            type="button"
+            aria-label="난간에 걸린 구명환을 챙긴다"
+            className="absolute cursor-pointer rounded-2xl bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-amber-300/80"
+            style={{ left: BUOY.foot[0] - 90, top: BUOY.foot[1] - BUOY.h - 10, width: 180, height: BUOY.h + 20 }}
+            onPointerEnter={(e) => { if (e.pointerType === 'mouse') setBuoyHover(true); }}
+            onPointerLeave={() => setBuoyHover(false)}
+            onFocus={() => setBuoyHover(true)}
+            onBlur={() => setBuoyHover(false)}
+            onClick={takeBuoy}
+          />
+        )}
         {ORDER.map((v) => {
           const sp = SPOTS[v];
           const on = hovered === v;
@@ -850,6 +894,31 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
           );
         })}
       </div>
+
+      {/* 구명환을 챙기면 화면 모서리에 작게 남는다 */}
+      <AnimatePresence>
+        {buoy && !chosen && (
+          <motion.div
+            key="buoy-hud"
+            initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+            className="pointer-events-none absolute bottom-24 left-4 z-40 flex items-center gap-2 rounded-full border border-amber-200/50 bg-black/60 py-1 pl-1 pr-4 backdrop-blur-sm md:bottom-24"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/q5/obj_lifebuoy.webp" alt="" className="h-9 w-9 object-contain" />
+            <span className="text-sm text-amber-100">구명환</span>
+          </motion.div>
+        )}
+        {buoyMsg && (
+          <motion.p
+            key="buoy-msg"
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="pointer-events-none absolute inset-x-0 top-1/3 z-40 text-center font-title text-xl text-amber-100"
+            style={{ textShadow: '0 2px 14px #000' }}
+          >
+            난간에서 구명환을 떼어 챙겼다.
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       {/* 망원경 렌즈 */}
       <AnimatePresence>

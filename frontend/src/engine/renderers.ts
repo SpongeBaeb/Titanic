@@ -16,6 +16,8 @@ export interface RendererProps {
   question: Question;
   onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   onBack: () => void;
+  /** 앞 장면에서 남긴 값(예: 구명환을 챙겼는지) */
+  extras?: Record<string, unknown>;
 }
 
 // 전용 화면은 그대로 쓰고, 'cinematic' 은 E3 단계에서는 기존 QuestionView 와 같다.

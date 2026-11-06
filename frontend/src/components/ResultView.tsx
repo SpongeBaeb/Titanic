@@ -28,7 +28,7 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
   // 결과가 만들어지면 주소에 결과 id 가 붙는다. 그 뒤 다시 그려져도 '공유 링크로 연 화면'으로 바뀌지 않게 처음 값을 고정한다.
   const [sharedResultId] = useState(sharedProp);
   const [attempt, setAttempt] = useState(0);
-  const { answers, picks } = useQuizStore();
+  const { answers, picks, extras } = useQuizStore();
   // 성향 육각형: 이 판에서 고른 선택으로 계산한다 (공유 링크로 열면 선택 기록이 없어 건너뛴다)
   const traits = useMemo(
     () =>
@@ -79,7 +79,7 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
           res = await fetch(`${API_BASE}/api/quiz/submit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(answers),
+            body: JSON.stringify(extras.lifebuoy ? { ...answers, lifebuoy: true } : answers),
           });
         }
         
