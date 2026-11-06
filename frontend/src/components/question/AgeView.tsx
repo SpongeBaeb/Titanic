@@ -55,64 +55,91 @@ const { PRINT_Y, PRINT_TIMES } = (() => {
   return { PRINT_Y: y, PRINT_TIMES: t };
 })();
 
-/** 증기 피스톤: 아래에서 레일 없이 덜컹이며 올라오고(기둥이 늘어나 보인다), 머리(− 또는 + 버튼)를 누르면 눌린 그림으로 바뀌며 한 칸 들어갔다 나온다 */
-function Piston({ side, kind, show, disabled, onPress }: { side: 'left' | 'right'; kind: 'minus' | 'plus'; show: boolean; disabled: boolean; onPress: () => void }) {
+/**
+ * 증기 피스톤: 바닥에 박힌 밑동에서 기둥이 늘어나며 머리(− 또는 + 버튼)가 덜컹이며 올라온다.
+ * 머리를 누르면 눌린 그림으로 바뀌며 한 칸 들어갔다 나온다. 끝에 닿아 안 눌릴 때는 어둡게 가라앉고 살짝 눌렸다 돌아온다.
+ * pw: 머리 지름(px), travel: 밑동에서 머리가 올라오는 거리(px). 밑동은 코드로 그린 임시 그림이다(그림이 오면 교체한다).
+ */
+function Piston({ kind, show, disabled, onPress, pw, travel }: { kind: 'minus' | 'plus'; show: boolean; disabled: boolean; onPress: () => void; pw: number; travel: number }) {
   const [down, setDown] = useState(false);
-  const [shake, setShake] = useState(0);
+  const [bump, setBump] = useState(0);
   const press = () => {
     if (!show) return;
-    if (disabled) { setShake((n) => n + 1); playRatchet(); return; } // 끝에 닿았다: 덜컹 막힌다
+    if (disabled) { setBump((n) => n + 1); playRatchet(); return; } // 끝에 닿았다
     setDown(true);
     setTimeout(() => setDown(false), 170);
     onPress();
   };
-  // 올라올 때 두세 번 끊어 가며 덜컹이는 소리 (나타날 때만)
   useEffect(() => {
     if (!show) return;
     const ts = [160, 330, 620, 740].map((ms) => setTimeout(() => playRatchet(), ms));
     return () => ts.forEach(clearTimeout);
   }, [show]);
-  const RISE = 150;
+  const ph = pw * 1.033; // 머리 높이
+  const baseH = pw * 0.62; // 밑동 높이
+  const T = Math.max(30, travel);
+  // 머리의 높이(밑동에서 올라온 정도): 두세 번 끊어 가며 올라온다 (T → 0 이 가장 높은 곳)
+  const ys = show ? [T, T * 0.62, T * 0.68, T * 0.26, T * 0.3, 0] : [T];
+  const times = [0, 0.2, 0.32, 0.62, 0.74, 1];
+  const tr = show ? { duration: 1.0, times, ease: 'easeOut' as const } : { duration: 0.45, ease: 'easeIn' as const };
+  const total = ph + T + baseH * 0.55; // 머리 맨 위부터 밑동 윗부분까지
   return (
-    <div className="relative shrink-0" data-piston={side} style={{ width: 'var(--pw)', height: 'calc(var(--pw) * 1.03)' }}>
+    <div className="relative shrink-0" style={{ width: pw * 1.32, height: total + baseH * 0.45 }}>
+      {/* 기둥: 머리 아래에서 밑동까지. 머리가 올라온 만큼 길어진다 */}
       <motion.div
-        className="relative h-full w-full"
-        initial={{ y: RISE, opacity: 0 }}
-        animate={show ? { y: [RISE, RISE * 0.62, RISE * 0.68, RISE * 0.26, RISE * 0.3, 0], opacity: [0, 1, 1, 1, 1, 1] } : { y: RISE, opacity: 0 }}
-        transition={show ? { duration: 1.0, times: [0, 0.2, 0.32, 0.62, 0.74, 1], ease: 'easeOut' } : { duration: 0.45, ease: 'easeIn' }}
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 overflow-hidden"
+        style={{
+          width: pw * 0.4, marginLeft: -pw * 0.2, backgroundImage: "url('/ui/age_piston_rod_tile.webp')",
+          backgroundRepeat: 'repeat-y', backgroundSize: '100% auto', backgroundPosition: 'center top',
+          filter: 'drop-shadow(0 3px 5px rgba(0,0,0,0.5))',
+        }}
+        initial={{ top: T + ph * 0.96, height: 0, opacity: 0 }}
+        animate={{ top: ys.map((y) => y + ph * 0.96), height: ys.map((y) => T - y + baseH * 0.2), opacity: show ? 1 : 0 }}
+        transition={{ ...tr, opacity: { duration: 0.2 } }}
+      />
+      {/* 밑동: 바닥에 박혀 있다 */}
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: baseH + baseH * 0.45 }} aria-hidden>
+        <div className="absolute bottom-0 left-0 right-0 rounded-[3px]" style={{ height: baseH * 0.32, background: 'linear-gradient(#6a4a1c, #2b1a08)', boxShadow: '0 4px 8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,220,140,0.45)' }} />
+        <div className="absolute left-1/2 -translate-x-1/2 rounded-t-[8px]" style={{ bottom: baseH * 0.28, width: pw * 1.08, height: baseH * 0.86, background: 'linear-gradient(90deg,#4a3418 0%,#b38a37 22%,#f3d98a 46%,#c9a24a 62%,#6a4a1c 100%)', boxShadow: 'inset 0 2px 0 rgba(255,235,170,0.55), inset 0 -3px 5px rgba(0,0,0,0.45)' }}>
+          <div className="absolute left-2 top-2 h-1.5 w-1.5 rounded-full bg-[#2b1a08]/70" />
+          <div className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#2b1a08]/70" />
+          <div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: -baseH * 0.12, width: pw * 0.62, height: baseH * 0.3, background: 'linear-gradient(#f3d98a,#8a6a28)', boxShadow: '0 2px 3px rgba(0,0,0,0.5)' }} />
+        </div>
+        {/* 올라올 때 밑동에서 증기가 푹 뿜어진다 */}
+        {show && [0, 1, 2].map((n) => (
+          <motion.span
+            key={n}
+            className="absolute left-1/2 rounded-full bg-white/60 blur-[3px]"
+            style={{ bottom: baseH * 0.9, width: pw * 0.3, height: pw * 0.3, marginLeft: -pw * 0.15 }}
+            initial={{ opacity: 0, y: 0, scale: 0.5, x: 0 }}
+            animate={{ opacity: [0, 0.65, 0], y: -pw * (0.5 + n * 0.25), scale: [0.5, 1.6, 2.1], x: (n - 1) * pw * 0.35 }}
+            transition={{ delay: 0.12 + n * 0.14, duration: 0.8, ease: 'easeOut' }}
+          />
+        ))}
+      </div>
+      {/* 머리 = 버튼 */}
+      <motion.div
+        className="absolute left-1/2"
+        style={{ width: pw, height: ph, marginLeft: -pw / 2 }}
+        initial={{ top: T, opacity: 0 }}
+        animate={{ top: ys, opacity: show ? 1 : 0 }}
+        transition={{ ...tr, opacity: { duration: 0.2 } }}
       >
-        {/* 기둥: 머리 아래로 길게. 반복되는 한 토막을 이어 붙이고 아래쪽은 흐려져 바닥 속으로 사라진다 */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 -translate-x-1/2"
-          style={{
-            top: 'calc(var(--pw) * 0.96)',
-            width: 'calc(var(--pw) * 0.4)',
-            height: 78 + RISE * 0.3,
-            backgroundImage: "url('/ui/age_piston_rod_tile.webp')",
-            backgroundRepeat: 'repeat-y',
-            backgroundSize: '100% auto',
-            backgroundPosition: 'center top',
-            WebkitMaskImage: 'linear-gradient(#000 0, #000 35%, transparent 100%)',
-            maskImage: 'linear-gradient(#000 0, #000 35%, transparent 100%)',
-            filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.5))',
-          }}
-        />
         <motion.button
-          key={shake}
+          key={bump}
           type="button"
           aria-label={kind === 'minus' ? '나이 한 살 줄이기' : '나이 한 살 늘리기'}
           aria-disabled={disabled}
           onClick={press}
           className="pointer-events-auto relative block h-full w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
           style={{ filter: disabled ? 'brightness(0.62) saturate(0.7)' : 'drop-shadow(0 6px 8px rgba(0,0,0,0.55))' }}
-          animate={shake ? { y: [0, 3, 0] } : undefined} // 끝에 닿아 안 눌릴 때는 좌우로 흔들지 않고 살짝 눌렸다 돌아온다
+          animate={bump ? { y: [0, 3, 0] } : undefined}
           transition={{ duration: 0.18 }}
           whileTap={disabled ? undefined : { y: 3 }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`/ui/age_piston_${kind}_${down ? 'down' : 'up'}.webp`} alt="" draggable={false} className="pointer-events-none block h-full w-full select-none" />
-          {/* 눌린 그림도 미리 불러 두어 처음 누를 때 깜빡이지 않게 한다 */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`/ui/age_piston_${kind}_down.webp`} alt="" aria-hidden className="pointer-events-none absolute h-0 w-0 opacity-0" />
         </motion.button>
@@ -404,6 +431,20 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  // 피스톤 크기와 올라오는 거리: 머리가 제목 아래(약 250px)에 오도록, 바닥 밑동에서 그 높이까지
+  const [pistonBox, setPistonBox] = useState({ pw: 62, h: 260, travel: 150 });
+  useEffect(() => {
+    const m = () => {
+      const pw = Math.round(Math.min(54, Math.max(40, window.innerWidth * 0.06)));
+      const headTop = Math.min(250, Math.max(120, window.innerHeight - 300));
+      const h = Math.max(150, window.innerHeight - 10 - headTop);
+      const ph = pw * 1.033; const baseH = pw * 0.62;
+      setPistonBox({ pw, h, travel: h - ph - baseH * 1.0 });
+    };
+    m();
+    window.addEventListener('resize', m);
+    return () => window.removeEventListener('resize', m);
+  }, []);
   const ageLabel = exactAge === null ? '' : exactAge === 0 ? '0세' : `${exactAge}세`;
   
   let finalBgImage = activeOption?.bgImage;
@@ -558,13 +599,10 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       </div>
 
       {/* Header Info */}
-      {/* 한 살씩 세밀하게: 나이 레버 오른쪽에 증기 피스톤 두 개가 나란히 아래에서 올라온다. 머리가 곧 −, + 버튼이다 (키보드 −, + 도 된다) */}
-      <div
-        className="absolute z-[55] flex items-start gap-[10px]"
-        style={{ ['--pw' as string]: 'clamp(46px, 8.5vw, 62px)', left: 'calc(50% + 78px)', top: 250 }}
-      >
-        <Piston side="left" kind="minus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge <= ageRange[0]} onPress={() => stepAge(-1)} />
-        <Piston side="right" kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepAge(1)} />
+      {/* 한 살씩 세밀하게: 나이 레버 오른쪽, 바닥에서 증기 피스톤 두 개가 나란히 올라온다. 머리가 곧 −, + 버튼이다 (키보드 −, + 도 된다) */}
+      <div className="absolute z-[55] flex items-end gap-[6px]" style={{ right: 54, bottom: 10, height: pistonBox.h }}>
+        <Piston kind="minus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge <= ageRange[0]} onPress={() => stepAge(-1)} pw={pistonBox.pw} travel={pistonBox.travel} />
+        <Piston kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepAge(1)} pw={pistonBox.pw} travel={pistonBox.travel} />
       </div>
 
       <div className="absolute top-[184px] left-1/2 -translate-x-1/2 w-full max-w-xl px-6 z-[50] text-center pointer-events-none">
