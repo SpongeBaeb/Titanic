@@ -14,9 +14,19 @@ export type PurserPose = (typeof POSES)[number];
 /** 한 장짜리 그림이 있는 포즈 (stamp 와 calc 는 여러 컷이 이어진다) */
 const STILL_POSES = POSES.filter((p) => p !== 'stamp' && p !== 'calc');
 
-/** 주판 계산 컷: 0 근엄하게 훑어보다, 1 중얼거리며 튕기다, 2 흡족하게 웃는다. 손가락이 오가다 마지막에 흡족한 표정으로 멈춘다 */
-const CALC_ORDER = [0, 1, 0, 1, 2] as const;
-const CALC_AT = [0, 520, 980, 1480, 2150]; // ms
+/**
+ * 주판 계산 컷: 근엄하게 훑어보다(0) 중얼거리며 튕기고(1) 흡족하게 웃는다(2).
+ * 컷 사이는 광류로 만든 중간 컷 두 장씩으로 이어 부드럽게 움직인다 (tools/build_purser_calc.py).
+ * 순서: 0 → 1 → 0 → 1 → 2 (손가락이 오가다 흡족한 표정으로 멈춘다)
+ */
+const CALC_FILES = ['0', '01_a', '01_b', '1', '12_a', '12_b', '2'] as const;
+const CALC_STEPS: [number, number][] = [ // [컷 번호, 나타나는 시각 ms]
+  [0, 0], [1, 90], [2, 180], [3, 270],
+  [3, 540], [2, 620], [1, 700], [0, 780],
+  [0, 900], [1, 980], [2, 1060], [3, 1140],
+  [3, 1420], [4, 1500], [5, 1580], [6, 1660],
+];
+const CALC_CLICKS = [270, 780, 1140, 1660]; // 알이 부딪히는 순간(소리)
 
 /** 도장 찍기 애니메이션 컷 (순서대로: 들고 → 더 높이 → 장부로 내림 → 찍음) */
 const STAMP_FRAMES = [0, 1, 2, 3] as const;
@@ -49,8 +59,11 @@ export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed
   const [calcFrame, setCalcFrame] = useState(0);
   useEffect(() => {
     if (shown !== 'calc') return;
-    setCalcFrame(CALC_ORDER[0]);
-    const ts = CALC_AT.map((ms, i) => setTimeout(() => { setCalcFrame(CALC_ORDER[i]); if (i > 0) playAbacus(i === CALC_AT.length - 1); }, ms));
+    setCalcFrame(0);
+    const ts = [
+      ...CALC_STEPS.map(([f, ms]) => setTimeout(() => setCalcFrame(f), ms)),
+      ...CALC_CLICKS.map((ms, i) => setTimeout(() => playAbacus(i === CALC_CLICKS.length - 1), ms)),
+    ];
     return () => ts.forEach(clearTimeout);
   }, [shown, lineKey]);
   useEffect(() => {
@@ -108,16 +121,16 @@ export default function DuckPurser({ line, lineKey, pose = 'idle', onPoke, armed
             style={{ opacity: p === shown ? 1 : 0 }}
           />
         ))}
-        {/* 주판 컷: 컷 사이는 짧게 겹쳐 섞여서 끊겨 보이지 않는다 */}
-        {([0, 1, 2] as const).map((i) => (
+        {/* 주판 컷: 중간 컷이 있어서 바로 바꿔도 부드럽다. 컷이 바뀔 때 겹쳐 흐려지면 오히려 깜빡이므로 전환 시간을 두지 않는다 */}
+        {CALC_FILES.map((f, i) => (
           <img
-            key={`calc-${i}`}
-            src={`/spend/purser_calc_${i}.webp`}
+            key={`calc-${f}`}
+            src={`/spend/purser_calc_${f}.webp`}
             alt={shown === 'calc' && calcFrame === i ? '오리 사무장' : ''}
             aria-hidden={!(shown === 'calc' && calcFrame === i)}
             draggable={false}
-            className="absolute inset-0 h-full w-full object-contain transition-opacity duration-150"
-            style={{ opacity: shown === 'calc' && calcFrame === i ? 1 : 0 }}
+            className="absolute inset-0 h-full w-full object-contain"
+            style={{ opacity: shown === 'calc' && calcFrame === i ? 1 : 0, transition: shown === 'calc' ? 'none' : 'opacity 200ms' }}
           />
         ))}
         {STAMP_FRAMES.map((i) => (
