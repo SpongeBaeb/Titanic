@@ -323,15 +323,6 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
     choose(v);
   };
 
-  const panTo = (v: Choice) => {
-    const { vw } = sizeRef.current;
-    const s = Math.max(vw / IMG.w, sizeRef.current.vh / IMG.h);
-    const W = IMG.w * s;
-    if (W <= vw) return;
-    const sp = SPOTS[v];
-    panTarget.current = clamp01(((sp.x + sp.w / 2) * s - vw / 2) / (W - vw));
-  };
-
   // ── 렌더 루프 ──────────────────────────────────────────────
   useEffect(() => {
     const root = rootRef.current;
@@ -1015,21 +1006,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       {/* 아래쪽: 올려 둔 물건의 선택지, 좁은 화면에서는 물건으로 이동하는 버튼 */}
       {!chosen && (
         <div className="absolute inset-x-0 bottom-4 z-30 flex flex-col items-center gap-3 px-4">
-          {(needPan || coarse) && (
-            <div className="flex gap-2">
-              {ORDER.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => { lastType.current = 'touch'; panTo(v); setHovered(v); }}
-                  className={`rounded-full border px-4 py-1.5 text-sm backdrop-blur-sm transition-colors ${hovered === v ? 'border-amber-300/80 bg-amber-300/20 text-amber-100' : 'border-white/25 bg-black/40 text-white/80'}`}
-                >
-                  {NAMES[v]}
-                </button>
-              ))}
-            </div>
-          )}
-          {!hoverOpt && !needPan && !coarse && (
+          {!hoverOpt && !coarse && (
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 0.8 }} transition={{ delay: 3, duration: 1.4 }} className="text-sm tracking-widest text-white/70" style={{ textShadow: '0 1px 8px #000' }}>
               갑판 위의 물건을 눌러 보세요
             </motion.p>
