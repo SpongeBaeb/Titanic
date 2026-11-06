@@ -56,9 +56,9 @@ const { PRINT_Y, PRINT_TIMES } = (() => {
 })();
 
 /**
- * 증기 피스톤: 바닥에 박힌 밑동에서 기둥이 늘어나며 머리(− 또는 + 버튼)가 덜컹이며 올라온다.
+ * 증기 피스톤: 처음에는 보이지 않다가, 화면 아래에서 기둥이 천천히 길어지며 머리(− 또는 + 버튼)가 올라온다. 밑받침은 없다.
  * 머리를 누르면 눌린 그림으로 바뀌며 한 칸 들어갔다 나온다. 끝에 닿아 안 눌릴 때는 어둡게 가라앉고 살짝 눌렸다 돌아온다.
- * pw: 머리 지름(px), travel: 밑동에서 머리가 올라오는 거리(px). 밑동은 코드로 그린 임시 그림이다(그림이 오면 교체한다).
+ * pw: 머리 지름(px), travel: 화면 아래에서 머리가 올라오는 거리(px).
  */
 function Piston({ kind, show, disabled, onPress, pw, travel }: { kind: 'minus' | 'plus'; show: boolean; disabled: boolean; onPress: () => void; pw: number; travel: number }) {
   const [down, setDown] = useState(false);
@@ -70,61 +70,37 @@ function Piston({ kind, show, disabled, onPress, pw, travel }: { kind: 'minus' |
     setTimeout(() => setDown(false), 170);
     onPress();
   };
+  // 천천히 올라오는 동안 낮게 철컥거린다
   useEffect(() => {
     if (!show) return;
-    const ts = [160, 330, 620, 740].map((ms) => setTimeout(() => playRatchet(), ms));
+    const ts = [250, 650, 1050, 1450].map((ms) => setTimeout(() => playRatchet(), ms));
     return () => ts.forEach(clearTimeout);
   }, [show]);
   const ph = pw * 1.033; // 머리 높이
-  const baseH = pw * 0.62; // 밑동 높이
-  const T = Math.max(30, travel);
-  // 머리의 높이(밑동에서 올라온 정도): 두세 번 끊어 가며 올라온다 (T → 0 이 가장 높은 곳)
-  const ys = show ? [T, T * 0.62, T * 0.68, T * 0.26, T * 0.3, 0] : [T];
-  const times = [0, 0.2, 0.32, 0.62, 0.74, 1];
-  const tr = show ? { duration: 1.0, times, ease: 'easeOut' as const } : { duration: 0.45, ease: 'easeIn' as const };
-  const total = ph + T + baseH * 0.55; // 머리 맨 위부터 밑동 윗부분까지
+  const T = Math.max(60, travel);
+  const tr = show ? { duration: 2.0, ease: [0.25, 0.1, 0.25, 1] as [number, number, number, number], delay: 0.1 } : { duration: 0.6, ease: 'easeIn' as const };
   return (
-    <div className="relative shrink-0" style={{ width: pw * 1.32, height: total + baseH * 0.45 }}>
-      {/* 기둥: 머리 아래에서 밑동까지. 머리가 올라온 만큼 길어진다 */}
+    <div className="relative shrink-0" style={{ width: pw, height: ph + T }}>
+      {/* 기둥: 머리 아래에서 화면 아래 끝까지. 머리가 올라온 만큼 길어진다 */}
       <motion.div
         aria-hidden
         className="pointer-events-none absolute left-1/2 overflow-hidden"
         style={{
-          width: pw * 0.4, marginLeft: -pw * 0.2, backgroundImage: "url('/ui/age_piston_rod_tile.webp')",
+          width: pw * 0.4, marginLeft: -pw * 0.2, bottom: 0, backgroundImage: "url('/ui/age_piston_rod_tile.webp')",
           backgroundRepeat: 'repeat-y', backgroundSize: '100% auto', backgroundPosition: 'center top',
           filter: 'drop-shadow(0 3px 5px rgba(0,0,0,0.5))',
         }}
-        initial={{ top: T + ph * 0.96, height: 0, opacity: 0 }}
-        animate={{ top: ys.map((y) => y + ph * 0.96), height: ys.map((y) => T - y + baseH * 0.2), opacity: show ? 1 : 0 }}
-        transition={{ ...tr, opacity: { duration: 0.2 } }}
+        initial={{ height: 0 }}
+        animate={{ height: show ? T + ph * 0.04 : 0 }}
+        transition={tr}
       />
-      {/* 밑동: 바닥에 박혀 있다 */}
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0" style={{ height: baseH + baseH * 0.45 }} aria-hidden>
-        <div className="absolute bottom-0 left-0 right-0 rounded-[3px]" style={{ height: baseH * 0.32, background: 'linear-gradient(#6a4a1c, #2b1a08)', boxShadow: '0 4px 8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,220,140,0.45)' }} />
-        <div className="absolute left-1/2 -translate-x-1/2 rounded-t-[8px]" style={{ bottom: baseH * 0.28, width: pw * 1.08, height: baseH * 0.86, background: 'linear-gradient(90deg,#4a3418 0%,#b38a37 22%,#f3d98a 46%,#c9a24a 62%,#6a4a1c 100%)', boxShadow: 'inset 0 2px 0 rgba(255,235,170,0.55), inset 0 -3px 5px rgba(0,0,0,0.45)' }}>
-          <div className="absolute left-2 top-2 h-1.5 w-1.5 rounded-full bg-[#2b1a08]/70" />
-          <div className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#2b1a08]/70" />
-          <div className="absolute left-1/2 -translate-x-1/2 rounded-full" style={{ top: -baseH * 0.12, width: pw * 0.62, height: baseH * 0.3, background: 'linear-gradient(#f3d98a,#8a6a28)', boxShadow: '0 2px 3px rgba(0,0,0,0.5)' }} />
-        </div>
-        {/* 올라올 때 밑동에서 증기가 푹 뿜어진다 */}
-        {show && [0, 1, 2].map((n) => (
-          <motion.span
-            key={n}
-            className="absolute left-1/2 rounded-full bg-white/60 blur-[3px]"
-            style={{ bottom: baseH * 0.9, width: pw * 0.3, height: pw * 0.3, marginLeft: -pw * 0.15 }}
-            initial={{ opacity: 0, y: 0, scale: 0.5, x: 0 }}
-            animate={{ opacity: [0, 0.65, 0], y: -pw * (0.5 + n * 0.25), scale: [0.5, 1.6, 2.1], x: (n - 1) * pw * 0.35 }}
-            transition={{ delay: 0.12 + n * 0.14, duration: 0.8, ease: 'easeOut' }}
-          />
-        ))}
-      </div>
       {/* 머리 = 버튼 */}
       <motion.div
         className="absolute left-1/2"
         style={{ width: pw, height: ph, marginLeft: -pw / 2 }}
-        initial={{ top: T, opacity: 0 }}
-        animate={{ top: ys, opacity: show ? 1 : 0 }}
-        transition={{ ...tr, opacity: { duration: 0.2 } }}
+        initial={{ top: T + ph }}
+        animate={{ top: show ? 0 : T + ph }}
+        transition={tr}
       >
         <motion.button
           key={bump}
@@ -437,14 +413,25 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     const m = () => {
       const pw = Math.round(Math.min(54, Math.max(40, window.innerWidth * 0.06)));
       const headTop = Math.min(250, Math.max(120, window.innerHeight - 300));
-      const h = Math.max(150, window.innerHeight - 10 - headTop);
-      const ph = pw * 1.033; const baseH = pw * 0.62;
-      setPistonBox({ pw, h, travel: h - ph - baseH * 1.0 });
+      const h = Math.max(150, window.innerHeight + 16 - headTop);
+      const ph = pw * 1.033;
+      setPistonBox({ pw, h, travel: h - ph });
     };
     m();
     window.addEventListener('resize', m);
     return () => window.removeEventListener('resize', m);
   }, []);
+  // 전광판은 처음엔 없다가, 천장에서 증기를 내뿜은 뒤 서서히 내려온다
+  useEffect(() => {
+    if (reduceMotion) return;
+    const ts = [700, 1100, 1700].map((ms, i) => setTimeout(() => {
+      if (i === 0) playSteamHiss(0.9);
+      const x = window.innerWidth / 2;
+      steamBurst.current?.(x - 120, 44, 0.9 + i * 0.25, -1);
+      steamBurst.current?.(x + 120, 44, 0.9 + i * 0.25, 1);
+    }, ms));
+    return () => ts.forEach(clearTimeout);
+  }, [reduceMotion]);
   const ageLabel = exactAge === null ? '' : exactAge === 0 ? '0세' : `${exactAge}세`;
   
   let finalBgImage = activeOption?.bgImage;
@@ -538,7 +525,12 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
       <div className="absolute inset-x-0 top-0 h-72 z-[2] bg-gradient-to-b from-[#050302]/90 via-[#050302]/60 to-transparent pointer-events-none" />
 
       {/* 나이 전광판: 천장 지지대에 매달려 있고, 숫자만 바뀐다 */}
-      <div className="pointer-events-none absolute left-1/2 top-[68px] z-[50] -translate-x-1/2">
+      <motion.div
+        className="pointer-events-none absolute left-1/2 top-[68px] z-[50] -translate-x-1/2"
+        initial={reduceMotion ? false : { y: -230, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={reduceMotion ? { duration: 0 } : { delay: 1.3, duration: 2.2, ease: [0.22, 0.61, 0.36, 1], opacity: { delay: 1.3, duration: 0.5 } }}
+      >
         <div className="relative">
           {/* 지지대: 천장 고정판에서 내려와 보드 윗틀을 단단히 잡는 굵은 황동 기둥 하나 (이미지가 있으면 이미지, 없으면 코드로 그린 기둥) */}
           <BoardPost />
@@ -596,11 +588,11 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         </div>
 
         </div>
-      </div>
+      </motion.div>
 
       {/* Header Info */}
       {/* 한 살씩 세밀하게: 나이 레버 오른쪽, 바닥에서 증기 피스톤 두 개가 나란히 올라온다. 머리가 곧 −, + 버튼이다 (키보드 −, + 도 된다) */}
-      <div className="absolute z-[55] flex items-end gap-[6px]" style={{ right: 54, bottom: 10, height: pistonBox.h }}>
+      <div className="absolute z-[55] flex items-end gap-[6px]" style={{ right: 54, bottom: -16, height: pistonBox.h }}>
         <Piston kind="minus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge <= ageRange[0]} onPress={() => stepAge(-1)} pw={pistonBox.pw} travel={pistonBox.travel} />
         <Piston kind="plus" show={!!activeOption && !confirming} disabled={!ageRange || exactAge === null || exactAge >= ageRange[1]} onPress={() => stepAge(1)} pw={pistonBox.pw} travel={pistonBox.travel} />
       </div>
