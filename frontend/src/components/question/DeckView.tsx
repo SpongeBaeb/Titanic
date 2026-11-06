@@ -24,23 +24,23 @@ import { playCorkPop, playFireworkBurst, playStarChime, playWhaleCall, playSplas
  */
 
 const IMG = { w: 1376, h: 768 }; // 그림 좌표계 (deck_q5.webp)
-const HY = 301.7; // 수평선 (새 그림의 수평선 y=421 을 1376 폭 기준으로 옮긴 값)
-const WATER_Y = 338; // 고래가 솟는 수면
+const HY = 463.6; // 수평선: 노을 갑판 그림(1672x941)에서 갑판선과 난간이 모이는 점 y≈568 을 1376x768 기준으로 옮긴 값
+const WATER_Y = 503; // 고래가 솟는 수면
 
 interface Spot { x: number; y: number; w: number; h: number; ax: number; ay: number }
 const SPOTS: Record<string, Spot> = {
-  experience: { x: 632, y: 452, w: 212, h: 125, ax: 790, ay: 505 }, // 난간 안쪽 작은 탁자 (샴페인)
-  stability: { x: 120, y: 470, w: 330, h: 298, ax: 250, ay: 600 }, // 데크체어 자리 (그림이 오면 의자 위 별자리 도감)
-  change: { x: 835, y: 462, w: 215, h: 275, ax: 945, ay: 560 }, // 갑판 앞쪽 (망원경)
+  experience: { x: 130, y: 530, w: 150, h: 120, ax: 205, ay: 595 }, // 앞쪽 벤치 왼쪽 (샴페인)
+  stability: { x: 262, y: 486, w: 120, h: 90, ax: 322, ay: 540 }, // 앞쪽 벤치 오른쪽 (별자리 도감)
+  change: { x: 688, y: 452, w: 215, h: 255, ax: 797, ay: 585 }, // 난간 앞 갑판 (망원경)
 };
 /**
  * 선택지 물건은 배경과 따로 그린 그림(투명 배경)이다. 그림이 아직 없으면 보이지 않고 빛과 눌리는 자리만 남는다.
  * foot: 물건이 바닥에 닿는 점(1376x768 기준), h: 높이.
  */
 const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number }> = {
-  experience: { src: '/q5/obj_champagne.webp', foot: [802, 513], h: 96 },
-  stability: { src: '/q5/obj_atlas.webp', foot: [250, 640], h: 66 },
-  change: { src: '/q5/obj_telescope.webp', foot: [945, 724], h: 255 },
+  experience: { src: '/q5/obj_champagne.webp', foot: [205, 612], h: 80 },
+  stability: { src: '/q5/obj_atlas.webp', foot: [322, 556], h: 34 },
+  change: { src: '/q5/obj_telescope.webp', foot: [797, 692], h: 225 },
 };
 const ORDER = ['experience', 'stability', 'change'] as const;
 type Choice = (typeof ORDER)[number];
@@ -57,11 +57,11 @@ const FADE_AT: Record<Choice, number> = { experience: 5.7, stability: 6.1, chang
 
 // 별자리: 북두칠성과 북극성, 카시오페이아 (그림 좌표)
 const BIG_DIPPER = [
-  { x: 520, y: 98 }, { x: 585, y: 120 }, { x: 650, y: 116 }, { x: 712, y: 142 },
-  { x: 722, y: 208 }, { x: 802, y: 222 }, { x: 815, y: 158 },
+  { x: 640, y: 150 }, { x: 705, y: 172 }, { x: 770, y: 168 }, { x: 832, y: 194 },
+  { x: 842, y: 262 }, { x: 922, y: 276 }, { x: 935, y: 212 },
 ];
-const POLARIS = { x: 856, y: 30 };
-const CASSIOPEIA = [{ x: 250, y: 128 }, { x: 305, y: 74 }, { x: 362, y: 108 }, { x: 410, y: 58 }, { x: 470, y: 92 }];
+const POLARIS = { x: 985, y: 84 };
+const CASSIOPEIA = [{ x: 1060, y: 190 }, { x: 1115, y: 136 }, { x: 1172, y: 170 }, { x: 1220, y: 120 }, { x: 1280, y: 154 }];
 // 별 번호(0~6 북두칠성, 7 북극성, 8~12 카시오페이아) 순서대로 이어 그린다
 const STARS = [...BIG_DIPPER, POLARIS, ...CASSIOPEIA];
 const SEGMENTS: [number, number][] = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 3], [5, 6], [6, 7], [8, 9], [9, 10], [10, 11], [11, 12]];
@@ -73,7 +73,7 @@ const FRAG = `#version 300 es
 precision highp float;
 uniform vec2 uRes; uniform float uTime; uniform vec2 uOff; uniform float uScale;
 uniform float uZoom; uniform vec2 uCenter;
-uniform float uCalm; uniform float uStar; uniform float uMilky; uniform float uDawn; uniform float uGlow; uniform vec3 uGlowCol;
+uniform float uNight; uniform float uCalm; uniform float uStar; uniform float uMilky; uniform float uDawn; uniform float uGlow; uniform vec3 uGlowCol;
 uniform vec4 uRip[4];
 uniform sampler2D uSky; uniform float uHasSky;
 out vec4 o;
@@ -90,10 +90,17 @@ vec3 sky(vec2 p){
     // 하늘 사진: 구름과 수평선의 노을이 그대로 깔린다 (위에 별과 은하수가 얹힌다)
     c = texture(uSky, vec2(clamp(p.x / 1376., 0., 1.), clamp(p.y / HY, 0., .995))).rgb;
   } else {
-    vec3 hor = vec3(.25, .29, .38), top = vec3(.27, .38, .52);
-    c = mix(hor, top, pow(h, .7));
-    // 해 진 뒤 수평선에 남은 따뜻한 빛: 배가 있는 오른쪽이 더 붉다
-    c = mix(c, vec3(.95, .58, .44), exp(-h * 11.) * (.2 + .6 * smoothstep(250., 900., p.x)));
+    // 노을 하늘: 위는 짙은 푸른색, 수평선으로 갈수록 따뜻한 주황. 해는 오른쪽 수평선 위에 낮게 걸려 있다.
+    vec3 gTop = vec3(.17, .28, .50), gMid = vec3(.52, .54, .64), gHor = vec3(.98, .66, .36);
+    vec3 gold = mix(gHor, gMid, smoothstep(0., .24, h));
+    gold = mix(gold, gTop, smoothstep(.22, 1., h));
+    float sun = exp(-length((p - vec2(1260., HY - 6.)) * vec2(1., 2.4)) / 230.);
+    gold += vec3(1., .72, .38) * sun * .55;
+    // 밤하늘 (선택하면 노을에서 밤으로 어두워진다)
+    vec3 nTop = vec3(.04, .08, .19), nHor = vec3(.19, .21, .33);
+    vec3 night = mix(nHor, nTop, pow(h, .7));
+    night = mix(night, vec3(.55, .36, .30), exp(-h * 12.) * .30);
+    c = mix(gold, night, uNight);
   }
   c = mix(c, vec3(1., .55, .30), uDawn * exp(-h * 5.5) * .85);
   c *= mix(1., .55, uMilky * .5);
@@ -107,7 +114,7 @@ vec3 sky(vec2 p){
   float d = length(e2);
   float tw = .5 + .5 * sin(uTime * (1.3 + r * 4.) + r * 40.);
   float tw2 = .5 + .5 * sin(uTime * (.7 + r * 2.) + r * 17.);
-  float bright = (0.85 + uStar * 1.1) * (.45 + .55 * h);
+  float bright = (0.85 + uStar * 1.1) * (.45 + .55 * h) * uNight;
   float st = on * smoothstep(.10, .0, d) * (.35 + .65 * tw) * bright;
   float big = step(.975, r);
   float halo = smoothstep(.26, .0, d) * .30;
@@ -119,7 +126,7 @@ vec3 sky(vec2 p){
   float band = exp(-dd * dd / (2. * 80. * 80.));
   float cloud = .35 + fbm(p * .011 + 2.) * 1.3;
   float dust = step(.86, hash(floor(p * .6))) * .5 * band;
-  c += (vec3(.48, .55, .80) * band * cloud * .55 + vec3(.9) * dust * .35) * uMilky;
+  c += (vec3(.48, .55, .80) * band * cloud * .55 + vec3(.9) * dust * .35) * uMilky * uNight;
   return c;
 }
 
@@ -143,12 +150,12 @@ vec3 sea(vec2 p){
     }
   }
   h += rh;
-  vec3 deepFar = vec3(.15, .20, .28), deepNear = vec3(.06, .11, .18);
+  vec3 deepFar = vec3(.09, .22, .25), deepNear = vec3(.03, .11, .15);
   vec3 base = mix(deepFar, deepNear, smoothstep(0., 170., d));
   vec2 pr = vec2(p.x + h * 38., HY - d * .85 + h * 20.);
   vec3 refl = sky(pr);
   float fres = pow(1. - clamp(d / 280., 0., 1.), 1.4) * .75 + .16;
-  vec3 col = base + refl * fres * (.19 + uCalm * .16);
+  vec3 col = base + refl * fres * (.36 + uCalm * .18);
   float glint = smoothstep(.55, .95, h + rh * 1.5) * (.12 + uStar * .1);
   col += vec3(.9, .8, .6) * glint;
   // 눈에 띄게 일렁이는 큰 너울과 물결선: 밝고 어두운 띠가 천천히 밀려온다
@@ -158,10 +165,12 @@ vec3 sea(vec2 p){
   col += mix(vec3(.45, .6, .9), vec3(.95, .72, .55), .2 + .6 * smoothstep(250., 900., p.x)) * lines * .035 * amp * exp(-d * .006);
   // 일렁이는 물결 위로 반짝이는 잔빛: 해 진 수평선 쪽(오른쪽)이 더 붉고, 가까울수록 어둡게 사그라든다
   float gl2 = smoothstep(.74, .97, noise(q * 14. + vec2(uTime * .8, -uTime * .5)) + h * .28);
-  vec3 gcol = mix(vec3(.62, .76, 1.), vec3(1., .82, .64), .25 + .75 * smoothstep(250., 900., p.x));
+  float sunW = exp(-abs(p.x - 1260.) / 430.);
+  vec3 gcol = mix(vec3(.62, .76, 1.), vec3(1., .80, .50), mix(.2, 1., sunW * (1. - uNight)));
   col += gcol * gl2 * (.025 + .10 * exp(-d * .011)) * (.6 + .4 * (1. - uCalm));
   col += vec3(.7, .85, 1.) * rh * .22 * exp(-d * .004);
   col += uGlowCol * uGlow * exp(-d * .005) * (.35 + .65 * noise(q * 6. + uTime * .5));
+  col *= mix(1., .5, uNight);
   col = mix(col, col * vec3(1.15, .92, .78) + vec3(.07, .03, 0.), uDawn * .55);
   return col;
 }
@@ -335,7 +344,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         const a = gl.getAttribLocation(prog, 'a');
         gl.enableVertexAttribArray(a);
         gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
-        for (const n of ['uRes', 'uTime', 'uOff', 'uScale', 'uZoom', 'uCenter', 'uCalm', 'uStar', 'uMilky', 'uDawn', 'uGlow', 'uGlowCol', 'uRip', 'uSky', 'uHasSky']) loc[n] = gl.getUniformLocation(prog, n);
+        for (const n of ['uRes', 'uTime', 'uOff', 'uScale', 'uZoom', 'uCenter', 'uNight', 'uCalm', 'uStar', 'uMilky', 'uDawn', 'uGlow', 'uGlowCol', 'uRip', 'uSky', 'uHasSky']) loc[n] = gl.getUniformLocation(prog, n);
       } else setNoGL(true);
     } catch {
       gl = null;
@@ -364,7 +373,9 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
           hasSky = 0;
         }
       };
-      img.src = '/bg/sky_q5.webp';
+      // 노을 하늘은 셰이더가 그린다. 하늘 사진을 쓰려면 경로를 넣는다 (예: '/bg/sky_golden.webp').
+      const SKY_SRC: string | null = null;
+      if (SKY_SRC) img.src = SKY_SRC;
     }
 
     const fit = () => {
@@ -386,7 +397,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
     glCanvas.addEventListener('webglcontextlost', onLost);
 
     // 상태
-    const cur = { calm: 0.12, star: 0, milky: 0, dawn: 0, glow: 0, gr: 1, gg: 0.8, gb: 0.45 };
+    const cur = { night: 0, calm: 0.12, star: 0, milky: 0, dawn: 0, glow: 0, gr: 1, gg: 0.8, gb: 0.45 };
     const view: View = { zoom: 1, cx: 688, cy: 230 };
     const ripples: { x: number; y: number; t0: number; amp: number }[] = [];
     const fw: Fx[] = [];
@@ -449,9 +460,9 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       if (v === 'experience') {
         at(0.05, playCorkPop);
         const shots: [number, number, number, number, 'radial' | 'ring' | 'willow' | 'big'][] = [
-          [1.0, 560, 120, 0, 'radial'], [1.7, 850, 90, 1, 'radial'], [2.3, 700, 150, 2, 'ring'], [2.9, 420, 110, 3, 'radial'],
-          [3.2, 1000, 130, 4, 'radial'], [3.6, 650, 70, 0, 'willow'], [3.95, 800, 110, 1, 'radial'], [4.15, 520, 140, 2, 'ring'],
-          [4.35, 960, 80, 3, 'radial'], [4.6, 690, 100, 0, 'big'],
+          [1.0, 760, 190, 0, 'radial'], [1.7, 1050, 150, 1, 'radial'], [2.3, 890, 250, 2, 'ring'], [2.9, 640, 210, 3, 'radial'],
+          [3.2, 1210, 200, 4, 'radial'], [3.6, 850, 120, 0, 'willow'], [3.95, 1010, 220, 1, 'radial'], [4.15, 730, 270, 2, 'ring'],
+          [4.35, 1150, 150, 3, 'radial'], [4.6, 920, 180, 0, 'big'],
         ];
         for (const [t, x, y, c, k] of shots) at(t - 0.8, () => launch(x, y, c, k));
       } else if (v === 'stability') {
@@ -521,13 +532,14 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
 
       // 호버 미리보기: 세계가 그 물건 쪽으로 살짝 기운다
       const h = hoverRef.current;
-      const tgt = { calm: 0.12, star: 0, milky: 0, dawn: 0, glow: 0 };
+      const tgt = { night: 0, calm: 0.12, star: 0, milky: 0, dawn: 0, glow: 0 };
       if (!phase) {
-        if (h === 'experience') { tgt.glow = 0.07; tgt.dawn = 0.12; }
-        if (h === 'stability') { tgt.star = 0.55; tgt.calm = 0.55; tgt.milky = 0.25; }
-        if (h === 'change') { tgt.dawn = 0.3; tgt.calm = 0.3; }
+        if (h === 'experience') { tgt.glow = 0.07; tgt.night = 0.18; }
+        if (h === 'stability') { tgt.night = 0.42; tgt.star = 0.55; tgt.calm = 0.55; tgt.milky = 0.25; }
+        if (h === 'change') { tgt.dawn = 0.18; tgt.calm = 0.3; }
         const k = Math.min(1, dt * 3);
         cur.calm += (tgt.calm - cur.calm) * k;
+        cur.night += (tgt.night - cur.night) * k;
         cur.star += (tgt.star - cur.star) * k;
         cur.milky += (tgt.milky - cur.milky) * k;
         cur.dawn += (tgt.dawn - cur.dawn) * k;
@@ -543,26 +555,29 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       if (phase && !reduce) {
         for (const ev of events) if (!ev.done && e >= ev.at) { ev.done = true; ev.fn(); }
         if (phase === 'experience') {
-          view.cx = 688; view.cy = 230; view.zoom = 1 + 0.06 * smooth(0, 6, e);
+          view.cx = 900; view.cy = 300; view.zoom = 1 + 0.06 * smooth(0, 6, e);
           cur.glow = Math.min(0.9, energy);
           cur.gr = 1; cur.gg = 0.78; cur.gb = 0.42;
+          cur.night = 0.82 * smooth(0, 2.4, e);
           cur.star = 0.2 * smooth(0, 3, e);
-          cur.dawn = 0.18 * smooth(0, 2, e);
+          cur.dawn = 0;
         } else if (phase === 'stability') {
           // 고개를 드는 연출: 갑판은 아래로 완전히 밀려 나가고, 하늘이 올라온다 (사진이 잘려 보이지 않도록 흐리게 지우지 않는다)
           const z = smooth(0.2, 3.4, e);
-          view.cx = 688; view.cy = 130; view.zoom = lerp(1, 1.45, z);
+          view.cx = 860; view.cy = 200; view.zoom = lerp(1, 1.45, z);
           fgA = 1;
           fgY = smooth(0.15, 2.7, e) * (vh + 140);
+          cur.night = smooth(0.1, 2.6, e);
           cur.star = smooth(0.2, 2.6, e);
           cur.milky = 0.9 * smooth(0.6, 3.6, e);
           cur.calm = lerp(0.55, 1, smooth(0, 2, e));
         } else {
           const z = smooth(0.2, 2.1, e);
-          view.cx = 900; view.cy = 310; view.zoom = lerp(1, 2.4, z);
+          view.cx = 900; view.cy = 470; view.zoom = lerp(1, 2.4, z);
           fgA = 1 - smooth(0.2, 1.6, e);
           cur.calm = 0.3;
-          cur.dawn = lerp(0.3, 0.95, smooth(3.6, 6.2, e));
+          cur.night = 0;
+          cur.dawn = lerp(0.18, 0.7, smooth(3.6, 6.2, e));
           // 고래: 2.2초에 솟아 4.6초에 들어가고, 이어서 꼬리가 올라왔다 잠긴다
           const u = (e - 2.2) / 2.4;
           if (u > 0 && u < 1) {
@@ -618,6 +633,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         gl.uniform1f(loc.uMilky, cur.milky);
         gl.uniform1f(loc.uDawn, cur.dawn);
         gl.uniform1f(loc.uGlow, cur.glow);
+        gl.uniform1f(loc.uNight, cur.night);
         gl.uniform3f(loc.uGlowCol, cur.gr, cur.gg, cur.gb);
         gl.uniform4fv(loc.uRip, rip);
         gl.activeTexture(gl.TEXTURE0);
@@ -708,6 +724,8 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       if (fg) {
         fg.style.transform = `translate(${layout.ox + sh}px, ${layout.oy + sh + fgY}px) scale(${s})`;
         fg.style.opacity = String(fgA);
+        // 밤이 되면 노을빛을 받던 갑판도 함께 어두워진다
+        fg.style.filter = cur.night > 0.01 ? `brightness(${(1 - 0.55 * cur.night).toFixed(3)}) saturate(${(1 - 0.4 * cur.night).toFixed(3)})` : 'none';
       }
     };
     raf = requestAnimationFrame(frame);
@@ -777,7 +795,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
               draggable={false}
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
               className="pointer-events-none absolute max-w-none"
-              style={{ left: o.foot[0], top: o.foot[1], height: o.h, transform: `translate(-50%, -100%) scale(${on ? 1.04 : 1})`, transformOrigin: '50% 100%', transition: 'transform 0.4s, filter 0.4s', filter: on ? 'brightness(1.28) drop-shadow(0 0 14px rgba(255,214,140,0.55))' : 'brightness(1)' }}
+              style={{ left: o.foot[0], top: o.foot[1], height: o.h, transform: `translate(-50%, -100%) scale(${on ? 1.04 : 1})`, transformOrigin: '50% 100%', transition: 'transform 0.4s, filter 0.4s', filter: on ? 'sepia(0.3) saturate(1.2) brightness(1.28) drop-shadow(0 0 14px rgba(255,214,140,0.55))' : 'sepia(0.3) saturate(1.2) brightness(1.02)' }}
             />
           );
         })}
