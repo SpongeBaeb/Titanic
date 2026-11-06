@@ -39,6 +39,7 @@ const EXTRAS: Record<string, Extra> = {
   stern: { x: 13, y: 21, w: 16, h: 17, caption: '리버풀 등록. 이 배는 한 번도 리버풀에 닿지 못했다.', unlock: 'never-liverpool', horn: true },
   funnels: { x: 38.5, y: 1, w: 15, h: 25, caption: '굴뚝은 네 개. 그중 네 번째는 환기용 가짜였다.' },
   tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '출항 날, 예인선이 SS 뉴욕을 간신히 막았다.' },
+  horseCart: { x: 77, y: 50, w: 9, h: 18, caption: '짐은 아직 말이 나르던 시대였다.' },
   gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 오른 승객은 약 900명.' },
 };
 // 사진 아래 글은 작은 칸에 두 줄로 들어가야 해서 25자 안쪽으로 쓴다
