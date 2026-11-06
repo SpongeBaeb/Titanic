@@ -555,12 +555,51 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     if (process.env.NODE_ENV === 'development') (window as unknown as { __duck?: unknown }).__duck = { threat: () => onKnifeAtDuck(), stamp: () => purserSay('도장 시험이오. 받았소.', 'stamp', 3500) };
   });
 
+  // 칼을 쥐고 있는 동안 빙빙 돈다. 놓으면 가까운 표적(오리 사무장, 과녁)으로 날아간다
+  const [heldKnife, setHeldKnife] = useState<number | null>(null);
+
   const handleSouvenirDragEnd = (e: any, info: PanInfo, itemId: number) => {
+    setHeldKnife(null);
     const droppedId = checkCollision(info.point.x, info.point.y);
     setHoveredDropZone(null);
     
     const item = souvenirItems.find(i => i.id === itemId);
     if (!item) return;
+
+    // 칼(shop1): 놓은 곳이 표적 근처면 겨냥해 줄 필요 없이 알아서 날아가 꽂힌다 (속도나 정확한 방향은 보지 않는다)
+    if (item.img.includes('shop1')) {
+      const px = info.point.x; const py = info.point.y;
+      const near = (r: DOMRect | undefined, pad: number) => !!r && px >= r.left - pad && px <= r.right + pad && py >= r.top - pad && py <= r.bottom + pad;
+      const duckRect = document.querySelector('[data-duck]')?.getBoundingClientRect();
+      const baseX = item.targetX + info.offset.x; const baseY = item.targetY + info.offset.y;
+      if (duckRect && near(duckRect, 80)) {
+        const cx = duckRect.left + duckRect.width / 2; const cy = duckRect.top + duckRect.height * 0.4;
+        setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: baseX + (cx - px), targetY: baseY + (cy - py), rotation: i.rotation + 720, isThrown: true } : i));
+        playSound('snap');
+        setTimeout(() => onKnifeAtDuck(), 210);
+        // 칼은 튕겨 나와 선반으로 돌아온다
+        setTimeout(() => setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: (Math.random() - 0.5) * 500, targetY: -Math.random() * 300 - 150, isThrown: false } : i)), 1000);
+        return;
+      }
+      const targetEl = dropZoneRefs.current['target'];
+      const tRect = targetEl?.getBoundingClientRect();
+      if (tRect && near(tRect, 70)) {
+        const tcx = tRect.left + tRect.width * (debugHitX / 100);
+        const tcy = tRect.top + tRect.height * (debugHitY / 100);
+        const R = tRect.width * debugHitRadius;
+        const jx = (Math.random() - 0.5) * R * 0.5; const jy = (Math.random() - 0.5) * R * 0.5;
+        const ang = Math.atan2(tcy - py, tcx - px) * 180 / Math.PI;
+        const relX = baseX + (tcx - px) + jx; const relY = baseY + (tcy - py) + jy;
+        setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: relX, targetY: relY, stuckX: jx, stuckY: jy, rotation: ang + 45 + 720, isThrown: true } : i));
+        setTimeout(() => {
+          playSound('scissors');
+          setTargetHit(true);
+          setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, isStuck: true, isThrown: false } : i));
+          setTimeout(() => setTargetHit(false), 500);
+        }, 210);
+        return;
+      }
+    }
 
     // 칼(shop1)을 오리 사무장 위에서 놓으면 위협이 된다
     if (item.img.includes('shop1')) {
@@ -930,30 +969,15 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     }
   };
 
-  // 칼 던지기: 항로를 꾹 누르면 칼이 손에서 빙빙 돌고, 좌우로 움직여 겨냥한 뒤 놓으면 던져져 꽂힌다
-  const [holding, setHolding] = useState(false);
-  const guessFromEvent = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (gamblingState !== 'idle') return;
+    
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     // 종이 안쪽 영역 기준으로 환산한다
     const inner = (x / rect.width - PAPER.l / 100) / (1 - (PAPER.l + PAPER.r) / 100);
-    return Math.round(480 + Math.max(0, Math.min(1, inner)) * 70);
-  };
-  const handleTrackDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (gamblingState !== 'idle') return;
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 일부 환경에서는 지원하지 않는다 */ }
-    setHolding(true);
-    setGamblingGuess(guessFromEvent(e));
-    playSound('snap');
-  };
-  const handleTrackMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!holding) return;
-    setGamblingGuess(guessFromEvent(e));
-  };
-  const handleTrackUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!holding) return;
-    setHolding(false);
-    setGamblingGuess(guessFromEvent(e));
+    const distance = Math.round(480 + (Math.max(0, Math.min(1, inner)) * 70));
+    setGamblingGuess(distance);
     setSwordHit((n) => n + 1);
     playSound('snap'); // 칼이 꽂히는 소리
   };
@@ -1772,6 +1796,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                         drag={true}
                         dragMomentum={false}
                         onDragStart={() => {
+                          if (item.img.includes('shop1')) setHeldKnife(item.id);
                           if (item.isStuck) {
                             setSouvenirItems(prev => prev.map(i => i.id === item.id ? { ...i, isStuck: false } : i));
                           }
@@ -1788,11 +1813,11 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                           scale: 1,
                           x: item.targetX,
                           y: item.targetY,
-                          rotate: item.rotation,
+                          rotate: heldKnife === item.id ? [item.rotation, item.rotation + 360] : item.rotation,
                         }}
                         whileHover={item.isStuck ? {} : { scale: 1.15 }}
                         whileDrag={item.isStuck ? {} : { scale: 1.25, zIndex: 300 }}
-                        transition={item.isHit ? { duration: 0.4, type: "tween" } : item.isThrown ? { duration: 0.2, ease: "linear" } : { duration: 0.7, type: "spring", bounce: 0.4 }}
+                        transition={heldKnife === item.id ? { rotate: { duration: 0.55, repeat: Infinity, ease: 'linear' }, default: { duration: 0.15 } } : item.isHit ? { duration: 0.4, type: "tween" } : item.isThrown ? { duration: 0.2, ease: "linear" } : { duration: 0.7, type: "spring", bounce: 0.4 }}
                         className={`absolute top-1/2 left-1/2 -ml-12 -mt-12 w-24 h-24 object-contain pointer-events-auto ${item.isStuck ? 'z-[100]' : 'cursor-grab active:cursor-grabbing z-[200]'}`}
                       />
                     ))}
@@ -2091,9 +2116,8 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             <div className="w-full flex flex-col items-center">
               {/* Track */}
               <div 
-                className={`relative select-none ${gamblingState === 'idle' ? (holding ? 'cursor-grabbing' : 'cursor-grab hover:brightness-110') : ''}`}
+                className={`relative ${gamblingState === 'idle' ? 'cursor-pointer hover:brightness-110' : ''}`}
                 style={{ 
-                  touchAction: 'none',
                   marginBottom: `${gmbTrackMb}rem`,
                   width: `${gmbTrackWidth}%`,
                   height: `${gmbTrackHeight}rem`,
@@ -2102,10 +2126,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   backgroundPosition: 'center',
                   backgroundRepeat: 'no-repeat'
                 }}
-                onPointerDown={handleTrackDown}
-                onPointerMove={handleTrackMove}
-                onPointerUp={handleTrackUp}
-                onPointerCancel={handleTrackUp}
+                onClick={handleTrackClick}
               >
                 {/* 종이 지도 안쪽 영역: 480~550 눈금, 범위 띠, 칼, 배가 모두 이 영역 기준이다 */}
                 <div className="absolute pointer-events-none" style={{ left: `${PAPER.l}%`, right: `${PAPER.r}%`, top: `${PAPER.t}%`, bottom: `${PAPER.b}%` }}>
@@ -2135,28 +2156,15 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                     />
                     <motion.div
                       key={`sword-${gamblingGuess}-${swordHit}`}
-                      initial={{ y: -90, opacity: 0, rotate: swordHit > 0 ? 199 - 900 : 199 }}
-                      animate={{ y: 0, opacity: holding ? 0 : 1, rotate: swordHit > 0 ? [199 - 900, 199, 206, 194, 201, 199] : [199, 199, 205, 195, 201, 199] }}
-                      transition={{ y: { duration: 0.22, ease: 'easeIn' }, opacity: { duration: 0.05 }, rotate: { duration: 0.6, times: [0, 0.4, 0.55, 0.7, 0.85, 1], ease: 'easeOut' } }}
+                      initial={{ y: -170, opacity: 0, rotate: 199 }}
+                      animate={{ y: 0, opacity: 1, rotate: [199, 199, 205, 195, 201, 199] }}
+                      transition={{ y: { duration: 0.16, ease: 'easeIn' }, opacity: { duration: 0.05 }, rotate: { delay: 0.16, duration: 0.45 } }}
                       style={{ position: 'absolute', left: -SWORD_W * 0.21, top: -SWORD_W * 1.833 * 0.06, width: SWORD_W, height: SWORD_W * 1.833, transformOrigin: '21% 6%' }}
                     >
                       {/* 기념품샵의 타이타닉 칼. 칼끝이 아래로 가도록 뒤집어 꽂는다 */}
                       <img src="/spend/shop1.webp" alt="칼" className="h-full w-full object-fill drop-shadow-[0_3px_4px_rgba(0,0,0,0.7)]" />
                     </motion.div>
                   </div>
-                  {/* 손에 쥔 칼: 빙빙 돌며 따라다닌다. 놓으면 던져진다 */}
-                  {holding && (
-                    <div className="absolute z-30" style={{ left: `${((gamblingGuess - 480) / 70) * 100}%`, top: '50%', width: 0, height: 0 }}>
-                      <div className="absolute -top-24 h-24 border-l border-dashed border-amber-200/60" style={{ left: 0 }} />
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 0.5, repeat: Infinity, ease: 'linear' }}
-                        style={{ position: 'absolute', left: -SWORD_W / 2, top: -SWORD_W * 1.833 - 56, width: SWORD_W, height: SWORD_W * 1.833, transformOrigin: '50% 50%' }}
-                      >
-                        <img src="/spend/shop1.webp" alt="" className="h-full w-full object-fill drop-shadow-[0_6px_6px_rgba(0,0,0,0.6)]" />
-                      </motion.div>
-                    </div>
-                  )}
                   <div className="absolute z-10 -translate-x-1/2 rounded bg-black/60 px-1 text-xs text-amber-200" style={{ left: `${((gamblingGuess - 480) / 70) * 100}%`, bottom: '-1.4rem' }}>{gamblingGuess}</div>
 
                   {/* Ship */}
@@ -2176,7 +2184,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             </div>
 
             <p className={`text-amber-400 font-bold text-center mt-2 transition-opacity ${gamblingState === 'idle' ? 'opacity-100 animate-bounce' : 'opacity-0 pointer-events-none'}`} style={{ marginBottom: `${gmbTitleMb}rem` }}>
-              항로를 꾹 눌러 칼을 돌리다가, 놓아서 던지세요
+              항로를 클릭하여 칼을 꽂으세요
             </p>
             <div className="text-slate-300 text-center" style={{ marginBottom: `${gmbTextMb}rem` }}>
               <div role="radiogroup" aria-label="베팅 범위" className="flex justify-center gap-2">
