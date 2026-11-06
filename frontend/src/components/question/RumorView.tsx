@@ -51,16 +51,76 @@ const SHORT: Record<string, string> = {
   check_escape: '탈출 경로',
   follow_crowd: '군중 따라가기',
 };
-const DWELL = 1.8; // 한 구역에 이만큼 머물면 선택된다(초)
+const DWELL = 1.8;
+
+/**
+ * 군중의 혼잣말. 1912년 4월 14일 일요일 밤, 충돌 직후 갑판의 분위기를 담았다.
+ * 아직 아무도 침몰을 믿지 않는다: 엔진이 멎었고, 앞 갑판에 얼음 조각이 떨어졌고, 바다는 거울처럼 고요하다.
+ * 악단은 아직 갑판에서 연주하지 않는다(구명정을 내리기 시작할 즈음에야 연주를 시작했다).
+ */
+const CHATTER: string[] = [
+  // 일등석 신사 숙녀
+  '브리지 게임이나 마저 끝냅시다.',
+  '얼음? 위스키에 넣을 건 이미 있소.',
+  '선장이 알아서 하겠지.',
+  '화이트 스타 라인이 이럴 리 없소.',
+  '내일 뉴욕 신문엔 뭐라고 실릴까.',
+  '내 시가가 꺼졌군. 배가 멈추다니.',
+  '실내화 차림으로 나오고 말았어요.',
+  '모피 코트를 챙겼어야 했는데.',
+  '여보, 먼저 들어가 주무세요.',
+  '내 개는 어디 있지?',
+  '흡연실 친구들은 아직 카드를 친다더군.',
+  '무선 전신이 있으니 걱정 마시오.',
+  // 이등석, 삼등석, 아이들
+  '일요일 밤인데 찬송가나 부를까.',
+  '계단 문이 잠겨 있어요!',
+  '아메리카까지 이 년을 모았는데…',
+  '엄마, 갑판에 얼음이 있어!',
+  '아가야, 엄마 손 놓지 마.',
+  '애들 외투부터 입혀요.',
+  '엄마, 오늘은 안 자도 돼요?',
+  '아래층은 벌써 물이 찼대요.',
+  // 승무원
+  '신사 숙녀 여러분, 선실로 돌아가 주십시오.',
+  '곧 지시가 있을 겁니다. 침착하세요.',
+  '저도 아는 게 없습니다, 손님.',
+  // 재치
+  '얼음 조각이 공짜 기념품이래.',
+  '악단이 연주하면 마음이 놓일 텐데.',
+  '이 배는 가라앉지 않는다더니.',
+  '구명정 훈련은 한 번도 없었지.',
+  '수영 못하는 사람이 나만은 아니겠지.',
+  '짐은 어쩌지? 기념품이 가방에…',
+  '하느님도 이 배는 못 가라앉힌다던데.',
+  '올림픽호가 곧 올 거요.',
+  // 심오
+  '바다는 우리 계획을 모른다.',
+  '어떤 배든 바다 앞에선 나뭇조각이지.',
+  '엔진이 멎으니 파도 소리가 들리네.',
+  '별은 참 맑은데.',
+  '고요가 더 무섭군.',
+  '바다가 거울 같아. 너무 고요해.',
+  '공기가 유난히 차가워.',
+  '위기가 되어야 제 모습이 나오지.',
+  '한 시간 전만 해도 음악을 들었는데.',
+  '내가 지키려던 건 무엇이었더라.',
+  '이 밤을 평생 말하게 될 거야. 살아서라면.',
+  '내일은 오기는 하는 걸까.',
+]; // 한 구역에 이만큼 머물면 선택된다(초)
 
 // 소문이 퍼지며 바뀌는 말 (문구는 초안)
 const RUMORS = [
   '빙산이래.',
+  '뭔가 긁고 지나갔대.',
   '배가 부딪혔대.',
   '별일 아니래, 곧 출발한대.',
+  '앞 갑판에 얼음이 쌓였대.',
   '물이 들어온대.',
+  '화물칸이 잠겼대.',
   '구명정이 모자란대.',
   '선장은 이미 알고 있었대.',
+  '올림픽호가 오고 있대.',
 ];
 
 /**
@@ -76,7 +136,12 @@ const zs = (y: number) => Math.min(1.3, Math.max(0.6, personH(y) / 200));
 /** 사람이 서 있을 수 있는 가장 아래쪽 (이보다 아래는 너무 커진다) */
 const BOTTOM = 795;
 /** 부딪혀 쓰러진 사람들이 하는 말 */
-const OUCH = ['아야!', '밀지 마세요!', '조심해요!', '어디 보고 다니는 거요!', '제발 진정해요!', '내 모자!', '아이가 있어요!', '무슨 짓이오!', '왜 뛰는 거요?', '아이고 허리야…', '이러다 다 넘어져요!', '다들 침착해요!'];
+const OUCH = [
+  '아야!', '밀지 마세요!', '조심해요!', '어디 보고 다니는 거요!', '제발 진정해요!', '내 모자!', '아이가 있어요!', '무슨 짓이오!',
+  '왜 뛰는 거요?', '아이고 허리야…', '이러다 다 넘어져요!', '다들 침착해요!',
+  '신사한테 이게 무슨 짓이오!', '내 안경! 내 안경!', '숙녀가 있소, 조심하시오!', '런던에서 산 모자인데…', '이런 무례한 사람 같으니!',
+  '아이가 밟히겠어요!', '손목시계가!', '아직 배가 가라앉은 것도 아닌데!', '뛰면 더 위험해요!', '어이쿠, 바닥이 얼음이네!', '진주 목걸이가!',
+];
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 interface Agent {
@@ -85,7 +150,7 @@ interface Agent {
   mill: boolean; tx: number; ty: number; a: number; wait: number; enter: boolean; sp: number;
   down: number; downT: number; dir: number; say: string; sayT: number; delay: number; fs: number;
 }
-interface Phrase { agent: number; text: string; gen: number; age: number; life: number; src: number }
+interface Phrase { agent: number; text: string; gen: number; age: number; life: number; src: number; chat?: boolean }
 
 function figure(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, phase: number, kind: number, rim: string, body = '#07090f') {
   const bob = Math.abs(Math.sin(phase)) * h * 0.012;
@@ -267,6 +332,8 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
     let lastMoveAt = performance.now();
     let phraseTimer = 0;
     let rumorIdx = 0;
+    let chatTimer = 0;
+    let chatBag: number[] = [];
 
     const mutate = (text: string, gen: number): string => {
       const r = Math.random();
@@ -399,12 +466,13 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
       if (visible && phraseTimer > 2.1 && agents.length) {
         phraseTimer = 0;
         const gen = (e - 5.2) / 4;
-        if (phrases.length < 10) {
+        if (phrases.filter((q) => !q.chat).length < 8) {
           const ai = Math.floor(Math.random() * agents.length);
           phrases.push({ agent: ai, text: RUMORS[Math.min(RUMORS.length - 1, rumorIdx++ % 3 + Math.floor(gen / 3))], gen: 0, age: 0, life: 7, src: ai });
         }
         // 가까운 사람에게 전달되며 변형
-        const p = phrases[Math.floor(Math.random() * phrases.length)];
+        const rumorsOnly = phrases.filter((q) => !q.chat);
+        const p = rumorsOnly[Math.floor(Math.random() * rumorsOnly.length)];
         if (p) {
           const from = agents[p.agent];
           let best = -1; let bd = 1e9;
@@ -414,6 +482,19 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
             if (d < bd && d < 220) { bd = d; best = k; }
           }
           if (best >= 0) { p.agent = best; p.gen += 1; p.text = mutate(p.text, p.gen + gen); p.age = Math.max(0, p.age - 1.2); }
+        }
+      }
+      // 혼잣말: 내 가까이 있는 사람이 더 자주 말한다. 같은 말은 한 바퀴 돌 때까지 반복하지 않는다
+      chatTimer += dt;
+      if (e > 6 && chatTimer > 1.5 && phrases.filter((q) => q.chat).length < 3) {
+        chatTimer = 0;
+        const talking = new Set(phrases.map((q) => q.agent));
+        const cands = agents.map((_, k) => k).filter((k) => !talking.has(k) && agents[k].down <= 0 && agents[k].a > 0.8 && Math.abs(agents[k].x - me.x) < 760);
+        if (cands.length) {
+          cands.sort((k1, k2) => Math.hypot(agents[k1].x - me.x, agents[k1].y - me.y) - Math.hypot(agents[k2].x - me.x, agents[k2].y - me.y));
+          const ai = cands[Math.floor(Math.pow(Math.random(), 1.6) * cands.length)];
+          if (!chatBag.length) chatBag = CHATTER.map((_, k) => k).sort(() => Math.random() - 0.5);
+          phrases.push({ agent: ai, text: CHATTER[chatBag.pop() as number], gen: 0, age: 0, life: 5.2, src: ai, chat: true });
         }
       }
       for (let i = phrases.length - 1; i >= 0; i--) { phrases[i].age += dt; if (phrases[i].age > phrases[i].life) phrases.splice(i, 1); }
@@ -638,14 +719,14 @@ export default function RumorView({ question, onAnswer, onBack }: RumorViewProps
         const dz = depth(a.y);
         const near = clamp(1 - Math.hypot(a.x - me.x, a.y - me.y) / 420, 0, 1);
         const k = clamp(p.age / 0.8, 0, 1) * clamp((p.life - p.age) / 1.2, 0, 1);
-        const jit = Math.min(4, p.gen * 0.9) * (1 - near * 0.6);
-        const size = (22 + near * 14) * clamp(dz, 0.85, 1.3);
+        const jit = p.chat ? 0 : Math.min(4, p.gen * 0.9) * (1 - near * 0.6);
+        const size = (p.chat ? 20 + near * 8 : 22 + near * 14) * clamp(dz, 0.85, p.chat ? 1.15 : 1.3);
         ctx.font = `600 ${size}px "Noto Serif KR", "Nanum Myeongjo", serif`;
         const tx = a.x; const ty = a.y - personH(a.y) * 1.12 - near * 10;
-        for (let c2 = 0; c2 < 2; c2++) {
+        for (let c2 = 0; c2 < (p.chat ? 1 : 2); c2++) {
           const ox = (Math.sin(e * 7 + p.src + c2 * 2) * jit) * (c2 ? 1 : -1);
           const oy = Math.cos(e * 5.3 + c2) * jit * 0.6;
-          ctx.fillStyle = c2 ? `rgba(220,90,80,${0.35 * k})` : `rgba(240,225,200,${(0.45 + near * 0.5) * k * (c2 ? 0.6 : 1)})`;
+          ctx.fillStyle = p.chat ? `rgba(255,236,200,${(0.62 + near * 0.38) * k})` : c2 ? `rgba(220,90,80,${0.35 * k})` : `rgba(240,225,200,${(0.45 + near * 0.5) * k * (c2 ? 0.6 : 1)})`;
           ctx.shadowColor = 'rgba(0,0,0,0.9)';
           ctx.shadowBlur = 8;
           ctx.fillText(p.text, tx + ox, ty + oy);

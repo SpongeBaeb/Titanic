@@ -31,7 +31,7 @@ interface Spot { x: number; y: number; w: number; h: number; ax: number; ay: num
 const SPOTS: Record<string, Spot> = {
   experience: { x: 590, y: 500, w: 130, h: 170, ax: 650, ay: 600 }, // 앞쪽 벤치 왼쪽 (샴페인)
   stability: { x: 262, y: 486, w: 120, h: 90, ax: 322, ay: 540 }, // 앞쪽 벤치 오른쪽 (별자리 도감)
-  change: { x: 738, y: 440, w: 215, h: 245, ax: 840, ay: 590 }, // 난간 앞 갑판 (망원경)
+  change: { x: 690, y: 450, w: 215, h: 270, ax: 790, ay: 610 }, // 난간 앞 갑판 (망원경)
 };
 /**
  * 선택지 물건은 배경과 따로 그린 그림(투명 배경)이다. 그림이 아직 없으면 보이지 않고 빛과 눌리는 자리만 남는다.
@@ -40,7 +40,7 @@ const SPOTS: Record<string, Spot> = {
 const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number; flip?: boolean }> = {
   experience: { src: '/q5/obj_champagne.webp', foot: [650, 660], h: 165 },
   stability: { src: '/q5/obj_atlas.webp', foot: [322, 556], h: 34 },
-  change: { src: '/q5/obj_telescope.webp', foot: [840, 672], h: 225, flip: true },
+  change: { src: '/q5/obj_telescope.webp', foot: [790, 708], h: 240, flip: true },
 };
 const ORDER = ['experience', 'stability', 'change'] as const;
 type Choice = (typeof ORDER)[number];
@@ -228,6 +228,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
   const lastType = useRef('mouse');
   const sizeRef = useRef({ vw: 1280, vh: 720, dpr: 1 });
   const pan = useRef(0.62);
+  const mouseN = useRef({ x: 0, y: 0 }); // 마우스 위치(-1~1): 갑판과 하늘이 미세하게 따라 움직인다
   const panTarget = useRef(0.62);
   const drag = useRef<{ x: number; pan: number } | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -451,6 +452,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       return { x: ((x - view.cx) * view.zoom + view.cx) * s + layout.ox, y: ((y - view.cy) * view.zoom + view.cy) * s + layout.oy, s: s * view.zoom };
     };
     const layout = { ox: 0, oy: 0 };
+    const par = { x: 0, y: 0, a: 1 }; // 시차(마우스를 따라 아주 조금 움직이는 정도)
 
     const startPhase = (v: Choice) => {
       phase = v;
@@ -529,6 +531,12 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       pan.current += (panTarget.current - pan.current) * Math.min(1, dt * 6);
       layout.ox = W > vw ? -(W - vw) * pan.current : (vw - W) / 2;
       layout.oy = (vh - IMG.h * s) / 2;
+      par.x += (mouseN.current.x - par.x) * Math.min(1, dt * 3);
+      par.y += (mouseN.current.y - par.y) * Math.min(1, dt * 3);
+      par.a += ((phase || reduce ? 0 : 1) - par.a) * Math.min(1, dt * 2.5);
+      // 가까운 갑판은 많이, 먼 하늘과 바다는 적게, 반대 방향으로: 마우스 쪽을 들여다보는 느낌
+      const fgPx = -par.x * 9 * par.a; const fgPy = -par.y * 5 * par.a;
+      const skyPx = -par.x * 3.5 * par.a; const skyPy = -par.y * 2 * par.a;
 
       // 호버 미리보기: 세계가 그 물건 쪽으로 살짝 기운다
       const h = hoverRef.current;
@@ -624,7 +632,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         }
         gl.uniform2f(loc.uRes, glCanvas.width, glCanvas.height);
         gl.uniform1f(loc.uTime, t);
-        gl.uniform2f(loc.uOff, (layout.ox + sh) * dpr, (layout.oy + sh) * dpr);
+        gl.uniform2f(loc.uOff, (layout.ox + sh + skyPx) * dpr, (layout.oy + sh + skyPy) * dpr);
         gl.uniform1f(loc.uScale, s * dpr);
         gl.uniform1f(loc.uZoom, view.zoom);
         gl.uniform2f(loc.uCenter, view.cx, view.cy);
@@ -722,7 +730,10 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       // ── 앞쪽 그림 ──
       const fg = fgRef.current;
       if (fg) {
-        fg.style.transform = `translate(${layout.ox + sh}px, ${layout.oy + sh + fgY}px) scale(${s})`;
+        // 움직여도 가장자리가 비지 않도록 1.2%쯤 크게 그린다
+        const ex = 0.012;
+        fg.style.transformOrigin = '0 0';
+        fg.style.transform = `translate(${layout.ox + sh + fgPx - IMG.w * s * ex / 2}px, ${layout.oy + sh + fgPy + fgY - IMG.h * s * ex / 2}px) scale(${s * (1 + ex)})`;
         fg.style.opacity = String(fgA);
         // 밤이 되면 노을빛을 받던 갑판도 함께 어두워진다
         fg.style.filter = cur.night > 0.01 ? `brightness(${(1 - 0.55 * cur.night).toFixed(3)}) saturate(${(1 - 0.4 * cur.night).toFixed(3)})` : 'none';
@@ -744,6 +755,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
   // ── 입력 ──
   const onPointerMove = (e: React.PointerEvent) => {
     lastType.current = e.pointerType;
+    if (e.pointerType === 'mouse') mouseN.current = { x: (e.clientX / sizeRef.current.vw) * 2 - 1, y: (e.clientY / sizeRef.current.vh) * 2 - 1 };
     const { vw } = sizeRef.current;
     if (e.pointerType === 'mouse' && needPan && !chosenRef.current) panTarget.current = clamp01(e.clientX / vw);
     if (drag.current && e.pointerType !== 'mouse') {
