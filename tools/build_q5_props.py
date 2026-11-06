@@ -74,7 +74,7 @@ def main():
     sc = (w * 0.42) / (ch.shape[1] * 0.66)
     ch = cv2.resize(ch, (int(ch.shape[1] * sc), int(ch.shape[0] * sc)), interpolation=cv2.INTER_AREA)
     # 윗판은 y 가 위에서 약 8%~28% 사이에 있다 (타원의 가운데 약 18%)
-    top_c = int(h * 0.155)
+    top_c = int(h * 0.10)
     # 양동이 바닥이 윗판 타원 가운데에 오도록: 샴페인 그림의 바닥 근처(키의 94%)를 맞춘다
     x = int(w * 0.5 - ch.shape[1] * 0.52)
     y = int(top_c - ch.shape[0] * 0.94)
