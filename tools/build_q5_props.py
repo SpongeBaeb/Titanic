@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Q5 선택지 물건 만들기: 흰 배경 그림을 투명하게 오리고, 탁자 위에 샴페인을 올린다.
-입력: tools/work/src/table.png (빈 탁자), champagne_only.webp (양동이와 잔), chair_atlas.webp (별자리 도감이 놓인 의자)
-출력: frontend/public/q5/obj_champagne.webp (탁자 + 샴페인), obj_atlas.webp (의자 + 도감)
+입력: tools/work/src/table.png (빈 탁자), champagne_only.webp (양동이와 잔), book.png (펼친 별자리 도감, 벤치 위에 올린다)
+출력: frontend/public/q5/obj_champagne.webp (탁자 + 샴페인), obj_atlas.webp (별자리 도감)
 실행: python tools/build_q5_props.py
 """
 import os
@@ -84,8 +84,8 @@ def main():
     base = over(table.copy(), ch, x, y)
     save(base, 'obj_champagne.webp')
     print('탁자 윗판 기준 샴페인 위치', x, y)
-    chair = cut_white(os.path.join(SRC, 'chair_atlas.webp'))
-    save(chair, 'obj_atlas.webp')
+    book = cut_white(os.path.join(SRC, 'book.png'))
+    save(book, 'obj_atlas.webp')
 
 
 if __name__ == '__main__':
