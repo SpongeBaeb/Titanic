@@ -10,6 +10,7 @@ import TitanicPassengerCard from '@/components/ui/TitanicPassengerCard';
 import { ProbabilityNumber } from '@/components/ui/ProbabilityNumber';
 import CountingProbability from '@/components/ui/CountingProbability';
 import TraitHexagon from '@/components/ui/TraitHexagon';
+import ShareCard, { type CardRatio } from '@/components/ui/ShareCard';
 import { traitsFromPicks, traitsFromAxes, encodeAxes } from '@/engine/traits';
 import { characterDB } from '@/data/characterDB';
 import { questionsData } from '@/data/questions';
@@ -43,6 +44,8 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
   const [activeMatch, setActiveMatch] = useState<'best' | 'worst' | 'opposite'>('best');
   const cardRef = useRef<HTMLDivElement>(null);
   const traitRef = useRef<HTMLDivElement>(null);
+  const shareCardRef = useRef<HTMLDivElement>(null); // 공유 전용 카드(화면 밖에 숨겨 둠)
+  const [ratio, setRatio] = useState<CardRatio>('4:5');
 
   const getOptionLabel = (questionId: string, value: any) => {
     if (value === undefined || value === null) return null;
@@ -189,9 +192,10 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         let files: File[] | undefined;
-        if (traitRef.current && typeof navigator.canShare === 'function') {
+        if (typeof navigator.canShare === 'function') {
           try {
-            const canvas = await html2canvas(traitRef.current, { backgroundColor: '#020617' });
+            const canvas = await renderCard();
+            if (!canvas) throw new Error('no card');
             const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
             if (blob) {
               const f = new File([blob], `titanic_${traits ? traits.type.en.replace(/\s+/g, '_') : 'result'}.png`, { type: 'image/png' });
@@ -213,6 +217,14 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
     }
   };
 
+  /** 공유 카드를 이미지로 뽑는다 (화면 크기와 상관없이 1080 폭 그대로) */
+  const renderCard = async (): Promise<HTMLCanvasElement | null> => {
+    const el = shareCardRef.current;
+    if (!el) return null;
+    await new Promise((r) => setTimeout(r, 120)); // 육각형이 다 그려질 때까지
+    return html2canvas(el, { backgroundColor: '#020617', scale: 1, width: el.offsetWidth, height: el.offsetHeight, windowWidth: el.offsetWidth });
+  };
+
   const handleCopyLink = () => {
     if (!resultData?.id) return;
     const url = `${window.location.origin}/?result=${resultData.id}${traitCode ? `&t=${traitCode}` : ''}`;
@@ -222,17 +234,16 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
   };
 
   const handleSaveImage = async () => {
-    const target = stage === 'STAGE_SUMMARY' ? traitRef.current : cardRef.current;
-    if (!target) return;
     try {
-      const canvas = await html2canvas(target, { backgroundColor: '#020617' });
+      const canvas = await renderCard();
+      if (!canvas) return;
       const link = document.createElement('a');
-      link.download = `titanic_result_${traits ? traits.type.en.replace(/\s+/g, '_') : resultData?.persona}.png`;
+      link.download = `titanic_${traits ? traits.type.en.replace(/\s+/g, '_') : 'result'}_${ratio.replace(':', 'x')}.png`;
       link.href = canvas.toDataURL();
       link.click();
     } catch (err) {
       console.error('이미지 저장 실패:', err);
-      alert('이미지 저장에 실패했습니다.');
+      showToast('이미지 저장에 실패했어요.');
     }
   };
 
@@ -652,8 +663,15 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
   };
 
   return (
-    <div className={`min-h-[80vh] flex items-center justify-center px-6 ${resultData && traits && (stage === 'STAGE_TRAITS' || stage === 'STAGE_SUMMARY') ? 'pb-32' : ''}`}>
+    <div className={`min-h-[80vh] flex items-center justify-center px-6 ${resultData && traits && (stage === 'STAGE_TRAITS' || stage === 'STAGE_SUMMARY') ? 'pb-32 pt-24' : ''}`}>
       {renderContent()}
+
+      {/* 공유 전용 카드: 화면 밖에 숨겨 두고 이미지로만 뽑는다 */}
+      {resultData && traits && (
+        <div aria-hidden style={{ position: 'fixed', left: -12000, top: 0, pointerEvents: 'none' }}>
+          <ShareCard ref={shareCardRef} traits={traits} statistical={resultData.statistical_probability} adjusted={resultData.adjusted_probability} ratio={ratio} />
+        </div>
+      )}
 
       {/* 연출 건너뛰기 */}
       {stage === 'STAGE_TRAITS' && resultData && (
@@ -670,6 +688,14 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
           transition={{ delay: stage === 'STAGE_TRAITS' ? 2.4 : 0.2, duration: 0.5 }}
           className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-200/15 bg-slate-950/90 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md"
         >
+          <div className="mx-auto mb-2 flex max-w-xl items-center justify-center gap-2 text-[11px] text-slate-400">
+            <span>카드 크기</span>
+            {(['4:5', '9:16'] as CardRatio[]).map((r) => (
+              <button key={r} onClick={() => setRatio(r)} className={`rounded-full border px-3 py-0.5 transition-colors ${ratio === r ? 'border-amber-300/70 bg-amber-300/15 text-amber-100' : 'border-slate-600/70 hover:text-slate-200'}`}>
+                {r === '4:5' ? '피드 4:5' : '스토리 9:16'}
+              </button>
+            ))}
+          </div>
           <div className="mx-auto flex max-w-xl items-center gap-2">
             <button onClick={handleShare} className="flex-1 rounded-lg bg-amber-400 px-4 py-3 text-sm font-bold tracking-wide text-slate-950 shadow-[0_0_18px_rgba(251,191,36,0.35)] transition-colors hover:bg-amber-300">
               친구에게 내 결과 보내기
