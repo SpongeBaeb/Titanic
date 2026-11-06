@@ -54,7 +54,7 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
 
   const summaryItems = [
     { label: '성별', value: getOptionLabel('Q0', answers.sex) },
-    { label: '연령대', value: getOptionLabel('Q1', answers.ageGroup) },
+    { label: '연령대', value: typeof extras.age === 'number' ? `${extras.age}세 (${getOptionLabel('Q1', answers.ageGroup)})` : getOptionLabel('Q1', answers.ageGroup) },
     { label: '동행', value: getOptionLabel('Q2', answers.companion) },
     { label: '객실', value: getOptionLabel('Q3', answers.pclass) },
     { label: '목적', value: getOptionLabel('Q5', answers.purpose) },
@@ -79,7 +79,7 @@ export default function ResultView({ sharedResultId: sharedProp }: ResultViewPro
           res = await fetch(`${API_BASE}/api/quiz/submit`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(extras.lifebuoy ? { ...answers, lifebuoy: true } : answers),
+            body: JSON.stringify({ ...answers, ...(extras.lifebuoy ? { lifebuoy: true } : {}), ...(typeof extras.age === 'number' ? { age: extras.age } : {}) }),
           });
         }
         

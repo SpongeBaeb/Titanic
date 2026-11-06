@@ -45,6 +45,12 @@ def parse_user_features(data):
     if 'ageGroup' in data:
         age_mapping = {'0-9': 5, '10-17': 14, '18-29': 24, '30-39': 35, '40-49': 45, '50-59': 55, '60+': 65}
         features['Age'] = age_mapping.get(data['ageGroup'], 25.0)
+        # 정확한 나이를 골랐다면 구간 대표값 대신 그 나이를 쓴다 (0~99세)
+        try:
+            if data.get('age') is not None:
+                features['Age'] = max(0.5, min(99.0, float(data['age'])))
+        except (TypeError, ValueError):
+            pass
         
     if 'companion' in data:
         comp = data['companion']

@@ -17,9 +17,17 @@ import { useQuizStore } from '@/store/quizStore';
 
 interface AgeViewProps {
   question: Question;
-  onAnswer: (value: string) => void;
+  onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   onBack: () => void;
 }
+
+/** 구간마다 고를 수 있는 나이 범위와 처음 나이. 레버로 구간을 고른 뒤 전광판 양옆의 −/+ 로 한 살씩 세밀하게 고른다 */
+const AGE_RANGE: Record<string, [number, number, number]> = {
+  '0-9': [0, 9, 5], '10-17': [10, 17, 14], '18-29': [18, 29, 24], '30-39': [30, 39, 35],
+  '40-49': [40, 49, 45], '50-59': [50, 59, 55], '60+': [60, 99, 65],
+};
+/** 타이타닉 최고령 승객은 요한 스벤손(74세, 3등석). 이 나이 이상을 고르면 업적 */
+const OLDEST_AGE = 74;
 
 /** 제어판 버튼을 한 번씩이라도 눌렀는지 (업적 "Please, Don't Touch Anything") */
 const ALL_CONTROLS: ControlId[] = ['light', 'burst', 'hold', 'engine', 'flicker'];
@@ -78,6 +86,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   const pickedRef = useRef(false);
   const targetRef = useRef(3); // 레버가 향하는 칸(스프링이 도착하기 전에도 최신 값)
   const [confirming, setConfirming] = useState(false);
+  const [exactAges, setExactAges] = useState<Record<string, number>>({}); // 구간별로 고른 정확한 나이
   const reduceMotion = useReducedMotion();
   const steamBurst = useRef<SteamBurst | null>(null);
   // 배경 레버: 조명 3단계, 증기 유지, 기관 가속, 전구 점멸
@@ -281,7 +290,12 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     playSteamHiss(1.2);
     ventBurst(1.6);
     setTimeout(() => ventBurst(1.2), 260);
-    timerRef.current = setTimeout(() => onAnswer(question.options[activeIndex].value), reduceMotion ? 250 : Math.round(PRINT_DUR * 1000) + 1500);
+    const opt = question.options[activeIndex];
+    const age = exactAges[opt.id] ?? (AGE_RANGE[opt.value]?.[2] ?? 30);
+    // 타이타닉의 최연소(생후 2개월, 0세)와 최고령(74세) 이하/이상을 골랐다면 업적
+    if (age <= 0) unlock('youngest-passenger');
+    if (age >= OLDEST_AGE) unlock('oldest-passenger');
+    timerRef.current = setTimeout(() => onAnswer(opt.value, { age }), reduceMotion ? 250 : Math.round(PRINT_DUR * 1000) + 1500);
   };
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
@@ -305,6 +319,26 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
 
   const userSex = useQuizStore(state => state.answers.sex);
   const activeOption = picked ? question.options[activeIndex] : null;
+  const ageRange = activeOption ? (AGE_RANGE[activeOption.value] ?? [0, 99, 30]) : null;
+  const exactAge = activeOption && ageRange ? (exactAges[activeOption.id] ?? ageRange[2]) : null;
+  const stepAge = (d: number) => {
+    if (!activeOption || !ageRange || exactAge === null || confirming) return;
+    const nx = Math.max(ageRange[0], Math.min(ageRange[1], exactAge + d));
+    if (nx === exactAge) return;
+    setExactAges((p) => ({ ...p, [activeOption.id]: nx }));
+    playRatchet();
+  };
+  const stepRef = useRef(stepAge);
+  stepRef.current = stepAge;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === '+' || e.key === '=') { e.preventDefault(); stepRef.current(1); }
+      else if (e.key === '-' || e.key === '_') { e.preventDefault(); stepRef.current(-1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const ageLabel = exactAge === null ? '' : exactAge === 0 ? '0세' : `${exactAge}세`;
   
   let finalBgImage = activeOption?.bgImage;
   if (userSex === 'female' && finalBgImage && !finalBgImage.includes('10.webp')) {
@@ -401,11 +435,30 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         <div className="relative">
           {/* 지지대: 천장 고정판에서 내려와 보드 윗틀을 단단히 잡는 굵은 황동 기둥 하나 (이미지가 있으면 이미지, 없으면 코드로 그린 기둥) */}
           <BoardPost />
+          {/* 한 살씩 세밀하게: 전광판 양옆의 −, + (키보드 −, + 도 된다). 레버로 고른 구간 안에서만 움직인다 */}
+          {activeOption && exactAge !== null && ageRange && !confirming && (
+            <>
+              <button
+                type="button"
+                aria-label="나이 한 살 줄이기"
+                disabled={exactAge <= ageRange[0]}
+                onClick={() => stepAge(-1)}
+                className="pointer-events-auto absolute -left-[3.2rem] top-1/2 z-[60] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border-2 border-[#c9a24a]/80 bg-[#1a120a]/90 text-2xl font-bold leading-none text-[#ffc060] shadow-[0_0_10px_rgba(255,150,30,0.35)] transition-opacity hover:bg-[#2a1c0e] active:scale-95 disabled:opacity-30"
+              >−</button>
+              <button
+                type="button"
+                aria-label="나이 한 살 늘리기"
+                disabled={exactAge >= ageRange[1]}
+                onClick={() => stepAge(1)}
+                className="pointer-events-auto absolute -right-[3.2rem] top-1/2 z-[60] flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border-2 border-[#c9a24a]/80 bg-[#1a120a]/90 text-2xl font-bold leading-none text-[#ffc060] shadow-[0_0_10px_rgba(255,150,30,0.35)] transition-opacity hover:bg-[#2a1c0e] active:scale-95 disabled:opacity-30"
+              >+</button>
+            </>
+          )}
 
         <div
           role="status"
           aria-live="polite"
-          aria-label={activeOption ? `선택한 나이 ${activeOption.label}` : '나이를 아직 고르지 않았습니다'}
+          aria-label={activeOption ? `선택한 나이 ${ageLabel} (${activeOption.label} 구간)` : '나이를 아직 고르지 않았습니다'}
           className="pointer-events-none relative"
           style={{
             borderStyle: 'solid',
@@ -429,7 +482,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
                 animation: activeOption && !reduceMotion ? 'led-blip 0.35s ease-out' : undefined,
               }}
             >
-              {activeOption ? activeOption.label : '--~--세'}
+              {activeOption ? ageLabel : '--세'}
             </span>
             </div>
             {/* 진행 표시: 전광판 안쪽 아래 줄의 작은 LED 막대 */}
@@ -686,7 +739,7 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
                   <div className="mx-auto my-3 h-px w-3/4 bg-[#5a4524]/50" />
                   {[
                     'PASSENGER AGE RECORDED',
-                    `${activeOption.label}`,
+                    exactAge === 0 ? '0세 (갓난아기)' : `${ageLabel}`,
                     'STOP  CONFIRMED  STOP',
                   ].map((line, i) => (
                     <motion.div
