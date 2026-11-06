@@ -8,6 +8,7 @@ import AnalogClock from '@/components/cinematic/AnalogClock';
 import { wallClock } from '@/engine/cinematic';
 import { scenes } from '@/engine/scenes';
 import { unlock } from '@/engine/achievements';
+import ScopeView from './ScopeView';
 import { playCorkPop, playFireworkBurst, playStarChime, playWhaleCall, playSplash } from '@/lib/synth';
 
 /**
@@ -221,6 +222,9 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
   const [hovered, setHovered] = useState<Choice | null>(null);
   const [chosen, setChosen] = useState<Choice | null>(null);
   const [noGL, setNoGL] = useState(false);
+  const [scopeFail, setScopeFail] = useState(false); // 망원경 시점(WebGL2)을 쓸 수 없으면 예전 연출로 대신한다
+  const scopeFailRef = useRef(false);
+  const failScope = useCallback(() => { scopeFailRef.current = true; setScopeFail(true); }, []);
   const [buoy, setBuoy] = useState(false); // 구명환을 챙겼는지
   const buoyRef = useRef(false);
   const [buoyMsg, setBuoyMsg] = useState(false);
@@ -486,10 +490,17 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       } else if (v === 'stability') {
         STARS.forEach((_, i) => at(1.8 + i * 0.3, () => playStarChime(i % 8)));
       } else {
-        at(1.5, playWhaleCall);
-        at(2.2, () => { splash(845, WATER_Y, 1); playSplash(); });
-        at(4.6, () => { splash(955, WATER_Y, 1.5); playSplash(); shake = 0.6; });
-        at(5.0, () => { splash(945, WATER_Y, 0.5); });
+        at(scopeFailRef.current ? 1.5 : 1.9, playWhaleCall);
+        if (scopeFailRef.current) {
+          at(2.2, () => { splash(845, WATER_Y, 1); playSplash(); });
+          at(4.6, () => { splash(955, WATER_Y, 1.5); playSplash(); shake = 0.6; });
+          at(5.0, () => { splash(945, WATER_Y, 0.5); });
+        } else {
+          // 망원경 시점의 물보라 시각(ScopeView 의 사건 시각과 같다)
+          at(2.65, playSplash);
+          at(4.62, playSplash);
+          at(4.95, playSplash);
+        }
       }
     };
 
@@ -604,13 +615,13 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
           cur.dawn = lerp(0.18, 0.7, smooth(3.6, 6.2, e));
           // 고래: 2.2초에 솟아 4.6초에 들어가고, 이어서 꼬리가 올라왔다 잠긴다
           const u = (e - 2.2) / 2.4;
-          if (u > 0 && u < 1) {
+          if (scopeFailRef.current && u > 0 && u < 1) {
             const x = lerp(845, 955, u);
             const y = WATER_Y + 46 - 4 * 125 * u * (1 - u);
             whale = { x, y, rot: -35 + 100 * u, a: 1 };
           }
           const u2 = (e - 4.7) / 2.0;
-          if (u2 > 0 && u2 < 1) tail = { x: 945, y: WATER_Y + 40 - 66 * Math.sin(Math.PI * u2), rot: 10 * (u2 - 0.5) };
+          if (scopeFailRef.current && u2 > 0 && u2 < 1) tail = { x: 945, y: WATER_Y + 40 - 66 * Math.sin(Math.PI * u2), rot: 10 * (u2 - 0.5) };
           if (shake > 0) shake = Math.max(0, shake - dt);
         }
       }
@@ -906,9 +917,12 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         )}
       </AnimatePresence>
 
+      {/* 망원경 시점: 코드로 만든 고래가 솟구치는 장면 (WebGL2 가 안 되면 아래의 예전 렌즈 연출) */}
+      {chosen === 'change' && !reduce && !scopeFail && <ScopeView onFail={failScope} />}
+
       {/* 망원경 렌즈 */}
       <AnimatePresence>
-        {chosen === 'change' && !reduce && (
+        {chosen === 'change' && !reduce && scopeFail && (
           <motion.div
             key="lens"
             aria-hidden
