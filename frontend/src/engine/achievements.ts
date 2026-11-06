@@ -20,6 +20,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'dog-miracle', title: '멈춘 구명정', desc: '강아지의 외침이 구명정을 멈춰 세웠습니다. 기록에는 없는 결말입니다.', hidden: true },
   { id: 'watchtower', title: '망루의 시간', desc: '난간에서 37초 동안 바다만 바라보았습니다. 같은 시간에, 누군가는 빙산을 보았습니다.', hidden: true },
   { id: 'duck-gun', title: '사무장의 마지막 계산', desc: '기념품 가게의 칼로 오리 사무장을 두 번 위협했습니다. 이 계산은 영수증에 적히지 않았습니다.', hidden: true },
+  { id: 'never-liverpool', title: '리버풀에는 닿지 못한 배', desc: '타이타닉호의 선미에 적힌 "LIVERPOOL"을 사진에 담았습니다. 선적항은 리버풀이었지만, 이 배는 한 번도 그곳에 닿지 못했습니다.', hidden: true },
   { id: 'youngest-passenger', title: '가장 어린 승객', desc: '타이타닉의 최연소 승객, 생후 2개월 밀비나 딘과 같은 0세를 골랐습니다. 그 아이는 살아남아 97세까지 살았습니다.', hidden: true },
   { id: 'oldest-passenger', title: '가장 나이 많은 승객', desc: '타이타닉의 최고령 승객, 3등석의 요한 스벤손(74세)과 같거나 더 많은 나이를 골랐습니다.', hidden: true },
   { id: 'dont-touch', title: "Please, Don't Touch Anything", desc: '기관실 제어판의 버튼을 모두 누르고, 레버를 돌려 모든 나이를 한 번씩 골라 보았습니다.', hidden: true },

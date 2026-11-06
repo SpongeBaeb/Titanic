@@ -611,3 +611,29 @@ export function playAbacus(last = false) {
     o.stop(t + 0.06);
   }
 }
+
+
+/** 멀리서 울리는 낮은 뱃고동: 두 음이 겹쳐 길게 울리고 천천히 잦아든다 */
+export function playShipHorn() {
+  const c = ctx();
+  if (!c) return;
+  const t = c.currentTime;
+  const out = c.createGain();
+  out.gain.setValueAtTime(0.0001, t);
+  out.gain.exponentialRampToValueAtTime(0.16, t + 0.25);
+  out.gain.setValueAtTime(0.16, t + 0.9);
+  out.gain.exponentialRampToValueAtTime(0.0001, t + 2.2);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 520;
+  out.connect(lp).connect(c.destination);
+  for (const f of [58, 87]) {
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f * 1.03, t);
+    o.frequency.exponentialRampToValueAtTime(f, t + 0.3);
+    o.connect(out);
+    o.start(t);
+    o.stop(t + 2.3);
+  }
+}

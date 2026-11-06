@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Question } from '@/data/questions';
-import { playShutter, playPhotoEject } from '@/lib/synth';
+import { playShutter, playPhotoEject, playShipHorn } from '@/lib/synth';
+import { unlock } from '@/engine/achievements';
 import ProgressLine from '@/components/ui/ProgressLine';
 
 interface CompanionCameraProps {
@@ -16,7 +17,7 @@ interface CompanionCameraProps {
  * 동행 고르기: 카메라 파인더로 부두를 자유롭게 둘러보고, 조준점에 맞춘 사람을 찍는다.
  *  - 이동: 마우스를 움직이는 쪽으로 카메라가 따라간다 (터치는 끌기), 방향키·WASD
  *  - 확대·축소: 휠, 두 손가락, + / − 키
- *  - 촬영: 클릭·탭, 스페이스·엔터 (조준점에 피사체가 들어와 초점이 잡힌 때만)
+ *  - 촬영: 클릭·탭, 스페이스·엔터. 어디든 찍을 수 있다. 함께 올 사람(동행)이 담긴 사진을 찍으면 다음으로 넘어가고, 다른 곳은 사진만 남는다(이스터에그)
  * 더 넓은 파노라마 그림이 생기면 WORLD 만 바꾸면 된다 (핫스팟은 그림 크기에 대한 % 좌표).
  */
 const WORLD = { src: '/bg/fellow_panorama.webp', w: 3168, h: 1344 }; // 원본 1584x672 를 2배로 키워 선명하게 다듬은 파일 (더 크게 확대하면 흐려진다)
@@ -30,6 +31,17 @@ const SPOTS: Record<string, Spot> = {
   family: { x: 68.5, y: 56.5, w: 10, h: 30 },
   alone: { x: 84.6, y: 55.8, w: 7, h: 38 },
 };
+
+// 선택과 상관없이 찍을 수 있는 곳: 사진만 남고 다음으로 넘어가지 않는다 (그림 크기에 대한 % 좌표). 앞쪽에 적은 것이 먼저 맞는다
+interface Extra extends Spot { caption: string; unlock?: string; horn?: boolean }
+const EXTRAS: Record<string, Extra> = {
+  sternCrew: { x: 19.5, y: 20.5, w: 7, h: 6.5, caption: '선미 난간의 세 사람. 이름은 어느 명부에도 없다.' },
+  stern: { x: 13, y: 21, w: 16, h: 17, caption: '리버풀 등록. 이 배는 한 번도 리버풀에 닿지 못했다.', unlock: 'never-liverpool', horn: true },
+  funnels: { x: 38.5, y: 1, w: 15, h: 25, caption: '굴뚝은 네 개. 그중 네 번째는 환기용 가짜였다.' },
+  tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '예인선들. 출항하던 날, 곁을 지나던 배 SS 뉴욕이 끌려 들어오는 것을 간신히 막았다.' },
+  gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 이 배에 오른 승객은 약 900명이었다.' },
+};
+const FREE_CAPTION = '1912년 4월 10일, 사우샘프턴 부두.';
 
 // 숨은 강아지 (이스터에그): fellow/dog_hidden.webp 가 있을 때만 월드에 나타나고 찍을 수 있다.
 // 위치는 파노라마 그림에 맞춰 다시 잡는다 (그림 크기에 대한 % 좌표).
@@ -84,6 +96,9 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
   const focusRef = useRef<string | null>(null);
   const dogAimed = useRef(false); // 강아지가 조준점에 들어와 있는가 (화면에는 아무 표시도 하지 않는다)
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoSpot, setPhotoSpot] = useState<Spot | null>(null); // 사진에 담긴 부분 (그림 %)
+  const [photoCaption, setPhotoCaption] = useState<string | null>(null); // 동행이 아닌 곳을 찍었을 때의 한 줄
+  const extraRef = useRef<string | null>(null);
   const [flash, setFlash] = useState(false);
   const [nudge, setNudge] = useState(false);
   const [hint, setHint] = useState(true);
@@ -237,6 +252,14 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
         else if (hit && !found) found = key;
       }
       dogAimed.current = dogHit;
+      // 동행이 아닌 곳: 선택과 상관없는 이스터에그 자리 (화면에는 아무 표시도 하지 않는다)
+      let ex: string | null = null;
+      if (!found) {
+        for (const [key, s] of Object.entries(EXTRAS)) {
+          if (px >= s.x && px <= s.x + s.w && py >= s.y && py <= s.y + s.h) { ex = key; break; }
+        }
+      }
+      extraRef.current = ex;
       if (found !== focusRef.current) {
         focusRef.current = found;
         setFocusKey(found);
@@ -250,16 +273,29 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
   const shoot = useCallback(() => {
     if (busy.current) return;
     const key = focusRef.current ?? (dogAimed.current ? 'dog' : null);
+    const aim = { x: cur.current.x * 100, y: cur.current.y * 100 };
     if (!key) {
-      // 초점이 안 잡혔다: 파인더가 살짝 떨려 알려 준다
-      setNudge(true);
-      setTimeout(() => setNudge(false), 450);
+      // 동행이 없는 곳: 그냥 사진만 남는다. 다음으로 넘어가지 않고, 사진이 나온 뒤 다시 찍을 수 있다
+      busy.current = true;
+      playShutter();
+      setFlash(true);
+      setTimeout(() => setFlash(false), 180);
+      const ek = extraRef.current;
+      const ex = ek ? EXTRAS[ek] : null;
+      setPhotoSpot(ex ?? { x: aim.x - 5, y: aim.y - 5, w: 10, h: 10 });
+      setPhotoCaption(ex ? ex.caption : FREE_CAPTION);
+      setPhoto('free');
+      if (ex?.unlock) unlock(ex.unlock);
+      if (ex?.horn) setTimeout(() => playShipHorn(), 500);
+      if (!reduce) setTimeout(() => playPhotoEject(), 650);
+      setTimeout(() => { setPhoto(null); setPhotoSpot(null); setPhotoCaption(null); busy.current = false; }, reduce ? 2200 : 6200);
       return;
     }
     busy.current = true;
     playShutter(); // 합성음(음소거 기본)
     setFlash(true);
     setTimeout(() => setFlash(false), 180);
+    setPhotoSpot(key === 'dog' ? DOG_SPOT : SPOTS[key]);
     setPhoto(key);
     // 사진기가 올라오고 사진이 한 칸씩 뽑혀 나온다. 다 본 뒤 다음 질문으로 (모션 줄이기면 짧게)
     if (!reduce) setTimeout(() => playPhotoEject(), 650);
@@ -268,7 +304,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
 
   // 개발 서버에서만: 조준 없이 촬영을 시험할 수 있게 한다
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') (window as unknown as { __cam?: unknown }).__cam = { shoot: (k: string) => { focusRef.current = k as never; shoot(); } };
+    if (process.env.NODE_ENV === 'development') (window as unknown as { __cam?: unknown }).__cam = { shoot: (k: string) => { focusRef.current = k as never; shoot(); }, free: (k?: string) => { focusRef.current = null; dogAimed.current = false; extraRef.current = k ?? null; shoot(); } };
   }, [shoot]);
 
   // 키보드
@@ -387,7 +423,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
 
   const findOption = (v: string | null) => (v === 'dog' ? DOG_OPTION : question.options.find((o) => o.value === v));
   const focusData = focusKey ? findOption(focusKey) : undefined;
-  const photoData = photo ? findOption(photo) : null;
+  const photoData = photo === 'free' ? { label: photoCaption ?? FREE_CAPTION } : photo ? findOption(photo) : null;
 
   return (
     <div
@@ -550,7 +586,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
                   className="absolute overflow-hidden"
                   style={{ left: FRAME.hole.x * PHOTO_W, top: FRAME.hole.y * PHOTO_H, width: FRAME.hole.w * PHOTO_W, height: FRAME.hole.h * PHOTO_H }}
                 >
-                  <PhotoCrop spot={photo === 'dog' ? DOG_SPOT : SPOTS[photo]} withDog={dogReady} boxW={FRAME.hole.w * PHOTO_W} boxH={FRAME.hole.h * PHOTO_H} />
+                  <PhotoCrop spot={photoSpot ?? (photo === 'dog' ? DOG_SPOT : SPOTS[photo ?? 'alone'] ?? SPOTS.alone)} withDog={dogReady} boxW={FRAME.hole.w * PHOTO_W} boxH={FRAME.hole.h * PHOTO_H} />
                 </div>
                 <img src={FRAME.src} alt="" draggable={false} className="absolute inset-0 block h-full w-full select-none" />
                 <p className="absolute inset-x-0 text-center font-serif text-[11px] leading-snug text-[#4a3a1c]" style={{ top: (FRAME.hole.y + FRAME.hole.h) * PHOTO_H + 10 }}>
