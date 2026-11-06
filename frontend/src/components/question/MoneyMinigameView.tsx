@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useMotionValue, useAnimationFrame, animate, PanInfo } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Question } from '@/data/questions';
@@ -58,6 +59,77 @@ function shipFlipKeys(path: number[]) {
 }
 const TICK_AT = [300, 700, 1150, 1650, 2200, 2800, 3450, 4150, 4800];
 
+/**
+ * 도박에 이겼을 때 화면 아래에서 솟아올라 흩날리는 동전과 지폐. 딴 지폐 수(net)가 많을수록, 정확히 맞혔을 때(exact)는 더 많이 쏟아진다.
+ * 동전은 뒤집히며 돌고, 지폐는 천천히 흔들리며 떨어진다.
+ */
+function WinShower({ net, exact }: { net: number; exact: boolean }) {
+  const parts = useMemo(() => {
+    const coins = Math.min(80, 10 + net * 7 + (exact ? 34 : 0));
+    const bills = Math.min(16, Math.max(2, net) + (exact ? 4 : 0));
+    const mk = (kind: 'coin' | 'bill', i: number) => {
+      const side = (Math.random() - 0.5) * 2;
+      return {
+        id: `${kind}-${i}`,
+        kind,
+        dx: side * (kind === 'coin' ? 46 : 38) + (Math.random() - 0.5) * 8, // vw
+        apex: (kind === 'coin' ? 26 : 20) + Math.random() * (kind === 'coin' ? 34 : 24), // vh
+        fall: 52 + Math.random() * 18,
+        size: kind === 'coin' ? 30 + Math.random() * 26 : 92 + Math.random() * 40,
+        delay: Math.random() * (exact ? 0.9 : 0.6),
+        dur: 1.9 + Math.random() * 1.3,
+        spin: (Math.random() < 0.5 ? -1 : 1) * (kind === 'coin' ? 540 : 160 + Math.random() * 120),
+        flip: 0.25 + Math.random() * 0.3,
+      };
+    };
+    return [
+      ...Array.from({ length: coins }, (_, i) => mk('coin', i)),
+      ...Array.from({ length: bills }, (_, i) => mk('bill', i)),
+    ];
+  }, [net, exact]);
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div aria-hidden className="pointer-events-none fixed inset-0 z-[500] overflow-hidden">
+      {parts.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute"
+          style={{ left: '50%', top: '66%', width: p.size, marginLeft: -p.size / 2, marginTop: -p.size / 2, zIndex: p.kind === 'bill' ? 1 : 2 }}
+          initial={{ opacity: 0, x: 0, y: 0, rotate: 0, scale: 0.4 }}
+          animate={{
+            opacity: [0, 1, 1, 1, 0],
+            x: [0, `${p.dx * 0.55}vw`, `${p.dx}vw`],
+            y: [0, `${-p.apex}vh`, `${p.fall}vh`],
+            rotate: p.kind === 'bill' ? [0, p.spin * 0.5, p.spin] : [0, p.spin * 0.6, p.spin],
+            scale: [0.4, 1, 1],
+          }}
+          transition={{
+            delay: p.delay,
+            duration: p.dur,
+            times: [0, 0.42, 1],
+            ease: ['easeOut', 'easeIn'],
+            opacity: { delay: p.delay, duration: p.dur, times: [0, 0.08, 0.5, 0.82, 1] },
+          }}
+        >
+          {p.kind === 'coin' ? (
+            <motion.img
+              src="/spend/coin.webp"
+              alt=""
+              draggable={false}
+              className="block w-full drop-shadow-[0_3px_5px_rgba(0,0,0,0.55)]"
+              animate={{ scaleX: [1, -1, 1] }}
+              transition={{ duration: p.flip, repeat: Infinity, ease: 'linear' }}
+            />
+          ) : (
+            <img src="/spend/bill.webp" alt="" draggable={false} className="block w-full drop-shadow-[0_6px_8px_rgba(0,0,0,0.5)]" />
+          )}
+        </motion.div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
 export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyMinigameViewProps) {
   // State
   const [facIndex, setFacIndex] = useState(0); // 회전 선반에서 가운데에 온 시설
@@ -81,6 +153,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const [gamblingTier, setGamblingTier] = useState<GambleTierId>('mid');
   const [swordHit, setSwordHit] = useState(0); // 칼 꽂는 연출을 다시 재생하기 위한 번호
   const [gamblingStreak, setGamblingStreak] = useState(0); // 연승 횟수
+  const [winFx, setWinFx] = useState<{ key: number; net: number; exact: boolean } | null>(null); // 당첨금 연출
   const [gamblingGain, setGamblingGain] = useState(0); // 이번 판 순이익
   const [shipPath, setShipPath] = useState<number[]>([]); // 배가 오가는 지점(해리)
   const gambleTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -552,7 +625,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   useEffect(() => () => { if (knifeTimer.current) clearTimeout(knifeTimer.current); }, []);
   // 개발 서버에서만: 브라우저 콘솔에서 위협을 시험할 수 있게 한다
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') (window as unknown as { __duck?: unknown }).__duck = { threat: () => onKnifeAtDuck(), stamp: () => purserSay('도장 시험이오. 받았소.', 'stamp', 3500) };
+    if (process.env.NODE_ENV === 'development') (window as unknown as { __duck?: unknown }).__duck = { win: (net = 4, exact = false) => setWinFx({ key: Date.now(), net, exact }), threat: () => onKnifeAtDuck(), stamp: () => purserSay('도장 시험이오. 받았소.', 'stamp', 3500) };
   });
 
   // 칼을 쥐고 있는 동안 빙빙 돈다. 놓으면 가까운 표적(오리 사무장, 과녁)으로 날아간다
@@ -1023,6 +1096,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       const isExact = won && error <= 1;
 
       setGamblingResult(isExact ? 'exact' : (won ? 'win' : 'lose'));
+      if (won) { setWinFx({ key: Date.now(), net: tier.net + streakBefore, exact: isExact }); gambleTimers.current.push(setTimeout(() => setWinFx(null), 4600)); }
       setGamblingState('result');
 
       if (won) {
@@ -1861,6 +1935,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                     ))}
                   </AnimatePresence>
           </FacilityWheel>
+          {winFx && <WinShower key={winFx.key} net={winFx.net} exact={winFx.exact} />}
           <DuckPurser line={purserLineText} lineKey={purserKey} pose={purserPose} armed={duckArmed} firing={duckFiring} onPoke={() => { const p = purserPoke(runIndex); purserSay(p.line, p.pose, 3800); }} />
         </div>
       </div>
