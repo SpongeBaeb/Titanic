@@ -29,21 +29,21 @@ const WATER_Y = 503; // 고래가 솟는 수면
 
 interface Spot { x: number; y: number; w: number; h: number; ax: number; ay: number }
 const SPOTS: Record<string, Spot> = {
-  experience: { x: 590, y: 500, w: 130, h: 170, ax: 650, ay: 600 }, // 앞쪽 벤치 왼쪽 (샴페인)
-  stability: { x: 262, y: 486, w: 120, h: 90, ax: 322, ay: 540 }, // 앞쪽 벤치 오른쪽 (별자리 도감)
-  change: { x: 690, y: 450, w: 215, h: 270, ax: 790, ay: 610 }, // 난간 앞 갑판 (망원경)
+  experience: { x: 560, y: 490, w: 140, h: 190, ax: 630, ay: 590 }, // 앞쪽 벤치 왼쪽 (샴페인)
+  stability: { x: 355, y: 485, w: 160, h: 175, ax: 430, ay: 585 }, // 앞쪽 벤치 오른쪽 (별자리 도감)
+  change: { x: 746, y: 450, w: 215, h: 270, ax: 836, ay: 610 }, // 난간 앞 갑판 (망원경)
 };
 /**
  * 선택지 물건은 배경과 따로 그린 그림(투명 배경)이다. 그림이 아직 없으면 보이지 않고 빛과 눌리는 자리만 남는다.
  * foot: 물건이 바닥에 닿는 점(1376x768 기준), h: 높이.
  */
 const OBJECTS: Record<string, { src: string; foot: [number, number]; h: number; flip?: boolean }> = {
-  experience: { src: '/q5/obj_champagne.webp', foot: [650, 660], h: 165 },
-  stability: { src: '/q5/obj_atlas.webp', foot: [322, 556], h: 34 },
-  change: { src: '/q5/obj_telescope.webp', foot: [790, 708], h: 240, flip: true },
+  experience: { src: '/q5/obj_champagne.webp', foot: [630, 670], h: 190 },
+  stability: { src: '/q5/obj_atlas.webp', foot: [430, 655], h: 170 },
+  change: { src: '/q5/obj_telescope.webp', foot: [836, 706], h: 240, flip: true },
 };
 /** 난간에 걸린 구명환 (선택지가 아니라 챙길 수 있는 물건): 걸린 고리(위) 쪽이 아니라 아래 끝의 위치와 높이 */
-const BUOY = { foot: [1055, 668] as [number, number], h: 160 };
+const BUOY = { foot: [1085, 668] as [number, number], h: 160 };
 const ORDER = ['experience', 'stability', 'change'] as const;
 type Choice = (typeof ORDER)[number];
 
