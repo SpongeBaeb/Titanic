@@ -316,9 +316,9 @@ export default function SwimView({ onAnswer, extras, answers }: RendererProps) {
           initial={{ x: '26%', y: '66%', rotate: 14, scale: 1.16, opacity: 0 }}
           animate={{ x: ['26%', '0%', '1%', '29%', '36%'], y: ['66%', '-3%', '3%', '52%', '68%'], rotate: [14, 0, 2, -9, -12], scale: [1.16, 0.92, 0.94, 1.34, 1.46], opacity: [0, 1, 1, 0.92, 0] }}
           transition={{ duration: o.dur, delay: o.delay, times: T, ease: ['easeOut', 'linear', 'easeIn', 'linear'], ...rep }}>
-          <motion.img src={`/swim/arm_${kind}_1.png`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.78) saturate(.85)' }}
+          <motion.img src={`/swim/arm_${kind}_1.webp`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.78) saturate(.85)' }}
             initial={{ opacity: 1 }} animate={{ opacity: [1, 1, 0, 0] }} transition={{ duration: o.dur, delay: o.delay, times: [0, hitAt + 0.03, hitAt + 0.1, 1], ...rep }} />
-          <motion.img src={`/swim/arm_${kind}_2.png`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.78) saturate(.85)' }}
+          <motion.img src={`/swim/arm_${kind}_2.webp`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.78) saturate(.85)' }}
             initial={{ opacity: 0 }} animate={{ opacity: [0, 0, 1, 1] }} transition={{ duration: o.dur, delay: o.delay, times: [0, hitAt + 0.03, hitAt + 0.1, 1], ...rep }} />
         </motion.div>
       </div>
@@ -512,9 +512,9 @@ export default function SwimView({ onAnswer, extras, answers }: RendererProps) {
               <motion.div className="absolute inset-0" style={{ transformOrigin: '90% 95%', WebkitMaskImage: 'linear-gradient(to left, transparent 2%, #000 24%)', maskImage: 'linear-gradient(to left, transparent 2%, #000 24%)' }}
                 initial={{ x: '24%', y: '80%', rotate: 12, opacity: 0 }} animate={{ x: '0%', y: '-2%', rotate: 0, opacity: 1 }} transition={{ delay: 4.7 * k, duration: 1.4 * k, ease: 'easeOut' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/swim/arm_${kind}_1.png`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.72) saturate(.85)' }} />
+                <img src={`/swim/arm_${kind}_1.webp`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.72) saturate(.85)' }} />
                 {/* 맞닿으면 손이 움켜쥔다 */}
-                <motion.img src={`/swim/arm_${kind}_2.png`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.72) saturate(.85)' }}
+                <motion.img src={`/swim/arm_${kind}_2.webp`} alt="" draggable={false} className="absolute inset-0 h-full w-full" style={{ filter: 'brightness(.72) saturate(.85)' }}
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 6.3 * k, duration: 0.25 }} />
               </motion.div>
             </div>

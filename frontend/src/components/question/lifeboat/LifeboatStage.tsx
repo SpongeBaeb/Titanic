@@ -185,7 +185,7 @@ export default function LifeboatStage({ choice, tilting, frozen, carry, fall, lo
                 <filter id="q7EyeWarp" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" colorInterpolationFilters="sRGB" x={Math.min(...eyes.map((e) => e.x)) - GAZE.rm} y={Math.min(...eyes.map((e) => e.y)) - GAZE.rm} width={Math.max(...eyes.map((e) => e.x)) - Math.min(...eyes.map((e) => e.x)) + GAZE.rm * 2} height={Math.max(...eyes.map((e) => e.y)) - Math.min(...eyes.map((e) => e.y)) + GAZE.rm * 2}>
                   <feFlood floodColor="rgb(128,128,128)" result="neutral" />
                   {eyes.map((e, i) => (
-                    <feImage key={i} href="/q7/gaze_map.png" x={e.x - GAZE.rb} y={e.y - GAZE.rb} width={GAZE.rb * 2} height={GAZE.rb * 2} preserveAspectRatio="none" result={`bump${i}`} />
+                    <feImage key={i} href="/q7/gaze_map.webp" x={e.x - GAZE.rb} y={e.y - GAZE.rb} width={GAZE.rb * 2} height={GAZE.rb * 2} preserveAspectRatio="none" result={`bump${i}`} />
                   ))}
                   <feMerge result="map">
                     <feMergeNode in="neutral" />

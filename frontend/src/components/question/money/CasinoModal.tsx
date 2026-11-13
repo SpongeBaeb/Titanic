@@ -371,7 +371,7 @@ function StampImg({ src, width, delay = 0.1, rot = -6, plate = false, holes }: {
     const h = plateRef.current?.offsetHeight ?? plateW * 0.5;
     const live = holes.slice(0, shots);
     const px = (hh: BulletHole) => (hh.size / 100) * plateW;
-    const images = [...live.map((hh) => `url('/spend/bullet_${hh.n}_hole.png')`), 'linear-gradient(#000, #000)'].join(', ');
+    const images = [...live.map((hh) => `url('/spend/bullet_${hh.n}_hole.webp')`), 'linear-gradient(#000, #000)'].join(', ');
     const sizes = [...live.map((hh) => `${px(hh)}px ${px(hh)}px`), '100% 100%'].join(', ');
     const poses = [...live.map((hh) => `${(hh.x / 100) * plateW - px(hh) / 2}px ${(hh.y / 100) * plateW * (h / plateW) - px(hh) / 2}px`), '0 0'].join(', ');
     return { WebkitMaskImage: images, maskImage: images, WebkitMaskSize: sizes, maskSize: sizes, WebkitMaskPosition: poses, maskPosition: poses, WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskComposite: 'xor', maskComposite: 'exclude' } as React.CSSProperties;
