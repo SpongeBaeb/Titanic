@@ -281,7 +281,7 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
           {/* Info Section (Bottom 35%) */}
           <div className="flex-1 flex flex-col items-center justify-start px-4 pt-3 pb-6 text-center relative z-10">
             {activeData.matchRate && (
-              <div className="mb-2 text-[#D4AF37] font-bold text-[11px] tracking-widest bg-[#1A2A3A] px-3 py-1 rounded shadow-sm border border-[#D4AF37]/30">
+              <div className="mb-2 text-[#CDB47D] font-bold text-[11px] tracking-widest bg-[#1A2A3A] px-3 py-1 rounded shadow-sm border border-[#CDB47D]/30">
                 MATCH RATE : {activeData.matchRate}%
               </div>
             )}
@@ -321,9 +321,9 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
               ))}
             </div>
             
-            <p className="mt-auto text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.3em] animate-pulse pb-1 flex flex-col items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+            <p className="mt-auto text-[10px] font-bold text-[#CDB47D] uppercase tracking-[0.3em] animate-pulse pb-1 flex flex-col items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
               <span>Click to flip</span>
-              <span className="w-12 h-px bg-[#D4AF37]"></span>
+              <span className="w-12 h-px bg-[#CDB47D]"></span>
             </p>
           </div>
           {/* Card Frame Image (Debuggable) - 최상위 레이어 */}
@@ -356,9 +356,9 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
           <div className="p-8 flex flex-col h-full">
             
             {/* Header / Title */}
-            <div className="flex justify-between items-end border-b border-[#D4AF37]/50 pb-3 mb-6">
+            <div className="flex justify-between items-end border-b border-[#CDB47D]/50 pb-3 mb-6">
               <h3 className="text-2xl font-serif font-bold text-[#1A2A3A]">Passenger Record</h3>
-              <span className="text-xs text-[#D4AF37] font-bold tracking-widest">R.M.S. TITANIC</span>
+              <span className="text-xs text-[#CDB47D] font-bold tracking-widest">R.M.S. TITANIC</span>
             </div>
 
             {/* 뒷면 제목 (이름) */}
@@ -388,13 +388,13 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
             {/* Meta Info */}
             <div className="space-y-2 text-sm w-full mb-4">
               <div className="flex items-start">
-                <span className="font-bold w-20 text-[#D4AF37] shrink-0 text-left">탑승목적</span>
+                <span className="font-bold w-20 text-[#CDB47D] shrink-0 text-left">탑승목적</span>
                 <span className="flex-1 leading-tight text-[#1A2A3A] font-medium text-left">{activeData.purpose}</span>
               </div>
             </div>
             
             {/* Middle: Hexagon Spectrum (Radar Chart) */}
-            <div className="px-2 py-2 mb-3 bg-white/40 rounded shadow-sm border border-[#D4AF37]/20">
+            <div className="px-2 py-2 mb-3 bg-white/40 rounded shadow-sm border border-[#CDB47D]/20">
               <div className="h-44 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="65%" data={activeData.stats}>
@@ -407,9 +407,9 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
                     <Radar
                       name="능력치"
                       dataKey="value"
-                      stroke="#D4AF37"
+                      stroke="#CDB47D"
                       strokeWidth={2}
-                      fill="#D4AF37"
+                      fill="#CDB47D"
                       fillOpacity={0.4}
                     />
                   </RadarChart>
@@ -427,11 +427,15 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
             {/* Bottom: Quote & Tags */}
             <div className="text-[#1A2A3A] mt-auto">
               {/* Quote Block */}
-              <div className="relative bg-[#1A2A3A] text-[#F9F6F0] px-5 py-3 rounded shadow-inner mb-4 border border-[#D4AF37]">
-                <Quote className="absolute top-2 left-2 text-[#D4AF37] opacity-20 w-6 h-6" />
+              <div className="relative bg-[#1A2A3A] text-[#F9F6F0] px-5 py-3 rounded shadow-inner mb-4 border border-[#CDB47D]">
+                <Quote className="absolute top-2 left-2 text-[#CDB47D] opacity-20 w-6 h-6" />
                 <blockquote className="relative z-10 font-serif italic text-center text-sm leading-snug mt-1">
                   "{activeData.quote}"
                 </blockquote>
+                {/* 실존 인물의 말인지, 상상해 쓴 한마디인지 밝힌다 (지어낸 말을 실제 발언처럼 보이지 않게) */}
+                <p className="relative z-10 mt-1 text-center text-[9.5px] tracking-wider text-[#CDB47D]/80">
+                  {activeData.quoteKind === 'record' ? '기록으로 전해지는 말' : activeData.quoteKind === 'record-uncertain' ? '전해지는 말 (확인되지 않음)' : '상상해 본 한마디'}
+                </p>
               </div>
               
               {/* Tags */}
@@ -439,7 +443,7 @@ const TitanicPassengerCard: React.FC<TitanicPassengerCardProps> = ({ passengerDa
                 {activeData.tags.map((tag: string, index: number) => (
                   <span 
                     key={index} 
-                    className="bg-[#1A2A3A] text-[#D4AF37] px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest shadow-sm border border-[#1A2A3A]"
+                    className="bg-[#1A2A3A] text-[#CDB47D] px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest shadow-sm border border-[#1A2A3A]"
                   >
                     {tag}
                   </span>

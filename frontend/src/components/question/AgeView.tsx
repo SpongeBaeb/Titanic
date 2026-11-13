@@ -10,7 +10,7 @@ import BoardPost from './BoardPost';
 import PushButton from '@/components/ui/PushButton';
 import RoomControls, { RoomLighting, type ControlId, type LightLevel } from './RoomControls';
 import { useBgMap } from './useBgMap';
-import { playRatchet, playSteamHiss, playTelegramPrint, playServoRise, playPop } from '@/lib/synth';
+import { playRatchet, playSteamHiss, playServoRise, playPop } from '@/lib/synth';
 import ProgressLine from '@/components/ui/ProgressLine';
 import { Question } from '@/data/questions';
 import { useQuizStore } from '@/store/quizStore';
@@ -38,22 +38,6 @@ let ageCountSeen = 0;
 function checkDontTouch() {
   if (pressedControls.size >= ALL_CONTROLS.length && ageCountSeen > 0 && visitedAges.size >= ageCountSeen) unlock('dont-touch');
 }
-
-/** 전보 인쇄: 종이가 PRINT_STEPS 번 끊어 가며 밀려 올라온다 (소리도 같은 박자) */
-const PRINT_STEPS = 8;
-const PRINT_DUR = 3.0;
-const PRINT_TOTAL = 0.94; // 종이 높이 중 올라오는 비율 (나머지는 프린터 속에 남는다)
-const { PRINT_Y, PRINT_TIMES } = (() => {
-  const y: string[] = ['0%'];
-  const t: number[] = [0];
-  for (let i = 1; i <= PRINT_STEPS; i++) {
-    y.push(`${-((i - 1) / PRINT_STEPS) * PRINT_TOTAL * 100}%`);
-    t.push((i - 1 + 0.55) / PRINT_STEPS);
-    y.push(`${-(i / PRINT_STEPS) * PRINT_TOTAL * 100}%`);
-    t.push(i / PRINT_STEPS);
-  }
-  return { PRINT_Y: y, PRINT_TIMES: t };
-})();
 
 /**
  * 증기 피스톤: 처음에는 보이지 않다가, 화면 아래에서 기둥이 천천히 길어지며 머리(− 또는 + 버튼)가 올라온다. 밑받침은 없다.
@@ -380,7 +364,6 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
   const handleConfirm = () => {
     if (confirming || !pickedRef.current) return;
     setConfirming(true);
-    playTelegramPrint(PRINT_STEPS, PRINT_DUR);
     playSteamHiss(1.2);
     ventBurst(1.6);
     setTimeout(() => ventBurst(1.2), 260);
@@ -389,7 +372,8 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
     // 타이타닉의 최연소(생후 2개월, 0세)와 최고령(74세) 이하/이상을 골랐다면 업적
     if (age <= 0) unlock('youngest-passenger');
     if (age >= OLDEST_AGE) unlock('oldest-passenger');
-    timerRef.current = setTimeout(() => onAnswer(opt.value, { age }), reduceMotion ? 250 : Math.round(PRINT_DUR * 1000) + 1500);
+    // 증기가 뿜어진 직후 기계가 작동한다: 이어지는 소용돌이는 QuizContainer 가 그린다
+    timerRef.current = setTimeout(() => onAnswer(opt.value, { age }), reduceMotion ? 150 : 700);
   };
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
@@ -833,65 +817,6 @@ export default function AgeView({ question, onAnswer, onBack }: AgeViewProps) {
         </div>
 
       </div>
-
-      {/* 확정 연출: 전보가 화면 아래 밖에서 한 줄씩 끊어 가며 밀려 올라온다 */}
-      <AnimatePresence>
-        {confirming && activeOption && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[70] flex justify-center">
-            <div className="relative" style={{ width: 'min(70vw, 280px)', height: 0 }}>
-              <motion.div
-                className="absolute top-0"
-                style={{ aspectRatio: '510 / 1035', height: 'min(64vh, 560px)', left: '50%', x: '-50%' }}
-                initial={{ y: '0%' }}
-                animate={{ y: reduceMotion ? '-94%' : PRINT_Y }}
-                transition={reduceMotion ? { duration: 0.2 } : { duration: PRINT_DUR, times: PRINT_TIMES, ease: 'easeOut' }}
-              >
-                <div
-                  className="relative h-full w-full text-center"
-                  style={{
-                    backgroundImage: "url('/ui/age_telegram_paper.webp')",
-                    backgroundSize: '100% 100%',
-                    backgroundRepeat: 'no-repeat',
-                    padding: '17% 11% 20%',
-                    filter: 'drop-shadow(0 10px 14px rgba(0,0,0,0.55))',
-                  }}
-                >
-                  <div className="font-display text-[10px] font-semibold leading-snug tracking-[0.18em] text-[#5a4524]">WHITE STAR LINE<br />TELEGRAM</div>
-                  <div className="mx-auto my-3 h-px w-3/4 bg-[#5a4524]/50" />
-                  {[
-                    'PASSENGER AGE RECORDED',
-                    exactAge === 0 ? '0세 (갓난아기)' : `${ageLabel}`,
-                    'STOP  CONFIRMED  STOP',
-                  ].map((line, i) => (
-                    <motion.div
-                      key={line}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: reduceMotion ? 0 : PRINT_DUR * (0.55 + i * 0.14), duration: 0.2 }}
-                      className={i === 1 ? 'my-2 font-title text-2xl font-bold text-[#2a1708]' : 'font-mono text-[11px] leading-snug tracking-[0.08em] text-[#4a3a1c]'}
-                    >
-                      {line}
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* 확정 후 암전 */}
-      <AnimatePresence>
-        {confirming && (
-          <motion.div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 z-[80] bg-black"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: reduceMotion ? 0 : PRINT_DUR + 1.0, duration: reduceMotion ? 0.1 : 0.45 }}
-          />
-        )}
-      </AnimatePresence>
 
       {/* DEBUG PANEL TOGGLE */}
       {!isEditMode && process.env.NODE_ENV !== 'production' && (

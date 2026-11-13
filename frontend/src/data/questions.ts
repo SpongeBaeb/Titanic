@@ -6,6 +6,8 @@ export interface Option {
   bgImage?: string;
   bgAlign?: 'left' | 'right' | 'full';
   bgOffset?: string;
+  /** 이 승객은 고를 수 없는 선택지: 이유 한 줄 (숨기지 않고 보여 준다) */
+  lock?: string;
 }
 
 export interface Question {
@@ -24,7 +26,7 @@ export const questionsData: Record<string, Question> = {
     step: 1,
     totalSteps: 8,
     title: '당신의 성별은 무엇입니까?',
-    subtitle: '타이타닉호 탑승을 위해 기본 인적사항이 필요합니다.',
+    subtitle: '거울에 비칠 당신의 모습을 골라 주세요.',
     bgImage: '/bg/bg-titanic.webp',
     options: [
       { id: 'sex_male', label: '남성 (Male)', value: 'male' },
@@ -36,7 +38,7 @@ export const questionsData: Record<string, Question> = {
     step: 2,
     totalSteps: 8,
     title: '타이타닉에 오를 당신은 몇 살인가요?',
-    subtitle: '1912년 4월. 승객 명부에 당신의 이름이 기록됩니다.',
+    subtitle: '1912년 4월, 그곳에 서게 될 당신의 나이를 맞춰 주세요.',
     bgImage: '/bg/bg-titanic.webp',
     options: [
       { id: 'age_under_10', label: '10세 미만', value: '0-9', bgImage: '/age/10.webp', bgAlign: 'left' },
@@ -149,7 +151,7 @@ export const questionsData: Record<string, Question> = {
     options: [
       { id: 'pclass_1', label: '우아한 왈츠와 완벽한 서비스가 있는 곳', description: '크리스탈 샹들리에 아래서 샴페인을 마시며, 비슷한 취향의 사람들과 여유로운 사교를 즐기고 싶습니다.', value: '1', bgImage: '/bg/1.webp', bgAlign: 'full' },
       { id: 'pclass_2', label: '조용하고 아늑한 평화로운 휴식처', description: '과도한 격식이나 시끄러운 인파는 피하고 싶습니다. 따뜻한 차 한 잔과 함께 온전히 나만의 조용한 휴식을 즐기는 게 좋습니다.', value: '2', bgImage: '/bg/2.webp', bgAlign: 'full' },
-      { id: 'pclass_3', label: '웃음소리와 바이올린 선율이 넘치는 활기찬 공간', description: '조금 좁고 덜 화려해도 상관없습니다. 모르는 사람들과도 금방 친구가 되어 땀 흘리며 춤추고 노래하는 낭만이 좋습니다.', value: '3', bgImage: '/bg/3.webp', bgAlign: 'full' },
+      { id: 'pclass_3', label: '웃음소리와 바이올린 선율이 넘치는 활기찬 공간', description: '조금 북적여도 상관없습니다. 모르는 사람들과도 금방 친구가 되어 땀 흘리며 춤추고 노래하는 낭만이 좋습니다.', value: '3', bgImage: '/bg/3.webp', bgAlign: 'full' },
     ],
   },
   Q4: {
@@ -197,14 +199,64 @@ export const questionsData: Record<string, Question> = {
     step: 8,
     totalSteps: 8,
     title: '구명정 앞에 도착했습니다.',
-    subtitle: '바다는 검고 차갑습니다. 구명정에는 이제 한 자리만 남았습니다. 그런데 당신 뒤에는 아직 배에서 빠져나오지 못한 사람들이 있습니다. 그 순간, 당신은 어떻게 행동합니까?',
+    subtitle: '구명정은 거의 비어 있습니다. 장교가 랜턴을 들고 외칩니다. "여자와 아이부터입니다!" 빈자리는 많지만, 당신 뒤에는 아직 배에서 빠져나오지 못한 사람들이 있습니다. 그 순간, 당신은 어떻게 행동합니까?',
     bgImage: '/bg/lifeboat.webp',
     options: [
       { id: 'final_yield_seat', label: '자리를 양보한다.', description: '“아직 다른 구명정이 있습니다.”', value: 'yield_seat' },
-      { id: 'final_yield_weak', label: '아이나 노약자에게 양보한다.', description: '“우선순위는 지켜야 합니다.”', value: 'yield_weak' },
+      { id: 'final_yield_weak', label: '아이를 두 손으로 들어 구명정에 태운다.', description: '“이 아이부터요.”', value: 'yield_weak' },
       { id: 'final_secure_help', label: '일단 내 자리를 확보하고 주변을 돕는다.', description: '“나까지 살아야 다른 사람을 도울 수 있습니다.”', value: 'secure_mine' },
       { id: 'final_me_first', label: '이번에는 내가 먼저 탄다.', description: '“미안하지만 이번에는 내가 먼저입니다.”', value: 'me_first' },
       { id: 'final_observe', label: '바로 움직이지 않고 상황을 지켜본다.', description: '“아직 끝난 게 아닙니다. 더 안전한 기회가 있을 수 있습니다.”', value: 'observe' },
+    ],
+  },
+  // ── Q7 뒤의 갈래: 탑승(B1) / 미탑승(W1 → W2). 점수와 서버에는 쓰이지 않는다 ──
+  B1: {
+    id: 'B1',
+    step: 8,
+    totalSteps: 8,
+    title: '구명정이 가라앉고 있습니다.',
+    subtitle: '배가 사라진 뒤, 구명정 바닥으로 바닷물이 차오릅니다. 너무 많은 사람, 너무 많은 짐. 노를 젓던 손들이 멈췄습니다. 누군가 외칩니다. "무게를 줄여야 합니다!"',
+    bgImage: '/bg/boat_sea.webp',
+    options: [
+      { id: 'boat_supplies', label: '마지막 비상 식량 상자와 체온 유지용 덮개를 바다로 던진다.', description: '“당장 뜨는 게 먼저입니다. 먹을 건 나중 문제입니다.”', value: 'supplies' },
+      { id: 'boat_injured', label: '이미 의식을 잃은 중상자를 바다로 내보낸다.', description: '“…이 사람은 이미…” 누구도 끝까지 말하지 못합니다.', value: 'injured' },
+      { id: 'boat_belongings', label: '내 소지품과 겉옷, 신발까지 모두 던진다.', description: '“내 것부터 내놓겠습니다.”', value: 'belongings' },
+    ],
+  },
+  W1: {
+    id: 'W1',
+    step: 8,
+    totalSteps: 8,
+    title: '곁에 주저앉은 승객이 묻습니다.',
+    subtitle: '갑판이 점점 기웁니다. 떨리는 목소리가 당신을 올려다봅니다. "구명선이… 곧 우리를 구하러 되돌아오겠지요?"',
+    bgImage: '/bg/crash.webp',
+    options: [
+      { id: 'words_lie', label: '“네, 조금만 참으면 구명선이 올 겁니다.”', description: '거짓말이라도, 편안하게 보내 드리고 싶습니다.', value: 'lie' },
+      { id: 'words_truth', label: '“아니요, 구명선은 돌아오지 않습니다. 우리는 여기서 죽습니다.”', description: '끝까지 현실을 마주 보게 합니다.', value: 'truth' },
+      { id: 'words_hold', label: '아무 말 없이 손을 잡아 준다.', description: '대답 대신, 체온을 건넵니다.', value: 'hold' },
+      { id: 'words_curse', label: '“…씨발, 그걸 왜 나한테 물어요!”', description: '참았던 말이 터져 나옵니다.', value: 'curse' },
+      { id: 'words_jump', label: '바다로 뛰어든다.', description: '“…먼저 가겠습니다.”', value: 'jump' },
+    ],
+  },
+  WB: {
+    id: 'WB',
+    step: 8,
+    totalSteps: 8,
+    title: '구명정이 떠났습니다.',
+    subtitle: '',
+    options: [],
+  },
+  W2: {
+    id: 'W2',
+    step: 8,
+    totalSteps: 8,
+    title: '물이 턱밑까지 차올랐습니다.',
+    subtitle: '발밑의 갑판이 거의 서 있습니다. 얼음 같은 바다에 뛰어들면 몇 분 안에 몸이 굳어 갑니다. 배에 그대로 남으면 선체와 함께 끌려 내려갑니다. 당신은 어떻게 합니까?',
+    bgImage: '/bg/crash.webp',
+    options: [
+      { id: 'way_swim', label: '끝까지 구명선의 불빛을 찾아 헤엄친다.', description: '“한 번만 더. 저 불빛까지만.”', value: 'swim' },
+      { id: 'way_jump', label: '바다로 뛰어든다.', description: '“적어도 내 발로 들어갑니다.”', value: 'jump' },
+      { id: 'way_sink', label: '배에 몸을 맡기고 가라앉는다.', description: '“이 배와 끝까지 함께하겠습니다.”', value: 'sink' },
     ],
   },
 };

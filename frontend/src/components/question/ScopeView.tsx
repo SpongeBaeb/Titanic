@@ -45,15 +45,14 @@ vec3 skyCol(vec3 d, float t){
 
 float wave(vec2 p, float t){
   float h = 0.;
-  h += .42 * sin(.22 * p.x + .11 * p.y + t * 1.0);
-  h += .22 * sin(.41 * p.x - .19 * p.y - t * 1.5 + 1.7);
-  float nearW = clamp(1. + p.y / 300., 0., 1.); // 먼 바다의 작은 물결은 한 화소보다 촘촘해 반짝임 잡음이 되므로 지운다
-  h += nearW * .05 * sin(.83 * p.x + .47 * p.y + t * 2.2);
-  h += nearW * .10 * (noise(p * .35 + vec2(t * .3, t * .2)) - .5);
+  // 옆으로 길게 늘어진 너울 (망원경으로 멀리 보면 수평선과 나란한 물결 띠가 된다)
+  h += .42 * sin(.07 * p.x + .21 * p.y + t * 1.0);
+  h += .24 * sin(-.05 * p.x + .33 * p.y - t * 1.4 + 1.7);
+  h += .10 * sin(.13 * p.x + .52 * p.y + t * 1.9 + 4.1);
   for(int i = 0; i < 3; i++){
     vec4 e = uEv[i]; float age = t - e.z;
     if(age > 0.){ float d = length(p - e.xy); float w = d - age * 8.5;
-      h += e.w * .9 * sin(w * .55) * exp(-w * w * .025) * exp(-age * .5) / (1. + d * .04); }
+      h += e.w * .35 * sin(w * .3) * exp(-w * w * .008) * exp(-age * .8) / (1. + d * .06); }
   }
   return h;
 }
@@ -70,23 +69,64 @@ float sdRoundCone(vec3 p, vec3 a, vec3 b, float r1, float r2){
 vec3 J(int i){ float s = 7. - float(i) * 2.3333; return vec3(s, uPose.x * (1. - s * s / 49.), 0.); }
 const float RAD[7] = float[7](.45, 1.35, 1.95, 1.85, 1.15, .55, .28);
 
+float smin(float a, float b, float k){ float h = clamp(.5 + .5 * (b - a) / k, 0., 1.); return mix(b, a, h) - k * h * (1. - h); }
+
+// 꼬리지느러미 (혹등고래): 타원체가 아니라 얇은 날개 모양의 판이다. f: 뿌리 중심 기준 (꼬리 쪽이 -x, 폭이 ±z, 위가 +y)
+//  - 평면: 앞가장자리는 뿌리에서 곧다가 끝으로 갈수록 뒤로 크게 젖혀져 끝이 뾰족한 초승달꼴, 뒷가장자리는 오목하고 가운데에 홈이 있다
+//  - 혹등고래 특유의 뒷가장자리 톱니(들쭉날쭉한 물결)
+//  - 단면: 앞은 둥글고 뒤로 갈수록 날카롭게 얇아지는 날개 단면, 끝으로 갈수록 더 얇아지며 살짝 들린다
+float sdFluke(vec3 f){
+  const float S = 2.3;                       // 반폭 (몸길이의 약 1/3이 전체 폭)
+  float u = abs(f.z), t = clamp(u / S, 0., 1.);
+  float le = -.04 - .45 * pow(t, 1.3) * S;   // 앞가장자리: 끝으로 갈수록 뒤로 젖혀져, 끝이 가장 뒤에 온다
+  float c = 1.25 * max(1. - pow(t, 1.3), 0.);                    // 폭(코드): 뿌리 1.25에서 끝으로 곧게 좁아져 끝이 뾰족하다
+  float notch = .22 * exp(-u * u / .03);                        // 뒷가장자리 가운데의 홈
+  float sc = (.5 + .5 * sin(u * 7.3 + .6)) * .55 + (.5 + .5 * sin(u * 12.9 + 2.1)) * .45;
+  float serr = .2 * (sc - .5) * smoothstep(.14, .4, t) * smoothstep(1., .72, t); // 톱니
+  float te = le - c + notch + serr;
+  float dx = max(f.x - le, te - f.x), dz = u - S;
+  float d2 = max(dx, dz) * .86;              // 젖혀진 가장자리의 기울기 보정
+  float tt = clamp((le - f.x) / max(c, .06), 0., 1.);
+  float hy = (.09 * c + .014) * (sqrt(tt) * (1. - tt) * 1.7 + .1) * (1. - .4 * t);
+  float dy = abs(f.y - .2 * t * t) - hy;
+  vec2 w = vec2(d2, dy);
+  return min(max(w.x, w.y), 0.) + length(max(w, 0.)) - .035;
+}
+
+// 가슴지느러미 (혹등고래의 상징): 몸길이의 약 1/3에 이르는 길고 납작한 날개. 위아래로 눌러 얇게 만든다
+float flipperD(vec3 q){
+  float d = 1e5;
+  for(int s = 0; s < 2; s++){
+    float sg = s == 0 ? -1. : 1.;
+    vec3 a = J(1) + vec3(-.6, -1.05, sg * 1.0);
+    vec3 b = a + vec3(-1.7, -1.1, sg * (3.3 + 1.2 * uPose.y));
+    vec3 qq = q; qq.y *= 2.6; a.y *= 2.6; b.y *= 2.6;
+    // 앞가장자리의 울퉁불퉁한 혹(결절): 지느러미를 따라 반지름이 물결친다
+    vec3 ba = b - a; float t = clamp(dot(qq - a, ba) / dot(ba, ba), 0., 1.);
+    float knob = .05 * max(0., sin(t * 26.)) * (1. - t);
+    d = min(d, (sdRoundCone(qq, a, b, .46, .1) - knob) * .38);
+  }
+  return d;
+}
+
 float whale(vec3 p){
   vec3 q = (p - uC) * uRot;
   float d = 1e5;
-  for(int i = 0; i < 6; i++) d = min(d, sdRoundCone(q, J(i), J(i + 1), RAD[i], RAD[i + 1]));
-  // 꼬리지느러미
-  vec3 f = q - J(6) - vec3(-.6, 0., 0.);
-  vec3 fs = vec3(.95, .14, 2.6);
-  float k0 = length(f / fs), k1 = length(f / (fs * fs));
-  d = min(d, k0 * (k0 - 1.) / max(k1, 1e-4));
-  // 가슴지느러미 (납작하게)
-  for(int s = 0; s < 2; s++){
-    float sg = s == 0 ? -1. : 1.;
-    vec3 a = J(1) + vec3(-.2, -1.0, sg * 1.1);
-    vec3 b = a + vec3(-1.9, -.8, sg * (1.2 + 3.0 * uPose.y));
-    vec3 qq = q; qq.y *= 2.4; a.y *= 2.4; b.y *= 2.4;
-    d = min(d, sdRoundCone(qq, a, b, .38, .14) * .42);
-  }
+  // 꼬리 쪽으로 갈수록 몸이 옆으로 납작해지고 위아래로 길쭉해진다 (꼬리자루)
+  float wsc = 1. + .5 * smoothstep(-1.2, -6.2, q.x);
+  vec3 qb = vec3(q.x, q.y, q.z * wsc);
+  for(int i = 0; i < 6; i++) d = min(d, sdRoundCone(qb, J(i), J(i + 1), RAD[i], RAD[i + 1]));
+  d /= wsc;
+  // 머리 위의 혹(결절): 주둥이 윗면에 작은 혹들이 줄지어 있다
+  float head = smoothstep(2.6, 5.8, q.x) * step(0., q.y);
+  d -= head * .055 * max(0., sin(q.x * 7.5) * sin(q.z * 8.5 + 1.3));
+  // 낮은 등지느러미: 등 뒤쪽 2/3 지점의 작은 혹
+  vec3 da = J(4) + vec3(.35, RAD[4] * .82, 0.);
+  d = smin(d, sdRoundCone(q, da, da + vec3(-.75, .42, 0.), .3, .06), .22);
+  // 꼬리지느러미: 꼬리자루 끝에서 매끄럽게 이어진다
+  d = smin(d, sdFluke(q - J(6) - vec3(.55, 0., 0.)), .28);
+  // 가슴지느러미
+  d = smin(d, flipperD(q), .12);
   return d;
 }
 vec3 whaleN(vec3 p){ vec2 e = vec2(.09, 0.);
@@ -130,6 +170,11 @@ void main(){
     belly *= .85 + .15 * sin(q.z * 16. + q.y * 3.);
     vec3 alb = mix(base, belly, bel);
     float scar = smoothstep(.72, .86, fbm(q.xz * 2.2 + 3.)); alb = mix(alb, vec3(.55, .56, .58), scar * .5 * (1. - bel));
+    float fl = smoothstep(.18, -.04, flipperD(q));
+    alb = mix(alb, vec3(.8, .82, .85) * (.88 + .12 * noise(q.xz * 4.)), fl * .85);
+    float fk = smoothstep(.2, -.04, sdFluke(q - J(6) - vec3(.55, 0., 0.))) * smoothstep(.1, -.4, nl.y);
+    float blot = smoothstep(.45, .62, fbm(q.xz * 1.7 + 7.));
+    alb = mix(alb, mix(vec3(.82, .83, .86), vec3(.06, .07, .09), blot), fk * .9);
     float diff = max(dot(n, SUN), 0.);
     vec3 lit = alb * (vec3(1., .72, .46) * diff * 1.5 + skyCol(n, t) * .38);
     float rim = pow(1. - max(dot(n, -rd), 0.), 3.);
@@ -143,20 +188,26 @@ void main(){
     lit = mix(lit, vec3(.95), smoothstep(1.1, 0., hw) * .6);
     col = mix(lit, skyCol(vec3(rd.x, .02, rd.z), t) * .8, .16);
   } else if(tW < 1e8){
-    // ── 바다 ──
-    float e = .4;
-    vec3 n = normalize(vec3((wave(pw.xz - vec2(e, 0.), t) - wave(pw.xz + vec2(e, 0.), t)) * .3, 2. * e, (wave(pw.xz - vec2(0., e), t) - wave(pw.xz + vec2(0., e), t)) * .3));
+    // ── 바다 ── (Q5 갑판에서 보던 바다와 같은 색과 결: 짙은 청록 바탕에 노을빛 하늘이 얇게 비친다)
+    // 먼 물결은 한 화소가 수십 미터를 덮으므로 법선을 그만큼 넓게 재서 매끈하게 만든다 (반짝이는 잡음 방지)
+    float e = max(.6, tW * tW * 9e-6);
+    float sl = .16 / (1. + tW * .0015);
+    vec3 n = normalize(vec3((wave(pw.xz - vec2(e, 0.), t) - wave(pw.xz + vec2(e, 0.), t)) * sl, 2. * e, (wave(pw.xz - vec2(0., e), t) - wave(pw.xz + vec2(0., e), t)) * sl));
     vec3 rr = reflect(rd, n); rr.y = max(rr.y, .0015);
     float fres = pow(1. - max(dot(-rd, n), 0.), 5.);
-    float F = .05 + .95 * fres;
-    vec3 refl = skyCol(rr, t);
-    // 바다 색은 Q5 갑판의 바다와 같다: 청록 바탕에 하늘 반사가 얇게 얹힌다
-    vec3 deep = mix(vec3(.08, .24, .27), vec3(.03, .12, .16), smoothstep(0., 700., tW));
-    col = deep + refl * (.12 + .32 * F);
-    float swell = sin(pw.x * .11 + pw.z * .07 + t * 1.5) * .5 + sin(pw.x * .2 - pw.z * .13 - t * 2.) * .5;
+    // 반사는 수평선 가까운 하늘(노을의 주황)만 비치도록 낮게 눌러 둔다
+    vec3 refl = skyCol(vec3(rr.x, min(rr.y, .03), rr.z), t);
+    vec3 deep = mix(vec3(.03, .11, .15), vec3(.09, .22, .25), smoothstep(250., 1100., tW));
+    col = deep + refl * (.07 + .2 * fres);
+    // 큰 너울: 밝고 어두운 띠가 천천히 밀려온다
+    float swell = sin(pw.x * .03 + pw.z * .16 + t * 1.5) * .5 + sin(-pw.x * .02 + pw.z * .29 - t * 2.) * .5;
     col *= 1. + swell * .12;
-    // Q5 바다처럼 금빛 잔물결이 해 쪽에서 반짝인다
-    col += vec3(1., .80, .50) * smoothstep(.74, .97, noise(pw.xz * .12 + vec2(t * .8, -t * .5)) + swell * .1) * (.05 + .12 * pow(max(dot(rr, SUN), 0.), 6.));
+    // 물결선: 갑판에서 보던 가는 빛줄 (멀수록 흐려진다)
+    float lines = smoothstep(.62, 1., sin(pw.z * .45 + wave(pw.xz, t) * 3. + t * 2.2) * .5 + .5) / (1. + e * .8);
+    col += vec3(.95, .74, .55) * lines * .03;
+    // 해 쪽 잔빛: 둥근 점이 아니라 옆으로 길쭉한 금빛 조각
+    float gn = noise(vec2(pw.x * .05, pw.z * .32) + vec2(t * .5, -t * .7));
+    col += vec3(1., .80, .50) * smoothstep(.8, .98, gn + swell * .08) * (.04 + .14 * pow(max(dot(rr, SUN), 0.), 4.)) / (1. + e * .5);
     // 수면에 비친 고래
     if(uAct > .5){
       float tr = marchWhale(pw + n * .05, rr);
@@ -172,46 +223,110 @@ void main(){
       vec4 ev = uEv[i]; float age = t - ev.z;
       if(age > 0.){
         float d = length(pw.xz - ev.xy);
-        float r = age * 8.5;
-        float ring = exp(-(d - r) * (d - r) / (2. * pow(1.5 + age * .5, 2.))) * exp(-age * .55);
-        float pat = exp(-d * d / (2. * pow(6. + age * 3.5, 2.))) * exp(-age * .22);
+        float pat = exp(-d * d / (2. * pow(3. + age * 1.6, 2.))) * exp(-age * .25);
         float nz = fbm(pw.xz * .8 + vec2(0., t * .1));
-        foam += ev.w * (ring * 1.1 + pat * 1.3) * smoothstep(.22, .6, nz + .25);
+        float lace = smoothstep(.42, .62, fbm(pw.xz * 1.6 + vec2(ev.x, t * .15)));
+        foam += ev.w * pat * 1.2 * mix(lace, 1., exp(-age * 1.5)) * smoothstep(.22, .6, nz + .25);
       }
     }
     if(uAct > .5){
       float dd = whale(vec3(pw.x, pw.y, pw.z));
       foam += smoothstep(2.6, .2, dd) * smoothstep(.3, .7, fbm(pw.xz * 1.1 + t * .2)) * .9;
     }
-    vec3 foamCol = vec3(.93, .9, .86) * (.5 + .5 * smoothstep(-.3, 1., dot(n, SUN) * .6 + .5));
-    col = mix(col, foamCol, clamp(foam, 0., .94));
-    // 해가 뜨는 쪽의 잔빛
-    col += vec3(1., .78, .5) * smoothstep(.9, 1., noise(pw.xz * .25 + vec2(t * .3, t * .15))) * pow(max(dot(rr, SUN), 0.), 14.) * .22;
-    col = mix(col, skyCol(vec3(rd.x, .01, rd.z), t), 1. - exp(-tW * .00035));
+    vec3 foamCol = mix(vec3(.62, .66, .72), vec3(1., .86, .7), .55) * (.7 + .3 * smoothstep(-.3, 1., dot(n, SUN) * .6 + .5));
+    col = mix(col, foamCol, clamp(foam, 0., .85));
+    col = mix(col, skyCol(vec3(rd.x, .004, rd.z), t) * .8, (1. - exp(-tW * .00007)) * .8);
   } else {
     col = skyCol(rd, t);
   }
 
-  // ── 물방울과 숨(물안개): 모두 화면에 더해진다 ──
-  vec3 add = vec3(0.);
+  // ── 물보라 ──
+  // 해를 마주 보는 역광이라 얇은 물은 금빛으로 비치고 두꺼운 물은 회청색 그늘이 진다
   for(int k = 0; k < 3; k++){
     vec4 ev = uEv[k]; float age = t - ev.z;
-    if(age > 0. && age < 2.8){
-      for(int i = 0; i < 30; i++){
-        float fi = float(i) + float(k) * 31.;
-        float a = hash1(fi) * 6.2832, sp = mix(2., 11., hash1(fi + 5.)) * (.5 + ev.w * .5), vy = mix(5., 19., hash1(fi + 9.)) * (.6 + ev.w * .4);
-        vec3 pos = vec3(ev.x + cos(a) * sp * age * .55, vy * age - 4.9 * age * age, ev.y + sin(a) * sp * age * .4);
-        if(pos.y < 0.) continue;
-        vec3 d = pos - RO; float z = -d.z; if(z < 1.) continue;
-        vec2 sc = vec2(d.x / z - sway.x, d.y / z - PITCH - sway.y) / TH;
-        float rad = (.35 + hash1(fi + 2.) * .5) / z / TH;
-        float g = smoothstep(rad, 0., length(uv - sc)) * (1. - age / 2.8);
-        add += vec3(.95, .93, .9) * g * .9;
+    if(age <= 0. || age > 3.6) continue;
+    float s = ev.w;
+    // 사건 자리를 지나는 세로 판 위의 점 (판 하나에 물보라를 그린다)
+    float tp = (ev.y - RO.z) / rd.z;
+    if(tw > 0. && tw < tp - 3.) continue;
+    vec3 P = RO + rd * tp;
+    float x = P.x - ev.x, y = P.y;
+    float vy0 = 5. + 5. * s;
+    // 물기둥: 부풀어 오르는 물 덩어리 여러 개가 겹쳐 솟았다가 무너진다 (뭉게뭉게한 흰 물보라)
+    float dens = 0.;
+    for(int j = 0; j < 9; j++){
+      float fj = float(j) * 3.7 + float(k) * 41.;
+      float vx = (hash1(fj) - .5) * (4. + 4. * s);
+      float vy = (.35 + .65 * hash1(fj + 1.)) * vy0;
+      float ag = age * (.85 + .3 * hash1(fj + 2.));
+      vec2 c = vec2(vx * ag, vy * ag - 4.2 * ag * ag);
+      float r = (.45 + .5 * hash1(fj + 3.)) * (.6 + .4 * s) + ag * .5;
+      vec2 dv = vec2(x, y) - c;
+      dens += exp(-dot(dv, dv) / (r * r)) * (c.y > -r ? 1. : 0.);
+    }
+    // 수면에 깔리는 흰 거품 둔덕
+    dens += exp(-x * x / pow(2. + 2.5 * s * (1. - exp(-age * 1.5)), 2.) - y * y / .8) * s * .8 * exp(-age * .6);
+    // 가장자리를 잘게 부순다: 덩어리 속은 진하고, 바깥으로 갈수록 성긴 물안개
+    float det = fbm(vec2(x, y) * 1.3 + vec2(float(k) * 5., -age * 2.));
+    float det2 = fbm(vec2(x * 2.4, y * .7) + vec2(age * .5, -age * 3.)); // 흘러내리는 물줄기 결
+    float fib = fbm(vec2(x * 3.2, y * .45 - age * 2.5) + float(k) * 9.); // 세로로 길쭉한 물줄기 결
+    float core = smoothstep(.45, .85, dens * (.55 + .5 * det) * (.45 + 1.1 * fib));
+    float mistA = smoothstep(.05, .6, dens) * (.25 + .3 * det) * smoothstep(.4, 1.6, age);
+    float fade = 1. - smoothstep(2., 3.6, age);
+    // 가장자리의 고운 물보라 알갱이 (떨어지며 반짝인다)
+    float grain = smoothstep(.04, .5, dens) * (1. - core) * step(.82, hash(floor(vec2(x, y + age * 9.) * 5.) + float(k)));
+    float a = clamp(core * .92 + mistA * .3 + grain * .55, 0., .92) * fade * smoothstep(-.3, .6, y);
+    // 역광: 얇은 가장자리는 노을빛으로 비치고, 두꺼운 속은 회청색 그늘
+    float thin = 1. - smoothstep(.3, 1.5, dens);
+    vec3 sc = mix(vec3(.7, .74, .8), vec3(1., .93, .8), .25 + .45 * thin + .3 * fib);
+    col = mix(col, sc, a);
+    // 튀어 나가는 물 덩어리: 수백 미터 밖에서는 물방울 하나하나는 보이지 않는다.
+    // 대신 찢어진 물 덩어리가 포물선을 그리며 날아가며 뒤로 너덜너덜한 꼬리를 끌고, 떨어질 때는 빗줄기 같은 물 커튼을 남긴다.
+    for(int i = 0; i < 20; i++){
+      float fi = float(i) + float(k) * 31.;
+      float side = hash1(fi) < .5 ? -1. : 1.;
+      float vx = side * mix(2., 10., pow(hash1(fi + 5.), .7)) * (.6 + s * .3);
+      float vy = mix(.5, 1.25, hash1(fi + 9.)) * vy0 * (1. - .35 * abs(vx) / 10.);
+      float a2 = age * mix(.8, 1.05, hash1(fi + 4.));
+      float life = 1. - smoothstep(1.6, 2.8, a2);
+      if(life <= 0.) continue;
+      // 공기 저항으로 옆으로 퍼지는 속도가 줄어든다
+      float ax = (1. - exp(-a2 * 1.4)) / 1.4;
+      vec2 c1 = vec2(vx * ax, vy * a2 - 4.9 * a2 * a2);
+      if(c1.y < -.5) continue;
+      float b2 = max(a2 - .16, 0.), b3 = max(a2 - .32, 0.);
+      vec2 c2 = vec2(vx * (1. - exp(-b2 * 1.4)) / 1.4, vy * b2 - 4.9 * b2 * b2);
+      vec2 c3 = vec2(vx * (1. - exp(-b3 * 1.4)) / 1.4, vy * b3 - 4.9 * b3 * b3);
+      vec2 P2 = vec2(x, y);
+      // 머리(덩어리)에서 꼬리로 갈수록 가늘고 성기게
+      vec2 pa = P2 - c2, ba = c1 - c2; float h1 = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-4), 0., 1.);
+      float d1 = length(pa - ba * h1);
+      vec2 pb = P2 - c3, bb = c2 - c3; float h2 = clamp(dot(pb, bb) / max(dot(bb, bb), 1e-4), 0., 1.);
+      float d2 = length(pb - bb * h2);
+      float rw = (.45 + .45 * hash1(fi + 2.)) * (.7 + .3 * s) * (1. + a2 * .6);
+      float tail = max(smoothstep(rw * mix(.45, 1., h1), 0., d1) * mix(.5, 1., h1),
+                       smoothstep(rw * .45 * mix(.5, 1., h2), 0., d2) * .5 * h2);
+      float along = h1 * length(ba) + (1. - h1) * 0.;
+      float rag = smoothstep(.3, .62, noise(vec2(along * 1.2 + fi * 3., d1 / rw * 3.5 + fi)) * .7 + noise(P2 * 4. + fi) * .4);
+      float clump = tail * rag;
+      // 떨어지는 중이면 아래로 늘어진 물 커튼 (성긴 세로 결)
+      float fall = smoothstep(0., -4., vy - 9.8 * a2);
+      float curtain = 0.;
+      if(fall > 0. && y < c1.y && y > 0.){
+        float dx = abs(x - c1.x);
+        curtain = smoothstep(rw * 1.1, 0., dx) * smoothstep(.45, .8, noise(vec2(x * 6. + fi, y * .5 + age * 6.)))
+                * smoothstep(0., 1.5, c1.y - y) * exp(-(c1.y - y) * .25) * fall;
       }
+      float aC = (clump * .95 + curtain * .4) * life * smoothstep(-.3, .4, y);
+      // 물보라 장막과 같은 빛: 그늘진 흰빛에, 해 쪽 가장자리만 살짝 따뜻하게 (스스로 빛나지 않는다)
+      vec3 wc = mix(vec3(.72, .76, .82), vec3(1., .93, .82), .3 + .4 * rag);
+      col = mix(col, wc, clamp(aC, 0., .8));
     }
   }
-  for(int b = 0; b < 2; b++){
-    float tb = b == 0 ? 1.3 : 5.3; vec3 bp = b == 0 ? vec3(-15., 0., -565.) : vec3(10., 0., -557.);
+  // ── 숨(물안개): 화면에 더해진다 ──
+  vec3 add = vec3(0.);
+  for(int b = 0; b < 1; b++){
+    float tb = 1.3; vec3 bp = vec3(-15., 0., -565.);
     float age = t - tb;
     if(age > 0. && age < 2.6){
       for(int i = 0; i < 18; i++){
@@ -315,7 +430,9 @@ export default function ScopeView({ onFail }: ScopeViewProps) {
     let raf = 0;
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
-      const t = (now - t0) / 1000;
+      // 개발 서버에서만: 콘솔에서 window.__scopeT = 4.3 처럼 장면 시각을 고정해 볼 수 있다
+      const fixT = process.env.NODE_ENV === 'development' ? (window as unknown as { __scopeT?: number }).__scopeT : undefined;
+      const t = typeof fixT === 'number' ? fixT : (now - t0) / 1000;
       const ps = pose(t);
       gl.uniform2f(uRes, cv.width, cv.height);
       gl.uniform1f(uT, t);

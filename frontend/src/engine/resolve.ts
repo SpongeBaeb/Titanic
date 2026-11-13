@@ -28,5 +28,7 @@ export function assetsFor(sceneId: string, answers: Ctx['answers']): string[] {
   } else if (sceneId === RESULT) {
     out.push('/bg/collasping.webp');
   }
+  // B1 의 두 겹 배경(바다·배)은 한 장짜리 사진 대신 이 둘을 쓰므로 함께 미리 받는다
+  if (out.includes('/bg/boat_sea.webp')) out.push('/bg/boat_sea_plate.webp', '/bg/boat_sea_boat.webp');
   return out.filter(Boolean);
 }

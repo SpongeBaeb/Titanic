@@ -38,11 +38,11 @@ type Port = 'S' | 'C' | 'Q'; // 맨 처음 고른 승선 항구: 사우샘프턴
 interface Extra extends Spot { caption: string; byPort?: Partial<Record<Port, string>>; unlock?: string; horn?: boolean }
 const EXTRAS: Record<string, Extra> = {
   sternCrew: { x: 19.5, y: 20.5, w: 7, h: 6.5, caption: '선미 난간의 세 사람. 이름은 어느 명부에도 없다.' },
-  stern: { x: 13, y: 21, w: 16, h: 17, caption: '리버풀 등록. 이 배는 한 번도 리버풀에 닿지 못했다.', unlock: 'never-liverpool', horn: true },
+  stern: { x: 13, y: 21, w: 16, h: 17, caption: '선미의 LIVERPOOL은 등록항. 배는 벨파스트에서 지었다.', unlock: 'never-liverpool', horn: true },
   funnels: { x: 38.5, y: 1, w: 15, h: 25, caption: '굴뚝은 네 개. 그중 네 번째는 환기용 가짜였다.' },
-  tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '출항 날, 예인선이 SS 뉴욕을 간신히 막았다.', byPort: { C: '연락선 노마딕이 승객을 배까지 실어 날랐다.', Q: '연락선 아메리카와 아일랜드가 승객을 날랐다.' } },
+  tugs: { x: 2.5, y: 56, w: 19, h: 14, caption: '출항 때 물살에 끌려온 SS 뉴욕을 예인선이 막았다.', byPort: { C: '연락선 노마딕과 트래픽이 승객을 배까지 실어 날랐다.', Q: '연락선 아메리카와 아일랜드가 승객을 날랐다.' } },
   horseCart: { x: 77, y: 50, w: 9, h: 18, caption: '짐은 아직 말이 나르던 시대였다.' },
-  gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 오른 승객은 약 900명.', byPort: { C: '셰르부르에서 오른 승객은 약 270명.', Q: '퀸스타운에서 오른 승객은 약 120명.' } },
+  gangway: { x: 45, y: 36, w: 16, h: 18, caption: '사우샘프턴에서 오른 승객은 약 900명.', byPort: { C: '이 트랩은 사우샘프턴의 것. 당신은 연락선으로 올랐다.', Q: '이 트랩은 사우샘프턴의 것. 당신은 연락선으로 올랐다.' } },
 };
 // 사진 아래 글은 작은 칸에 두 줄로 들어가야 해서 25자 안쪽으로 쓴다
 const FREE_CAPTION: Record<Port, string> = {
@@ -96,6 +96,8 @@ const { PHOTO_Y, PHOTO_TIMES } = (() => {
 })();
 
 export default function CompanionCamera({ question, onAnswer, onBack }: CompanionCameraProps) {
+  const questionRef = useRef(question);
+  questionRef.current = question;
   const reduce = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
@@ -286,16 +288,18 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
     if (busy.current) return;
     const key = focusRef.current ?? (dogAimed.current ? 'dog' : null);
     const aim = { x: cur.current.x * 100, y: cur.current.y * 100 };
-    if (!key) {
+    // 이 승객이 고를 수 없는 동행: 사진만 남고 다음으로 넘어가지 않는다. 이유가 사진 설명으로 나온다
+    const locked = key && key !== 'dog' ? questionRef.current.options.find((o) => o.value === key && o.lock) : undefined;
+    if (!key || locked) {
       // 동행이 없는 곳: 그냥 사진만 남는다. 다음으로 넘어가지 않고, 사진이 나온 뒤 다시 찍을 수 있다
       busy.current = true;
       playShutter();
       setFlash(true);
       setTimeout(() => setFlash(false), 180);
       const ek = extraRef.current;
-      const ex = ek ? EXTRAS[ek] : null;
-      setPhotoSpot(ex ?? { x: aim.x - 5, y: aim.y - 5, w: 10, h: 10 });
-      setPhotoCaption(ex ? (ex.byPort?.[portRef.current] ?? ex.caption) : FREE_CAPTION[portRef.current]);
+      const ex = locked ? null : ek ? EXTRAS[ek] : null;
+      setPhotoSpot(locked ? SPOTS[key as string] : ex ?? { x: aim.x - 5, y: aim.y - 5, w: 10, h: 10 });
+      setPhotoCaption(locked ? (locked.lock as string) : ex ? (ex.byPort?.[portRef.current] ?? ex.caption) : FREE_CAPTION[portRef.current]);
       setPhoto('free');
       if (ex?.unlock) unlock(ex.unlock);
       if (ex?.horn) setTimeout(() => playShipHorn(), 500);
@@ -559,7 +563,7 @@ export default function CompanionCamera({ question, onAnswer, onBack }: Companio
                 className="text-center"
               >
                 <h3 className="mb-2 font-title text-3xl text-amber-100 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)] md:text-4xl">{focusData.label}</h3>
-                <p className="mx-auto max-w-md font-sans text-sm text-slate-300">{focusData.description}</p>
+                <p className="mx-auto max-w-md font-sans text-sm text-slate-300">{'lock' in focusData && focusData.lock ? focusData.lock : focusData.description}</p>
                 <p className="mt-3 font-sans text-[11px] uppercase tracking-[0.3em] text-amber-200/70">{coarse ? '탭해서 촬영' : '클릭하거나 스페이스를 눌러 촬영'}</p>
               </motion.div>
             )}

@@ -2,7 +2,7 @@
 
 import { forwardRef } from 'react';
 import TraitHexagon from '@/components/ui/TraitHexagon';
-import type { TraitResult } from '@/engine/traits';
+import { COMPAT, type TraitResult } from '@/engine/traits';
 
 export type CardRatio = '4:5' | '9:16';
 
@@ -10,6 +10,8 @@ interface ShareCardProps {
   traits: TraitResult;
   statistical: number;
   adjusted: number;
+  /** 이야기 속 결과(탑승, 헤엄 생존 등). 없으면 보정 확률이 절반 이상인지로 정한다 */
+  alive?: boolean;
   ratio: CardRatio;
 }
 
@@ -18,8 +20,8 @@ interface ShareCardProps {
  * 화면 밖에 숨겨 두었다가 이미지로 뽑는다. 생존 확률이 절반 이상이면 따뜻한 호박색, 아니면 차가운 청회색 스킨.
  * 개인 정보는 넣지 않는다 (유형, 점수, 확률뿐).
  */
-const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard({ traits, statistical, adjusted, ratio }, ref) {
-  const alive = adjusted >= 50;
+const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard({ traits, statistical, adjusted, alive: aliveProp, ratio }, ref) {
+  const alive = aliveProp ?? adjusted >= 50;
   const H = ratio === '4:5' ? 1350 : 1920;
   const accent = alive ? '#fbbf24' : '#7dd3fc';
   const accentDim = alive ? 'rgba(251,191,36,0.55)' : 'rgba(125,211,252,0.5)';
@@ -99,7 +101,12 @@ const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function ShareCard(
         >
           {alive ? 'SURVIVED' : 'PERISHED'}
         </div>
-        <p style={{ marginTop: ratio === '4:5' ? 26 : 60, fontSize: 34, letterSpacing: '0.06em', color: accent }}>{tag} #타이타닉성향</p>
+        {COMPAT[traits.type.ko] && (
+          <p className="break-keep font-serif" style={{ marginTop: ratio === '4:5' ? 20 : 40, fontSize: 28, lineHeight: 1.5, color: 'rgba(226,232,240,0.85)' }}>
+            잘 맞는 유형 · {COMPAT[traits.type.ko].good.map((g) => g.ko).join(', ')}<br />안 맞는 유형 · {COMPAT[traits.type.ko].bad.ko}
+          </p>
+        )}
+        <p style={{ marginTop: ratio === '4:5' ? 22 : 56, fontSize: 34, letterSpacing: '0.06em', color: accent }}>{tag} #타이타닉성향</p>
         <p style={{ marginTop: 16, fontSize: 24, color: 'rgba(148,163,184,0.8)' }}>너는 그날 밤 어떤 사람이었을까? {host && `· ${host}`}</p>
         <p style={{ marginTop: 10, fontSize: 20, color: 'rgba(100,116,139,0.9)' }}>재미로 보는 성향 테스트입니다. 실제 성격을 진단하지 않습니다.</p>
       </div>

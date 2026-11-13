@@ -2,13 +2,29 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { WALK_SHEETS, type WalkSheet } from './rumor/walkSprites';
+import { GENT_REF_SHEET, type FallSheet } from './rumor/gentRefSprites';
+import { GENT_PAINT_SHEET } from './rumor/gentPaintSprites';
+import { LADY_PAINT_SHEET } from './rumor/ladyPaintSprites';
+import { LADY_REF_SHEET } from './rumor/ladyRefSprites';
+import { CHILD_REF_SHEET } from './rumor/childRefSprites';
+import { CHILD_PAINT_SHEET } from './rumor/childPaintSprites';
+import { OLDMAN_PAINT_SHEET } from './rumor/oldManPaintSprites';
+import { YOUNGMAN_PAINT_SHEET } from './rumor/youngManPaintSprites';
+import { OLDWOMAN_PAINT_SHEET } from './rumor/oldWomanPaintSprites';
+import { YOUNGWOMAN_PAINT_SHEET } from './rumor/youngWomanPaintSprites';
+import { CHILDGIRL_PAINT_SHEET } from './rumor/childGirlPaintSprites';
+import { OLDMAN_REF_SHEET } from './rumor/oldManRefSprites';
+import { OLDWOMAN_REF_SHEET } from './rumor/oldWomanRefSprites';
+import { YOUNGMAN_REF_SHEET } from './rumor/youngManRefSprites';
+import { YOUNGWOMAN_REF_SHEET } from './rumor/youngWomanRefSprites';
 import { Question } from '@/data/questions';
 import ProgressLine from '@/components/ui/ProgressLine';
 import AnalogClock from '@/components/cinematic/AnalogClock';
 import { wallClock } from '@/engine/cinematic';
 import { scenes } from '@/engine/scenes';
 import { cutEngine } from '@/lib/ambience';
-import { playGlassRattle, startMurmur, playThud, type Murmur } from '@/lib/synth';
+import { playGlassRattle, startMurmur, playThud, playChildWail, type Murmur } from '@/lib/synth';
 
 /**
  * Q6 "이상한 소문이 돌기 시작합니다"
@@ -46,70 +62,110 @@ const ZONES: Zone[] = [
 ];
 /** 구명환을 챙겨 든 사람에게 군중이 하는 말 */
 const BUOY_QUIPS = ['벌써부터 구명환이라니?', '그건 수영장에서나 쓰는 거요.', '농담이죠? 구명환이라니.', '신중한 분이시군.', '저런 건 어디서 났대요?', '혹시 뭔가 아는 거 아니오?'];
-/** 바닥 구역 위에 항상 떠 있는 짧은 이름 */
-const SHORT: Record<string, string> = {
-  calm_others: '진정시키기',
-  check_crew: '선원에게',
-  check_escape: '탈출 경로',
-  follow_crowd: '군중 따라가기',
-};
 const DWELL = 1.8;
+/** 우는 아이가 크게 우는 주기와 길이(초) */
+const CRY_PERIOD = 7.5;
+const CRY_LEN = 1.4;
 
 /**
  * 군중의 혼잣말. 1912년 4월 14일 일요일 밤, 충돌 직후 갑판의 분위기를 담았다.
  * 아직 아무도 침몰을 믿지 않는다: 엔진이 멎었고, 앞 갑판에 얼음 조각이 떨어졌고, 바다는 거울처럼 고요하다.
  * 악단은 아직 갑판에서 연주하지 않는다(구명정을 내리기 시작할 즈음에야 연주를 시작했다).
  */
-const CHATTER: string[] = [
-  // 일등석 신사 숙녀
-  '브리지 게임이나 마저 끝냅시다.',
-  '얼음? 위스키에 넣을 건 이미 있소.',
-  '선장이 알아서 하겠지.',
-  '화이트 스타 라인이 이럴 리 없소.',
-  '내일 뉴욕 신문엔 뭐라고 실릴까.',
-  '내 시가가 꺼졌군. 배가 멈추다니.',
-  '실내화 차림으로 나오고 말았어요.',
-  '모피 코트를 챙겼어야 했는데.',
-  '여보, 먼저 들어가 주무세요.',
-  '내 개는 어디 있지?',
-  '흡연실 친구들은 아직 카드를 친다더군.',
-  '무선 전신이 있으니 걱정 마시오.',
-  // 이등석, 삼등석, 아이들
-  '일요일 밤인데 찬송가나 부를까.',
-  '계단 문이 잠겨 있어요!',
-  '아메리카까지 이 년을 모았는데…',
-  '엄마, 갑판에 얼음이 있어!',
-  '아가야, 엄마 손 놓지 마.',
-  '애들 외투부터 입혀요.',
-  '엄마, 오늘은 안 자도 돼요?',
-  '아래층은 벌써 물이 찼대요.',
-  // 승무원
-  '신사 숙녀 여러분, 선실로 돌아가 주십시오.',
-  '곧 지시가 있을 겁니다. 침착하세요.',
-  '저도 아는 게 없습니다, 손님.',
-  // 재치
-  '얼음 조각이 공짜 기념품이래.',
-  '악단이 연주하면 마음이 놓일 텐데.',
-  '이 배는 가라앉지 않는다더니.',
-  '구명정 훈련은 한 번도 없었지.',
-  '수영 못하는 사람이 나만은 아니겠지.',
-  '짐은 어쩌지? 기념품이 가방에…',
-  '하느님도 이 배는 못 가라앉힌다던데.',
-  '올림픽호가 곧 올 거요.',
-  // 심오
-  '바다는 우리 계획을 모른다.',
-  '어떤 배든 바다 앞에선 나뭇조각이지.',
+const ATMOS: string[] = [
+  // 누구나 하는 말: 아직 걱정보다는 어리둥절한 분위기
   '엔진이 멎으니 파도 소리가 들리네.',
   '별은 참 맑은데.',
-  '고요가 더 무섭군.',
-  '바다가 거울 같아. 너무 고요해.',
-  '공기가 유난히 차가워.',
-  '위기가 되어야 제 모습이 나오지.',
+  '바다가 거울 같아. 너무 고요하네.',
+  '공기가 유난히 차갑군.',
   '한 시간 전만 해도 음악을 들었는데.',
-  '내가 지키려던 건 무엇이었더라.',
-  '이 밤을 평생 말하게 될 거야. 살아서라면.',
-  '내일은 오기는 하는 걸까.',
-]; // 한 구역에 이만큼 머물면 선택된다(초)
+  '이 배는 가라앉지 않는다더니.',
+  '구명정 훈련은 한 번도 없었지.',
+  '얼음 조각이 공짜 기념품이래.',
+];
+/** 인물 종류별 혼잣말. 침몰을 믿는 사람은 아직 없어서 말투가 가볍다 (기념품, 카드, 잠, 날씨 같은 이야기) */
+const CHATTER_BY: Record<string, string[]> = {
+  gentpaint: [
+    '브리지 한 판 더 합시다. 이깟 일로 판이 깨질 순 없지.',
+    '얼음이라니, 위스키에 넣을 건 마침 떨어졌는데.',
+    '선장이 알아서 하겠지. 그러라고 있는 사람 아니오.',
+    '화이트 스타 라인이 이럴 리 없소.',
+    '내일 아침 뉴욕 신문에 실릴 이야기가 하나 생겼군.',
+    '내 시가가 꺼졌소. 배가 멈추니 불도 안 붙는군.',
+    '이 시각에 갑판이라니, 아내가 알면 웃겠소.',
+    '흡연실 친구들은 아직 카드를 친다더군.',
+    '배가 멈춘 건 처음 보는군.',
+    '무선 전신이 있으니 걱정 마시오.',
+  ],
+  ladypaint: [
+    '실내화 차림으로 나오고 말았어요.',
+    '모피 코트를 챙겨 올 걸 그랬네요.',
+    '여보, 먼저 들어가 주무세요. 금방 갈게요.',
+    '차가 식어 가는데 이게 무슨 소란이람.',
+    '내일 아침 식사엔 늦겠어요.',
+    '내 강아지는 어디 있죠?',
+    '악단이 연주라도 하면 좋을 텐데요.',
+    '다들 왜 이렇게 웅성거리는지 모르겠어요.',
+    '저녁에 마신 샴페인이 아직 안 깼나 봐요.',
+  ],
+  childpaint: [
+    '엄마, 갑판에 얼음이 있어!',
+    '배가 멈췄어! 왜 멈췄어요?',
+    '얼음 조각 주워도 돼요?',
+    '엄마, 나 잠 안 와요.',
+    '밤인데 밖에 나와도 돼요?',
+    '저 별 좀 봐요!',
+    '아빠, 우리 아직 도착 안 했어요?',
+  ],
+  childgirlpaint: [
+    '엄마, 별이 엄청 많아요.',
+    '얼음이 반짝여요. 하나만 가져도 돼요?',
+    '인형을 두고 나왔어요.',
+    '엄마 손 안 놓을게요.',
+    '배가 쉬는 거예요?',
+    '나 하나도 안 무서워요.',
+  ],
+  oldmanpaint: [
+    '바다에선 이런 일이 종종 있지. 별일 아닐 걸세.',
+    '내 무릎이 그러더군, 오늘 밤은 날이 차다고.',
+    '젊을 땐 더한 일도 겪었지.',
+    '이 늙은이는 침대로 돌아가고 싶구먼.',
+    '지팡이가 갑판에 자꾸 미끄러지는구먼.',
+    '여보게, 젊은이. 무슨 일인지 아는가?',
+    '배가 이렇게 큰데 설마 무슨 일이야 있겠나.',
+  ],
+  oldwomanpaint: [
+    '아이고, 밤바람이 차네.',
+    '숄을 더 여며야겠구먼.',
+    '다들 왜 이렇게 서두르누.',
+    '내 약은 객실에 두고 나왔는데.',
+    '무슨 소동인지 모르겠구려.',
+    '영감, 어디 갔수?',
+    '오래 살다 보니 별일을 다 보네.',
+  ],
+  youngmanpaint: [
+    '얼음이 갑판에? 이거 이야깃거리군.',
+    '고향 친구들한테 자랑해야겠다.',
+    '우리, 아직 아메리카에 도착한 건 아니지?',
+    '내 모자 어디 갔지? 바람에 날아갔나.',
+    '배가 멈추니 심심하군. 카드나 칠까.',
+    '난 아무 소리도 못 들었는데.',
+    '뉴욕에 닿으면 제일 먼저 일자리부터 알아봐야지.',
+  ],
+  youngwomanpaint: [
+    '다들 왜 이렇게 웅성거릴까요?',
+    '내일 일찍 일어나야 하는데…',
+    '언니, 우리도 가서 구경해 봐요.',
+    '이렇게 별이 많은 밤은 처음이에요.',
+    '손이 시려요. 장갑을 두고 왔나 봐요.',
+    '승무원에게 물어볼까요?',
+    '뉴욕에 닿으면 제일 먼저 편지부터 쓸 거예요.',
+  ],
+};
+/** 등불을 든 선원의 말(가끔): 아직 급할 것 없다는 투 */
+/** 달리는 사람에게 하는 호통 */
+const SHOUTS = ['거기 당신! 뛰지 마시오!', '갑판에서 뛰면 안 됩니다!', '뛰지 마십시오! 다칩니다!'];
+const OFFICER_LINES = ['여러분, 침착하십시오. 곧 안내가 있을 겁니다.', '아직 급한 일은 없습니다. 선실로 돌아가 주십시오.', '별일 아닙니다. 점검 중입니다.', '갑판이 미끄럽습니다. 조심하십시오.'];
 
 // 소문이 퍼지며 바뀌는 말 (문구는 초안)
 const RUMORS = [
@@ -145,12 +201,61 @@ const OUCH = [
   '아이가 밟히겠어요!', '손목시계가!', '아직 배가 가라앉은 것도 아닌데!', '뛰면 더 위험해요!', '어이쿠, 바닥이 얼음이네!', '진주 목걸이가!',
 ];
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+/** 군중 그림(crowd_N) 번호 -> 걷기 그림 띠 이름 (rumor/walkSprites). 아직 없는 인물은 한 장짜리 그림을 쓴다 */
+const CROWD_WALK: (string | undefined)[] = ['bowler', 'flowerhat', 'tophat', 'updo'];
+/** 걷기 그림이 있는 인물이 넘어졌을 때 쓰는 누운 그림 (fall_N) */
+const WALK_FALL: Record<string, number> = { bowler: 0, flowerhat: 1, tophat: 2 };
+/** 개발용: 주소에 ?gentref 가 있으면 중년 남자(0번) 자리에 신사, 중년 여자(7번) 자리에 숙녀 레퍼런스 시트(rumor/gentRefSprites, ladyRefSprites)를 쓴다. 걷기 4장, 앞뒤로 넘어짐, 일어나기가 들어 있다 */
+const GENT_REF = typeof window !== 'undefined' && /[?&]gent(ref|paint)(&|=|$)/.test(window.location.search);
+/** 개발용: 주소에 ?gentpaint 가 있으면 신사(0번)를 실루엣 대신 그려 받은 그림 시트(rumor/gentPaintSprites)로 쓴다 (?gentref 도 함께 켜진다) */
+const GENT_PAINT = typeof window !== 'undefined' && /[?&]gentpaint(&|=|$)/.test(window.location.search);
+/** 개발용: 주소에 ?gentref 만 있으면(?gentpaint 없이) 신사도 실루엣 시트로 본다. ?oldbowler 이면 신사를 예전 그림(bowler)으로 되돌린다 */
+const GENT_SIL = typeof window !== 'undefined' && /[?&]gentref(&|=|$)/.test(window.location.search) && !GENT_PAINT;
+const OLD_BOWLER = typeof window !== 'undefined' && /[?&]oldbowler(&|=|$)/.test(window.location.search);
+/** 그림자 시트(sheet.shadow)가 있는 인물은 스프라이트 밑에 그림자를 깐다. 주소에 ?noshadow 가 있으면 끈다 */
+/** 군중은 어두운 밤 그림(시트의 nightSrc: 어둡고 푸르며 얼굴이 가라앉은 버전)으로 그리고, 주인공만 원래 밝은 그림에 따뜻한 빛을 두른다. 주소에 ?nonight 가 있으면 군중도 원래 그림으로 본다 */
+const NO_NIGHT = typeof window !== 'undefined' && /[?&]nonight(&|=|$)/.test(window.location.search);
+const NO_SHADOW = typeof window !== 'undefined' && /[?&]noshadow(&|=|$)/.test(window.location.search);
+const SHEETS: Record<string, WalkSheet> = { ...WALK_SHEETS, gentpaint: GENT_PAINT_SHEET, ladypaint: LADY_PAINT_SHEET, childpaint: CHILD_PAINT_SHEET, oldmanpaint: OLDMAN_PAINT_SHEET, youngmanpaint: YOUNGMAN_PAINT_SHEET, oldwomanpaint: OLDWOMAN_PAINT_SHEET, youngwomanpaint: YOUNGWOMAN_PAINT_SHEET, childgirlpaint: CHILDGIRL_PAINT_SHEET, ...(GENT_REF ? { gentref: GENT_REF_SHEET, ladyref: LADY_REF_SHEET, childref: CHILD_REF_SHEET, oldmanref: OLDMAN_REF_SHEET, oldwomanref: OLDWOMAN_REF_SHEET, youngmanref: YOUNGMAN_REF_SHEET, youngwomanref: YOUNGWOMAN_REF_SHEET } : {}) };
+/** 어린이 시트 번호: 남자아이·여자아이가 같은 시트를 쓴다(내 모습 전용, 군중에는 섞지 않는다) */
+const KID_SP = 8;
+/** 노인 남성 시트 번호(지팡이를 짚는 굽은 걸음): 60세 이상 남자 플레이어 전용 */
+const OLD_M_SP = 9;
+/** 노인 여성 시트 번호(숄을 두른 굽은 걸음): 60세 이상 여자 플레이어 전용 */
+const OLD_F_SP = 10;
+/** 청년(18~29세) 시트 번호: 남자는 납작모자와 짧은 재킷, 여자는 올림머리와 슬림 치마. 내 모습 전용 */
+const YOUNG_M_SP = 11;
+const YOUNG_F_SP = 12;
+/** 어린 여자아이 시트 번호(땋은 머리, 멜빵 원피스): 군중과 17세 이하 여자 플레이어(?gentref) */
+const GIRL_SP = 13;
+const PLAYER_ONLY_SP = new Set<number>([1, 2, 3]); // 군중에서 뺀 번호: 옛 그림체 시트(flowerhat, tophat, updo)는 새로 그려 받은 인물들과 그림체가 맞지 않는다. 새 그림 시트가 모든 인물에 생겨서 군중은 그것만 쓴다 // 군중에는 섞지 않는 번호(아직 그림 시트가 없고 실루엣뿐이다: 청년 여성). 어린이·노인 남녀·청년 남성은 그려 받은 시트가 있어 군중에도 나온다
+/** 군중 속 크기 배율(키 기준): 어린이는 작게. 노인 남성은 시트에 굽은 키가 이미 반영돼 있다 */
+const CROWD_SIZE: Record<string, number> = { childpaint: 0.72, childgirlpaint: 0.72 };
+/** 신사(중년 남성 내 모습, 군중 속 신사)는 그려 받은 그림 시트(rumor/gentPaintSprites)를 기본으로 쓴다 */
+if (!OLD_BOWLER) CROWD_WALK[0] = 'gentpaint';
+if (GENT_SIL) CROWD_WALK[0] = 'gentref';
+/** 숙녀(중년 여성 내 모습, 군중 속 숙녀)도 그려 받은 그림 시트(rumor/ladyPaintSprites)를 기본으로 쓴다 */
+while (CROWD_WALK.length < 8) CROWD_WALK.push(undefined);
+CROWD_WALK[7] = 'ladypaint';
+/** 어린이·노인 남성·청년 남성도 그려 받은 시트가 있어 군중에 섞는다(?gentref 없이도) */
+while (CROWD_WALK.length < 14) CROWD_WALK.push(undefined);
+CROWD_WALK[GIRL_SP] = 'childgirlpaint';
+CROWD_WALK[KID_SP] = 'childpaint'; CROWD_WALK[OLD_M_SP] = 'oldmanpaint'; CROWD_WALK[YOUNG_M_SP] = 'youngmanpaint'; CROWD_WALK[OLD_F_SP] = 'oldwomanpaint'; CROWD_WALK[YOUNG_F_SP] = 'youngwomanpaint';
+if (GENT_REF) { while (CROWD_WALK.length < 13) CROWD_WALK.push(undefined); CROWD_WALK[7] = GENT_PAINT ? 'ladypaint' : 'ladyref'; }
+/** 넘어짐·일어남 한 칸이 보이는 시간(초): 휘청 0.16 + 쏠림 0.16 -> 누워 있음 -> 일어나는 중 0.45 (한 동작에 한 장씩 추린 6자세) */
+const SHOVE_BY_SHEET: Record<string, number> = { childref: 0.6, childpaint: 0.6, childgirlpaint: 0.6, oldmanref: 0.8, oldmanpaint: 0.8, oldwomanref: 0.75, oldwomanpaint: 0.75, ladyref: 0.9, ladypaint: 0.9, youngwomanref: 0.95 }; // 부딪혀 넘어질 때 밀려나는 거리 배율(없으면 1)
+const FALL_FRAME = 0.16;
+const GETUP_FRAME = 0.45;
+/** 걸음 한 프레임이 나아가는 거리 (키에 대한 비율): 발이 바닥에서 미끄러지지 않게 걸음 프레임을 이동 거리에 묶는다 */
+const GAIT_STEP = 0.11;
 
 interface Agent {
   x: number; y: number; vx: number; vy: number;
   speed: number; phase: number; kind: number; // kind: 0 남자 1 여자 2 중절모 3 아이
   mill: boolean; tx: number; ty: number; a: number; wait: number; enter: boolean; sp: number;
   down: number; downT: number; dir: number; say: string; sayT: number; delay: number; fs: number;
+  gait: number; face: number; // 걸음 진행(프레임 단위), 바라보는 방향(1 오른쪽, -1 왼쪽)
+  fvx: number; walking: boolean; // 천천히 따라가는 가로 속도(몸을 돌릴지 정할 때만 쓴다), 걷는 중인지 (멈춤/걸음 사이에 여유를 둔다)
 }
 interface Phrase { agent: number; text: string; gen: number; age: number; life: number; src: number; chat?: boolean }
 
@@ -189,14 +294,37 @@ function figure(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, 
 
 interface RumorViewProps {
   question: Question;
-  onAnswer: (value: string) => void;
+  onAnswer: (value: string, extra?: Record<string, unknown>) => void;
   extras?: Record<string, unknown>;
   onBack?: () => void;
+  onBeaten?: () => void;
+  answers?: Record<string, unknown>;
 }
 
-export default function RumorView({ question, onAnswer, onBack, extras }: RumorViewProps) {
+/** 이만큼 쓰러뜨리면 성난 승객들에게 맞는 히든 엔딩 */
+export const BEATEN_AT = 100;
+
+/**
+ * 갑판을 걸어 다니는 '나'의 모습: 성별과 나이에 따라 그려 받은 시트(어린이·청년·중년·노인) 중 알맞은 것을 고르고 키를 조절한다. 옛 군중 그림은 쓰지 않는다. 등급은 모습으로 드러내지 않는다(성별과 나이만).
+ */
+function meLook(sex: unknown, age: unknown): { k: number; scale: number } {
+  const a = typeof age === 'number' ? age : 25;
+  if (a < 18) return { k: sex === 'female' ? GIRL_SP : KID_SP, scale: a < 12 ? 0.58 : a < 16 ? 0.76 : 0.86 }; // 열일곱 살까지는 성별 없이 같은 어린이 시트(나이가 많을수록 크게)
+  if (a >= 18 && a < 30) return { k: sex === 'female' ? YOUNG_F_SP : YOUNG_M_SP, scale: 1 }; // 청년 남녀
+  if (sex !== 'female' && a >= 60) return { k: OLD_M_SP, scale: 1 }; // 굽은 노인 남성(키는 시트에서 이미 작게 그려져 있다)
+  if (sex === 'female' && a >= 60) return { k: OLD_F_SP, scale: 1 }; // 굽은 노인 여성
+  // 30~59세: 그려 받은 숙녀(7번)와 신사(0번) 시트
+  return { k: sex === 'female' ? 7 : 0, scale: 1 };
+}
+
+export default function RumorView({ question, onAnswer, onBack, extras, onBeaten, answers }: RumorViewProps) {
+  const lookRef = useRef(meLook(answers?.sex, extras?.age));
+  lookRef.current = meLook(answers?.sex, extras?.age);
   const buoyRef = useRef(false); // Q5 에서 구명환을 챙겼는지
   buoyRef.current = !!extras?.lifebuoy;
+  const knockTotal = useRef(0); // 이 장면에서 쓰러뜨린 사람 수(같은 사람을 다시 쓰러뜨려도 센다)
+  const onBeatenRef = useRef(onBeaten);
+  onBeatenRef.current = onBeaten;
   const reduce = !!useReducedMotion();
   const [active, setActive] = useState(false);
   const [cardsOpen, setCardsOpen] = useState(reduce);
@@ -222,7 +350,7 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
     setChosen(key);
     chosenRef.current = { key, at: performance.now() };
     playThud();
-    timers.current.push(setTimeout(() => onAnswer(key), reduce ? 350 : 2000));
+    timers.current.push(setTimeout(() => onAnswer(key, { knocked: knockTotal.current }), reduce ? 350 : 2000));
   }, [onAnswer, reduce]);
 
   // 키보드 1~4: 언제든 직접 고를 수 있다
@@ -264,11 +392,87 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
     const buoyImg = loadImg('/q5/obj_lifebuoy.webp');
     const crowdImgs = Array.from({ length: 8 }, (_, k) => loadImg(`/q6/crowd_${k}.webp`));
     const officerImg = loadImg('/q6/officer_lantern.webp');
-    const huddleImgs = [loadImg('/q6/huddle_0.webp'), loadImg('/q6/huddle_1.webp')];
+    const officerShoutImg = loadImg('/q6/officer_shout.webp'); // 뛰는 사람에게 호통치는 모습
+    const calmImgs = [loadImg('/q6/calm_child_0.webp'), loadImg('/q6/calm_child_1.webp')]; // 우는 아이 두 칸: 훌쩍이며 눈을 비빔 / 크게 우는 중
     const doorImg = loadImg('/q6/deck_door.webp');
     // 쓰러진 사람 그림(선택): q6/fall_0~3.webp 가 있으면 쓰러져 누운 동안 이 그림을 쓰고, 없으면 서 있는 그림을 기울여 쓴다
     const fallImgs = [0, 1, 2, 3].map((k) => loadImg(`/q6/fall_${k}.webp`));
     const ready = (i: HTMLImageElement) => i.complete && i.naturalWidth > 0;
+    // 걷기 그림 띠 (인물마다 한 장): 서 있기, 걷기 4장, 뒷모습 2장, 비틀거림, 일어나기
+    const walkImgs: Record<string, HTMLImageElement> = {};
+    for (const name of new Set(CROWD_WALK)) { const sh = name ? SHEETS[name] : undefined; if (name && sh) walkImgs[name] = loadImg(sh.src); } // 쓰는 시트만 불러온다(옛 bowler 시트는 ?oldbowler 일 때만)
+    const nightImgs: Record<string, HTMLImageElement> = {};
+    if (!NO_NIGHT) for (const name of new Set(CROWD_WALK)) { const ns = name ? (SHEETS[name] as FallSheet | undefined)?.nightSrc : undefined; if (name && ns) nightImgs[name] = loadImg(ns); }
+    // 칸별 그림자 그림(같은 순번): 스프라이트를 그릴 때 그 칸의 그림자를 먼저 그린다 (rects 배열 자체를 열쇠로 쓴다)
+    const shadowImgs: Record<string, HTMLImageElement> = {};
+    const shadowByRect = new Map<unknown, { name: string; q: [number, number, number, number, number, number]; qf?: [number, number, number, number, number, number] }>();
+    if (!NO_SHADOW) {
+      for (const name of new Set(CROWD_WALK)) {
+        const sh = name ? (SHEETS[name] as FallSheet | undefined) : undefined;
+        if (!name || !sh || !sh.shadow) continue;
+        shadowImgs[name] = loadImg(sh.shadow.src);
+        sh.rects.forEach((r, i) => { const q = sh.shadow!.rects[i]; if (q) shadowByRect.set(r, { name, q, qf: sh.shadow!.rectsFlip?.[i] }); });
+      }
+    }
+    const sheetOf = (sp: number, night = false): [WalkSheet, HTMLImageElement] | null => {
+      const name = CROWD_WALK[sp];
+      if (!name) return null;
+      const sh = SHEETS[name]; const nim = night ? nightImgs[name] : undefined;
+      const im = nim && ready(nim) ? nim : walkImgs[name];
+      return sh && im && ready(im) ? [sh, im] : null;
+    };
+    /** 띠에서 프레임 하나를 발 위치(x, y)에 그린다. k: 그림 1px 당 월드 크기. 몸통 중심을 x 에 맞춰 프레임이 바뀌어도 떨리지 않는다 */
+    const frameAt = (im: HTMLImageElement, r: [number, number, number, number, number], x: number, y: number, k: number, flip: boolean, glowC?: string) => {
+      const [sx, sy, sw, shh, ax] = r;
+      const sd = shadowByRect.get(r);
+      if (sd) {
+        const sim = shadowImgs[sd.name];
+        if (sim && ready(sim)) {
+          // 광원은 오른쪽 뒤로 고정: 왼쪽을 볼 때는 그림을 뒤집지 않고 뒤집힌 인물용 그림자(qf)를 그대로 놓는다
+          const [qx, qy, qw, qh, qax, qup] = flip && sd.qf ? sd.qf : sd.q;
+          ctx.save();
+          ctx.translate(x, y);
+          if (flip && !sd.qf) ctx.scale(-1, 1);
+          ctx.drawImage(sim, qx, qy, qw, qh, -qax * k, -qup * k, qw * k, qh * k);
+          ctx.restore();
+        }
+      }
+      ctx.save();
+      ctx.translate(x, y);
+      if (flip) ctx.scale(-1, 1);
+      if (glowC) { ctx.shadowColor = glowC; ctx.shadowBlur = 26; }
+      ctx.drawImage(im, sx, sy, sw, shh, -ax * k, -shh * k, sw * k, shh * k);
+      ctx.restore();
+    };
+    /** 움직임에 맞는 프레임: 멈추면 서 있기, 화면 안쪽(위)으로 가면 뒷모습, 그 밖에는 걷기 순환 */
+    /** 걷는 사람 그리기: 한 번에 프레임 하나만 그린다 (두 프레임을 겹치면 다리가 여러 개로 보인다).
+     *  4칸짜리 그림에만 다리가 모이는 순간 몸이 살짝 오르게 한다(8칸 그림에는 오르내림이 이미 그려져 있다) */
+    const drawWalker = (sh: WalkSheet, im: HTMLImageElement, x: number, y: number, k: number, vx: number, vy: number, gait: number, walking: boolean, flip: boolean, glowC?: string) => {
+      if (!walking) { frameAt(im, sh.rects[sh.stand[0]], x, y, k, flip, glowC); return; }
+      const back = sh.back.length > 0 && vy < -Math.abs(vx) * 0.9;
+      const seq = back ? sh.back : sh.walk;
+      const g = back ? gait / 2 : gait;
+      const i0 = Math.floor(g) % seq.length;
+      const rect = sh.rects[seq[i0]];
+      if (!rect) { frameAt(im, sh.rects[sh.stand[0]], x, y, k, flip, glowC); return; } // 그림 표가 바뀌는 중(개발 중 새로고침)에도 멈추지 않게
+      const H = rect[3] * k;
+      const bob = back || seq.length >= 8 || (sh as { noBob?: boolean }).noBob ? 0 : -H * 0.014 * (0.5 - 0.5 * Math.cos(((g % 4) / 4) * Math.PI * 2));
+      frameAt(im, sh.rects[seq[i0]], x, y + bob, k, flip, glowC);
+    };
+    /** 걸음 진행: 걸은 거리(키에 대한 비율)만큼 프레임을 넘긴다. 프레임마다 그림 속 디딘 발이 물러나는 거리(walkDist)가 다르므로
+     *  그 거리를 다 걸어야 다음 프레임으로 간다 → 디딘 발이 바닥에서 미끄러지지 않는다 */
+    const advanceGait = (sp: number, gait: number, distH: number) => {
+      const name = CROWD_WALK[sp];
+      const dist = name ? SHEETS[name]?.walkDist : undefined;
+      if (!dist || !dist.length) return gait + distH / GAIT_STEP;
+      let g = gait; let d = distH;
+      for (let guard = 0; d > 0 && guard < 16; guard++) {
+        const i = Math.floor(g) % dist.length; const frac = g - Math.floor(g);
+        const need = (1 - frac) * dist[i];
+        if (d >= need) { d -= need; g = Math.floor(g) + 1; } else { g += d / dist[i]; d = 0; }
+      }
+      return g;
+    };
     // 군중 그림은 모두 같은 비율로 줄여 두었다(키 차이가 그대로 남는다). 가장 큰 그림의 높이를 기준으로 맞춘다
     const CROWD_REF = 380;
     /** 발 위치(x, y)를 기준으로 그림을 그린다. h 는 월드 높이, flip 이면 왼쪽을 본다 */
@@ -297,6 +501,14 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
     const small = window.innerWidth < 700;
     const COUNT = small ? 26 : 50; // 배경이 넓어졌으니 군중을 다시 늘린다 (쓰러뜨리는 맛). 내 자리 고리와 구역 빛기둥이 있어 사람이 많아도 찾을 수 있다
     const pick = (): [number, number] => walk(300 + Math.random() * 1200, FLOOR_Y + 60 + Math.random() * (BOTTOM - FLOOR_Y - 90));
+    /** 지금 자리에서 주로 옆으로 떨어진 다음 목적지 */
+    const pickNear = (x: number, y: number): [number, number] => {
+      const dx = (Math.random() < 0.5 ? -1 : 1) * (160 + Math.random() * 420);
+      return walk(Math.min(1500, Math.max(300, x + dx)), y + (Math.random() - 0.5) * 90);
+    };
+    // 걷는 그림이 있는 인물만 군중으로 쓴다 (없는 인물은 한 장짜리 그림이 미끄러져 보인다). 그림이 3명 이상 모이기 전에는 모두 쓴다
+    const ANIMATED = CROWD_WALK.map((n, i) => (n && !PLAYER_ONLY_SP.has(i) ? i : -1)).filter((i) => i >= 0);
+    const crowdPick = () => (ANIMATED.length >= 3 ? ANIMATED[Math.floor(Math.random() * ANIMATED.length)] : Math.floor(Math.random() * 8));
     const spawn = (anywhere: boolean): Agent => {
       let x: number; let y: number;
       if (anywhere) { [x, y] = pick(); }
@@ -305,24 +517,31 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
       const mill = Math.random() < 0.7;
       const [tx, ty] = mill ? pick() : [DOOR.x, DOOR.y];
       return {
-        x, y, vx: 0, vy: 0, speed: mill ? 24 + Math.random() * 18 : 48 + Math.random() * 26, phase: Math.random() * 6.28,
-        kind: Math.floor(Math.random() * 4), sp: Math.floor(Math.random() * 8), mill, tx, ty, a: anywhere ? 1 : 0, wait: Math.random() * 3, enter: false,
-        down: 0, downT: 0, dir: 1, say: '', sayT: 0, delay: 0, fs: 0,
+        x, y, vx: 0, vy: 0, speed: mill ? 44 + Math.random() * 20 : 56 + Math.random() * 22, phase: Math.random() * 6.28,
+        kind: Math.floor(Math.random() * 4), sp: crowdPick(), mill, tx, ty, a: anywhere ? 1 : 0, wait: Math.random() * 3, enter: false,
+        down: 0, downT: 0, dir: 1, say: '', sayT: 0, delay: 0, fs: 0, gait: Math.random() * 4, face: Math.random() < 0.5 ? -1 : 1, fvx: 0, walking: false,
       };
     };
     const agents: Agent[] = Array.from({ length: COUNT }, () => spawn(true));
     const phrases: Phrase[] = [];
-    const me = { x: 960, y: 740, phase: 0, moving: 0 };
+    const me = { x: 960, y: 740, phase: 0, moving: 0, gait: 0, vx: 0, vy: 0, face: 1, walking: false };
     // 빨리 움직여서 사람들에게 부딪히면 쓰러지고 한마디 한다. 여러 명이 연달아 쓰러지면 주변 군중이 줄줄이 넘어진다.
     const knocks: number[] = [];
     let waveCool = 0;
-    let officerSay: { text: string; until: number } | null = null;
+    let officerSay: { text: string; until: number; shout?: boolean } | null = null;
     let lastThud = 0;
+    let cryHeard = -1; // 우는 아이의 울음소리를 낸 마지막 주기
     const knock = (a: Agent, dxFromMe: number, now: number) => {
       if (a.down > 0 || a.enter) return;
+      knockTotal.current += 1;
+      if (knockTotal.current === BEATEN_AT && !answered.current) {
+        answered.current = true; // 더는 선택하지 못한다
+        timers.current.push(setTimeout(() => onBeatenRef.current?.(), 700));
+      }
       a.down = a.downT = 1.8;
       a.dir = dxFromMe >= 0 ? 1 : -1;
-      a.vx = a.dir * personH(a.y) * 1.6;
+      // 앞으로든 뒤로든 부딪힌 방향으로 키의 0.75배쯤 밀려난다. 체격이 작은 인물일수록 덜 밀린다
+      a.vx = a.dir * personH(a.y) * 2.4 * (SHOVE_BY_SHEET[CROWD_WALK[a.sp] ?? ''] ?? 1);
       a.vy = (Math.random() - 0.5) * personH(a.y) * 0.5;
       a.fs = Math.floor(Math.random() * 4);
       a.say = OUCH[Math.floor(Math.random() * OUCH.length)];
@@ -331,7 +550,7 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
     };
     const cam = { ox: 0 };
     const dwell: Record<string, number> = {};
-    if (process.env.NODE_ENV === 'development') (window as unknown as { __rumor?: unknown }).__rumor = { me, dwell, target, agents };
+    if (process.env.NODE_ENV === 'development') (window as unknown as { __rumor?: unknown }).__rumor = { me, dwell, target, agents, crowdWalk: CROWD_WALK, knocks: () => knockTotal.current, beat: () => { knockTotal.current = BEATEN_AT - 1; const a = agents.find((x) => x.down <= 0 && !x.enter); if (a) knock(a, 1, performance.now()); } };
     const t0 = performance.now();
     let last = t0;
     let raf = 0;
@@ -341,9 +560,19 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
     let phraseTimer = 0;
     let rumorIdx = 0;
     // 구명환을 들고 있으면 사람들이 한마디씩 한다
-    const chatterAll = buoyRef.current ? [...CHATTER, ...BUOY_QUIPS, ...BUOY_QUIPS] : CHATTER;
+    // 인물 종류마다 따로 섞은 주머니에서 한 번씩 뽑아 같은 말이 한 바퀴 돌 때까지 반복하지 않는다
+    const chatBags: Record<string, string[]> = {};
+    const chatFor = (sp: number): string => {
+      if (buoyRef.current && Math.random() < 0.35) return BUOY_QUIPS[Math.floor(Math.random() * BUOY_QUIPS.length)];
+      const own = CHATTER_BY[CROWD_WALK[sp] ?? ''];
+      const pool = own && Math.random() > 0.2 ? own : ATMOS;
+      const key = pool === own ? (CROWD_WALK[sp] ?? '') : '_atmos';
+      if (!chatBags[key]?.length) chatBags[key] = [...pool].sort(() => Math.random() - 0.5);
+      return chatBags[key].pop() as string;
+    };
     let chatTimer = 0;
-    let chatBag: number[] = [];
+    let officerTimer = 0;
+    let runT = 0; let shoutCool = 0; // 달린 시간, 호통 뒤 쉬는 시간
 
     const mutate = (text: string, gen: number): string => {
       const r = Math.random();
@@ -388,7 +617,7 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
           // 쓰러져 있는 동안: 밀려난 방향으로 미끄러지다가 멈추고, 마지막에 일어난다
           a.down -= dt;
           a.x += a.vx * dt; a.y += a.vy * dt;
-          a.vx *= Math.max(0, 1 - dt * 4); a.vy *= Math.max(0, 1 - dt * 4);
+          a.vx *= Math.max(0, 1 - dt * 3.2); a.vy *= Math.max(0, 1 - dt * 3.2);
           const [wx, wy] = walk(a.x, a.y, BOTTOM + 80); a.x = wx; a.y = wy;
           continue;
         }
@@ -412,8 +641,15 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
         a.vy += ((dy + sy * 0.9) * sp * 0.6 - a.vy) * Math.min(1, dt * 2.2);
         a.x += a.vx * dt; a.y += a.vy * dt;
         a.phase += dt * (3 + Math.hypot(a.vx, a.vy) * 0.03);
+        {
+          const spd = Math.hypot(a.vx, a.vy); const dp = depth(a.y);
+          if (a.walking ? spd < 4 * dp : spd > 11 * dp) a.walking = !a.walking;
+          if (a.walking) a.gait = advanceGait(a.sp, a.gait, (spd * dt) / personH(a.y));
+          a.fvx += (a.vx - a.fvx) * Math.min(1, dt * 2.5);
+          if (Math.abs(a.fvx) > 9 * dp && Math.sign(a.fvx) !== a.face) a.face = a.fvx < 0 ? -1 : 1;
+        }
         if (a.y <= BOTTOM + 70) { const [wx, wy] = walk(a.x, a.y, BOTTOM + 80); a.x = wx; a.y = wy; }
-        if (a.mill && dist < 30) { [a.tx, a.ty] = pick(); a.wait = 1 + Math.random() * 3.5; }
+        if (a.mill && dist < 30) { [a.tx, a.ty] = pickNear(a.x, a.y); a.wait = 1 + Math.random() * 3.5; }
         if (!a.mill && !a.enter && dist < 40) a.enter = true; // 입구에 닿으면 안으로 들어간다
         if (a.enter && a.a <= 0) Object.assign(a, spawn(false));
       }
@@ -435,6 +671,10 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
       const sp = Math.hypot(me.x - mx, me.y - my) / Math.max(dt, 0.001);
       me.moving = sp;
       me.phase += dt * (2 + Math.min(8, sp * 0.04));
+      me.vx = (me.x - mx) / Math.max(dt, 0.001); me.vy = (me.y - my) / Math.max(dt, 0.001);
+      if (me.walking ? sp < 5 * depth(me.y) : sp > 14 * depth(me.y)) me.walking = !me.walking;
+      if (me.walking) me.gait = advanceGait(lookRef.current.k, me.gait, (sp * dt) / (personH(me.y) * lookRef.current.scale));
+      if (Math.abs(me.vx) > 12 * depth(me.y)) me.face = me.vx < 0 ? -1 : 1;
 
       // 달려서 부딪히면: 키의 1.4배/초 이상(군중 속에서 서두르는 속도)으로 사람에게 닿으면 그 사람이 쓰러진다
       if (activeRef.current && !ch && sp > personH(me.y) * 1.4) {
@@ -443,6 +683,13 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
           const ddx = a.x - me.x; const ddy = (a.y - me.y) * 1.5; const rr = personH(Math.max(a.y, me.y)) * 0.3;
           if (ddx * ddx + ddy * ddy < rr * rr) { knock(a, ddx, now); knocks.push(now); }
         }
+      }
+      // 달리기만 해도(사람에게 닿지 않아도) 선원이 호통친다: 달리는 속도로 0.8초 이상 움직이면 한 번, 그 뒤 8초는 쉰다
+      if (activeRef.current && !ch && sp > personH(me.y) * 1.4) runT += dt; else runT = Math.max(0, runT - dt * 2);
+      if (shoutCool > 0) shoutCool -= dt;
+      if (runT > 0.8 && shoutCool <= 0 && !(officerSay && now < officerSay.until)) {
+        officerSay = { text: SHOUTS[Math.floor(Math.random() * SHOUTS.length)], until: now + 2800, shout: true };
+        shoutCool = 8; runT = 0;
       }
       while (knocks.length && now - knocks[0] > 5000) knocks.shift();
       if (waveCool > 0) waveCool -= dt;
@@ -456,7 +703,7 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
           // 부딪힌 자리 근처(키의 1.3배 안)에서 대부분만 넘어진다: 군중 전체가 한꺼번에 쓰러지지는 않는다
           if (dd < personH(me.y) * 1.3 && Math.random() < 0.75) a.delay = 0.12 + dd / 900 + Math.random() * 0.2;
         }
-        officerSay = { text: '거기 당신! 뛰지 마시오!', until: now + 2800 };
+        officerSay = { text: '거기 당신! 뛰지 마시오!', until: now + 2800, shout: true }; // 호통칠 때는 손가락질하는 그림을 쓴다
       }
 
       // 구역에 머무르기
@@ -503,10 +750,12 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
         if (cands.length) {
           cands.sort((k1, k2) => Math.hypot(agents[k1].x - me.x, agents[k1].y - me.y) - Math.hypot(agents[k2].x - me.x, agents[k2].y - me.y));
           const ai = cands[Math.floor(Math.pow(Math.random(), 1.6) * cands.length)];
-          if (!chatBag.length) chatBag = chatterAll.map((_, k) => k).sort(() => Math.random() - 0.5);
-          phrases.push({ agent: ai, text: chatterAll[chatBag.pop() as number], gen: 0, age: 0, life: 5.2, src: ai, chat: true });
+          phrases.push({ agent: ai, text: chatFor(agents[ai].sp), gen: 0, age: 0, life: 5.2, src: ai, chat: true });
         }
       }
+      // 선원도 가끔 한마디 한다
+      officerTimer += dt;
+      if (e > 9 && officerTimer > 13 && !(officerSay && now < officerSay.until)) { officerTimer = 0; officerSay = { text: OFFICER_LINES[Math.floor(Math.random() * OFFICER_LINES.length)], until: now + 3200 }; }
       for (let i = phrases.length - 1; i >= 0; i--) { phrases[i].age += dt; if (phrases[i].age > phrases[i].life) phrases.splice(i, 1); }
 
       // 웅성거림: 가장 가까운 소문 쪽으로 커지고 기운다
@@ -570,7 +819,8 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
             ctx.lineWidth = 4.5;
             ctx.strokeStyle = 'rgba(255,226,170,0.95)';
             ctx.beginPath();
-            ctx.ellipse(zn.x, zn.y + 6, zn.r * dz, zn.r * dz * 0.36, -Math.PI / 2, 0, Math.PI * 2 * prog);
+            // 차오르는 호: 바닥 고리와 같은 가로 타원 위에서 맨 위(-90도)부터 시계 방향으로 그린다 (타원 자체를 돌리면 세로로 길쭉한 타원이 된다)
+            ctx.ellipse(zn.x, zn.y + 6, zn.r * dz, zn.r * dz * 0.36, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog);
             ctx.stroke();
           }
         }
@@ -642,7 +892,46 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
           const blocks = a.y > me.y + 8 && Math.abs(a.x - me.x) < personH(a.y) * 0.5 && a.y - me.y < personH(a.y) * 1.1;
           ctx.globalAlpha = a.a * (blocks ? 0.32 : 1);
           const im = crowdImgs[a.sp];
-          if (ready(im)) {
+          const ws = sheetOf(a.sp, true); // 군중은 밤 그림
+          if (ws) {
+            const [sh, wi] = ws;
+            const k = (personH(a.y) / CROWD_REF) * (CROWD_SIZE[CROWD_WALK[a.sp] ?? ''] ?? 1);
+            if (!NO_NIGHT && a.down <= 0) {
+              // 역광: 군중 뒤에서 따뜻한 빛이 번지는 느낌(몸 뒤쪽 오른쪽 위에 부드러운 빛무리). 윤곽의 빛은 밤 그림에 구워 두었다
+              const ph = personH(a.y) * (CROWD_SIZE[CROWD_WALK[a.sp] ?? ''] ?? 1);
+              const hx = a.x + ph * 0.1; const hy = a.y - ph * 0.58;
+              ctx.save();
+              ctx.globalCompositeOperation = 'lighter';
+              ctx.translate(hx, hy); ctx.scale(0.62, 1);
+              const hg = ctx.createRadialGradient(0, 0, ph * 0.05, 0, 0, ph * 0.78);
+              hg.addColorStop(0, 'rgba(255,170,100,0.20)'); hg.addColorStop(0.55, 'rgba(255,140,80,0.07)'); hg.addColorStop(1, 'rgba(255,120,60,0)');
+              ctx.fillStyle = hg; ctx.fillRect(-ph, -ph, ph * 2, ph * 2);
+              ctx.restore();
+            }
+            if (a.down > 0) {
+              // 부딪힘: 비틀거리다(0.2초) → 누운 그림 → 무릎 짚고 일어남(마지막 0.45초) → 다시 걷는다
+              const t = a.downT - a.down;
+              const lying = fallImgs.filter(ready);
+              const name = CROWD_WALK[a.sp]!;
+              const fi = fallImgs[WALK_FALL[name] ?? -1] ?? lying[a.fs % Math.max(1, lying.length)];
+              const fsh = sh as Partial<FallSheet>;
+              if (fsh.fallF && fsh.fallB && fsh.getupF && fsh.getupB && fsh.lyingF !== undefined && fsh.lyingB !== undefined) {
+                // 칸마다 자세가 있는 시트: 바라보는 쪽으로 밀리면 앞으로 엎어지고, 반대쪽이면 뒤로 넘어져 눕는다. 일어나는 길도 다르다
+                const fwd = a.dir === a.face;
+                const fall = fwd ? fsh.fallF : fsh.fallB; const up = fwd ? fsh.getupF : fsh.getupB; const lie = fwd ? fsh.lyingF : fsh.lyingB;
+                const upT = up.length * GETUP_FRAME;
+                const f = a.down < upT ? up[Math.min(up.length - 1, Math.floor((upT - a.down) / GETUP_FRAME))]
+                  : t < fall.length * FALL_FRAME ? fall[Math.floor(t / FALL_FRAME)] : lie;
+                frameAt(wi, sh.rects[f], a.x, a.y, k, a.face < 0);
+              } else if (t < 0.2 || !fi || !ready(fi)) frameAt(wi, sh.rects[sh.stagger[0]], a.x, a.y, k, a.dir > 0);
+              else if (a.down > 0.45) {
+                const lh = fi.naturalHeight * ((personH(a.y) * 0.95) / 500);
+                sprite(fi, a.x, a.y + 4, lh, a.dir < 0);
+              } else frameAt(wi, sh.rects[sh.getup[0]], a.x, a.y, k, a.dir < 0);
+            } else {
+              drawWalker(sh, wi, a.x, a.y, k, a.vx, a.vy, a.gait, a.walking, a.face < 0);
+            }
+          } else if (ready(im)) {
             const h = im.naturalHeight * (personH(a.y) / CROWD_REF);
             if (a.down > 0) {
               // 쓰러지는 동작: 0.22초에 넘어지고, 마지막 0.45초에 일어난다
@@ -666,8 +955,9 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
             ctx.textAlign = 'center';
             ctx.lineWidth = 5;
             ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-            ctx.fillStyle = `rgba(255,236,200,${Math.min(1, a.sayT / 0.5)})`;
-            const ty = a.y - personH(a.y) * (a.down > 0 ? 0.55 : 1.15);
+            const su = clamp(1 - a.sayT / 2.3, 0, 1); // 한마디가 위로 떠오르며 마지막 1초 동안 사라진다
+            ctx.fillStyle = `rgba(255,236,200,${Math.min(1, a.sayT / 1.0) * Math.min(1, su / 0.08 + 0.2)})`;
+            const ty = a.y - personH(a.y) * (a.down > 0 ? 0.55 : 1.15) - personH(a.y) * 0.6 * (1 - (1 - su) * (1 - su));
             ctx.strokeText(a.say, a.x, ty);
             ctx.fillText(a.say, a.x, ty);
           }
@@ -678,22 +968,38 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
         ctx.globalAlpha = crowdA;
         if (ready(officerImg)) {
           const h = personH(CREW.y) * 1.0; // 군중과 같은 키 (예전 1.25배는 너무 컸다)
-          sprite(officerImg, CREW.x, CREW.y, h);
-          // 등불이 일렁인다
-          const w = h * (officerImg.naturalWidth / officerImg.naturalHeight);
+          const shouting = !!(officerSay && officerSay.shout && now < officerSay.until) && ready(officerShoutImg);
+          sprite(shouting ? officerShoutImg : officerImg, CREW.x, CREW.y, h); // 두 그림은 같은 크기·발 위치라 바뀌어도 튀지 않는다
+          // 등불이 일렁인다 (등불은 몸 왼쪽 아래: 보통 그림 -0.076h, 호통 그림 -0.138h, 바닥에서 0.355h)
           const fl = 0.85 + 0.15 * Math.sin(e * 9) * Math.sin(e * 3.7);
-          glow(CREW.x + w * 0.26, CREW.y - h * 0.5, 150, 0.4 * fl * crowdA);
+          glow(CREW.x + h * (shouting ? -0.138 : -0.076), CREW.y - h * 0.355, 150, 0.4 * fl * crowdA);
         } else figure(ctx, CREW.x, CREW.y, 122 * depth(CREW.y), 0, 2, 'rgba(255,200,120,0.8)', '#0a0d16');
         ctx.globalAlpha = 1;
       } });
-      if (ready(huddleImgs[0]) && ready(huddleImgs[1])) {
-        const k = (0.8 * personH(735)) / 460; // 웅크린 사람들은 선 사람보다 작게
-        items.push({ y: 742, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[0], 1345, 742, huddleImgs[0].naturalHeight * k); ctx.globalAlpha = 1; } });
-        items.push({ y: 734, draw: () => { ctx.globalAlpha = crowdA; sprite(huddleImgs[1], 1450, 734, huddleImgs[1].naturalHeight * k); ctx.globalAlpha = 1; } });
-      } else {
-        for (const [dx, k, h] of [[-26, 1, 84], [10, 0, 90], [40, 3, 58]] as const) {
-          items.push({ y: 735 + dx * 0.02, draw: () => { ctx.globalAlpha = crowdA; figure(ctx, 1380 + dx * 1.6, 735, h * depth(735), 0, k, 'rgba(255,170,90,0.45)'); ctx.globalAlpha = 1; } });
-        }
+      // 진정시키기 구역의 우는 아이: 두 모습을 천천히 번갈아 보이고, 주기적으로 크게 "으아앙" 운다(글자가 떠올랐다 사라지고 소리가 난다)
+      if (ready(calmImgs[0]) && ready(calmImgs[1]) && crowdA > 0.05) {
+        const CX = 1380; const CY = 742;
+        const ch2 = personH(CY) * 0.78;
+        const cyc = e % CRY_PERIOD;
+        const crying = crowdA > 0.5 && cyc > CRY_PERIOD - CRY_LEN;
+        if (crying && cryHeard !== Math.floor(e / CRY_PERIOD)) { cryHeard = Math.floor(e / CRY_PERIOD); playChildWail(); }
+        const frameI = crying ? 1 : Math.floor(e / 1.1) % 2;
+        const shake = crying ? Math.sin(e * 38) * 1.6 : 0;
+        items.push({ y: CY, draw: () => {
+          ctx.globalAlpha = crowdA;
+          sprite(calmImgs[frameI], CX + shake, CY, ch2);
+          ctx.globalAlpha = 1;
+          if (crying) {
+            const u = clamp((cyc - (CRY_PERIOD - CRY_LEN)) / CRY_LEN, 0, 1);
+            const fs = 30 * clamp(depth(CY), 0.9, 1.5);
+            ctx.font = `800 ${fs}px "Noto Serif KR", "Nanum Myeongjo", serif`;
+            ctx.textAlign = 'center'; ctx.lineWidth = 6;
+            const al = Math.min(1, u / 0.12) * Math.min(1, (1 - u) / 0.4);
+            const ty = CY - ch2 * 1.08 - personH(CY) * 0.55 * (1 - (1 - u) * (1 - u));
+            ctx.strokeStyle = `rgba(0,0,0,${0.9 * al})`; ctx.fillStyle = `rgba(255,226,190,${al})`;
+            ctx.strokeText('으아앙!', CX, ty); ctx.fillText('으아앙!', CX, ty);
+          }
+        } });
       }
       if (officerSay && now < officerSay.until) {
         const os = officerSay;
@@ -701,19 +1007,28 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
           ctx.font = `700 ${26 * clamp(depth(CREW.y), 1, 1.6)}px "Noto Serif KR", "Nanum Myeongjo", serif`;
           ctx.textAlign = 'center';
           ctx.lineWidth = 6;
-          ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-          ctx.fillStyle = 'rgba(255,214,150,1)';
-          ctx.strokeText(os.text, CREW.x, CREW.y - personH(CREW.y) * 1.45);
-          ctx.fillText(os.text, CREW.x, CREW.y - personH(CREW.y) * 1.45);
+          const left = os.until - now; const ou = clamp(1 - left / 2800, 0, 1);
+          const oa = Math.min(1, left / 900) * Math.min(1, ou / 0.06 + 0.2);
+          const oy2 = CREW.y - personH(CREW.y) * 1.45 - personH(CREW.y) * 0.5 * (1 - (1 - ou) * (1 - ou)); // 위로 떠오르며 사라진다
+          ctx.strokeStyle = `rgba(0,0,0,${0.9 * oa})`;
+          ctx.fillStyle = `rgba(255,214,150,${oa})`;
+          ctx.strokeText(os.text, CREW.x, oy2);
+          ctx.fillText(os.text, CREW.x, oy2);
         } });
       }
       // 나: 따뜻한 윤곽으로 구분한다
       items.push({ y: me.y, draw: () => {
         glow(me.x, me.y - 10, 90, 0.18 * crowdA, '255,225,170');
         ctx.globalAlpha = Math.max(0.0, crowdA);
-        const mi = crowdImgs[4]; // 모자를 쓴 젊은이: 따뜻한 빛으로 나를 구분한다
-        if (ready(mi)) {
-          const h = mi.naturalHeight * ((116 * depth(me.y)) / CROWD_REF);
+        const look = lookRef.current;
+        const mi = crowdImgs[look.k] ?? crowdImgs[4]; // 성별과 나이에 맞는 그림: 따뜻한 빛으로 나를 구분한다
+        const mws = sheetOf(look.k);
+        if (mws) {
+          const [sh, wi] = mws;
+          const k = (116 * depth(me.y) * look.scale) / CROWD_REF;
+          drawWalker(sh, wi, me.x, me.y, k, me.vx, me.vy, me.gait, me.walking, me.face < 0, 'rgba(255,226,160,0.95)');
+        } else if (ready(mi)) {
+          const h = mi.naturalHeight * ((116 * depth(me.y) * look.scale) / CROWD_REF);
           const facing = target.current.x < me.x - 4;
           sprite(mi, me.x, me.y - Math.abs(Math.sin(me.phase)) * h * 0.012, h, facing, Math.sin(me.phase) * 0.01, 'rgba(255,226,160,0.95)');
         } else figure(ctx, me.x, me.y, 116 * depth(me.y), me.phase, 2, 'rgba(255,225,160,0.95)', '#0d1018');
@@ -733,11 +1048,12 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
         if (!a) continue;
         const dz = depth(a.y);
         const near = clamp(1 - Math.hypot(a.x - me.x, a.y - me.y) / 420, 0, 1);
-        const k = clamp(p.age / 0.8, 0, 1) * clamp((p.life - p.age) / 1.2, 0, 1);
+        const k = clamp(p.age / 0.6, 0, 1) * clamp((p.life - p.age) / 1.6, 0, 1);
         const jit = p.chat ? 0 : Math.min(4, p.gen * 0.9) * (1 - near * 0.6);
         const size = (p.chat ? 20 + near * 8 : 22 + near * 14) * clamp(dz, 0.85, p.chat ? 1.15 : 1.3);
         ctx.font = `600 ${size}px "Noto Serif KR", "Nanum Myeongjo", serif`;
-        const tx = a.x; const ty = a.y - personH(a.y) * 1.12 - near * 10;
+        const rt = clamp(p.age / p.life, 0, 1);
+        const tx = a.x; const ty = a.y - personH(a.y) * 1.12 - near * 10 - personH(a.y) * 0.7 * (1 - (1 - rt) * (1 - rt)); // 말풍선 없이 글자가 위로 떠오르며 흐려진다
         for (let c2 = 0; c2 < (p.chat ? 1 : 2); c2++) {
           const ox = (Math.sin(e * 7 + p.src + c2 * 2) * jit) * (c2 ? 1 : -1);
           const oy = Math.cos(e * 5.3 + c2) * jit * 0.6;
@@ -749,46 +1065,9 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
         ctx.shadowBlur = 0;
       }
 
-      // 구역 이름: 항상 떠 있다. 가까이 가면 또렷해지고 번호(키 1~4)가 같이 보인다. 서로 겹치면 위로 밀어낸다.
-      if (crowdA > 0.5) {
-        type Lab = { zn: Zone; text: string; fs: number; w: number; h: number; x: number; y: number };
-        const labs: Lab[] = ZONES.map((zn) => {
-          const num = question.options.findIndex((o) => o.value === zn.key) + 1;
-          const text = `${num > 0 ? num + '  ' : ''}${SHORT[zn.key] ?? zn.key}`;
-          const fs = 24 * clamp(zs(zn.y) + 0.15, 0.9, 1.3);
-          ctx.font = `700 ${fs}px "Noto Serif KR", "Nanum Myeongjo", serif`;
-          const w = ctx.measureText(text).width + fs * 1.1;
-          return { zn, text, fs, w, h: fs * 1.55, x: zn.x, y: zn.y - personH(zn.y) * 1.2 - 26 };
-        }).sort((p1, p2) => p1.y - p2.y);
-        const placed: Lab[] = [];
-        for (const lb of labs) {
-          for (let k = 0; k < 6; k++) {
-            const hit = placed.find((q) => Math.abs(q.x - lb.x) < (q.w + lb.w) / 2 + 8 && Math.abs(q.y - lb.y) < (q.h + lb.h) / 2 + 4);
-            if (!hit) break;
-            lb.y = hit.y - (hit.h + lb.h) / 2 - 8;
-          }
-          placed.push(lb);
-        }
-        for (const lb of placed) {
-          const near = nearest === lb.zn ? clamp(1 - nearD / (lb.zn.r * zs(lb.zn.y) * 3), 0, 1) : 0;
-          const al = (0.78 + near * 0.22) * crowdA;
-          ctx.font = `700 ${lb.fs}px "Noto Serif KR", "Nanum Myeongjo", serif`;
-          ctx.textAlign = 'center';
-          ctx.fillStyle = `rgba(8,10,18,${0.66 * al})`;
-          ctx.strokeStyle = `rgba(255,214,150,${0.55 * al + near * 0.4})`;
-          ctx.lineWidth = 2.4;
-          ctx.beginPath();
-          ctx.roundRect(lb.x - lb.w / 2, lb.y - lb.h * 0.72, lb.w, lb.h, lb.h / 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = `rgba(255,238,205,${al})`;
-          ctx.fillText(lb.text, lb.x, lb.y + lb.fs * 0.1);
-        }
-      }
-
       // 나: 머리 위에 '나' 표시 (모두의 위에 그린다)
       if (crowdA > 0.4) {
-        const my = me.y - personH(me.y) * 1.08 - 12 + Math.sin(e * 4.2) * 3;
+        const my = me.y - personH(me.y) * (0.14 + 0.94 * lookRef.current.scale) - 12 + Math.sin(e * 4.2) * 3;
         const fs = 26 * clamp(depth(me.y), 0.9, 1.5);
         ctx.fillStyle = 'rgba(255,226,150,0.98)';
         ctx.strokeStyle = 'rgba(30,20,0,0.9)';
@@ -818,7 +1097,7 @@ export default function RumorView({ question, onAnswer, onBack, extras }: RumorV
           const prog = ch ? 1 : clamp((dwell[cz.key] ?? 0) / DWELL, 0, 1);
           const sc = clamp(depth(me.y), 0.9, 1.5);
           const R = 27 * sc;
-          const rx = me.x; const ry = me.y - personH(me.y) * 1.08 - 12 - 26 * sc - R - 14 + Math.sin(e * 4.2) * 3;
+          const rx = me.x; const ry = me.y - personH(me.y) * (0.14 + 0.94 * lookRef.current.scale) - 12 - 26 * sc - R - 14 + Math.sin(e * 4.2) * 3;
           const num = question.options.findIndex((o) => o.value === cz.key) + 1;
           ctx.save();
           ctx.fillStyle = 'rgba(8,10,18,0.78)';

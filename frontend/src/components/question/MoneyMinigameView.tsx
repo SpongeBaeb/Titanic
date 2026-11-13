@@ -8,19 +8,32 @@ import { Question } from '@/data/questions';
 import ProgressLine from '@/components/ui/ProgressLine';
 import ClassicButton from '@/components/ui/ClassicButton';
 import FacilityWheel from '@/components/question/FacilityWheel';
-import DuckPurser, { purserGreeting, purserLast, purserLine, purserPoke, purserIntro, purserIntroPose, type PurserPose } from '@/components/question/DuckPurser';
+import DuckPurser, { PurserPeek, PURSER_DUCKS, purserGreeting, purserLast, purserLine, purserPoke, purserIntro, purserIntroPose, purserBroke, purserBusted, PURSER_HAIR_CLEAR, purserMonologueReset, purserWheelLine, purserCandy, purserMarkFacility, purserLineMs, purserTip, purserRefuseTip, PURSER_RETURN, type PurserPose } from '@/components/question/DuckPurser';
 import { useQuizStore } from '@/store/quizStore';
 import DeathCard from '@/components/ui/DeathCard';
+import LightningBolt from '@/components/ui/LightningBolt';
+import DodgeDuck from '@/components/question/DodgeDuck';
+import CasinoModal, { BULLSEYE_MULT, BULLSEYE_TOL, GAMBLE_TIERS, REVEAL_MS, type GambleTierId } from '@/components/question/money/CasinoModal';
+import { INTERACTION_LINES, trackMorse, zapPaths, insideCircle, nearRect, famousBeat, DOT_MAX_MS, type MorseMark, type MorseType } from '@/components/question/money/interactions';
+import { BubblePops, WaterZap, type BubblePop, type WaterZapFx } from '@/components/question/money/InteractionOverlays';
+import { playCollapse } from '@/lib/collapse';
 import { restartJourney } from '@/lib/session';
-import { unlock } from '@/engine/achievements';
-import { playGunshot } from '@/lib/synth';
+import { unlock, ducksAllFoundUntold, markDucksTold } from '@/engine/achievements';
+import { buildPersona } from '@/engine/persona';
+import { purserFacilityLine } from '@/data/variants';
+import { playGunshot, playStamp, playPop, playShipHorn, playThunder } from '@/lib/synth';
 
 interface MoneyMinigameViewProps {
   question: Question;
   onAnswer: (value: string, extra?: Record<string, unknown>) => void;
+  extras?: Record<string, unknown>;
+  answers?: Record<string, unknown>;
   onBack: () => void;
 }
 
+/** 이 장수 이상의 지폐를 가지면 배경이 스위트룸으로 바뀐다 */
+const SUITE_BILLS = 870;
+const SUITE_BG = '/bg/suite.webp';
 const FACILITIES = [
   { id: 'gamble', name: '선상 도박', img: '/spend/icon_gamble.webp', color: 'bg-red-900/40 border-red-500/50' },
   { id: 'barber', name: '이발소', img: '/spend/icon_barber.webp', color: 'bg-orange-900/40 border-orange-500/50' },
@@ -31,32 +44,8 @@ const FACILITIES = [
   { id: 'souvenir', name: '기념품 구입', img: '/spend/icon_souvenir.webp', color: 'bg-pink-900/40 border-pink-500/50' },
 ];
 
-// 도박 범위: 좁게 맞출수록 확률은 낮고 보상은 크다 (기댓값이 거의 0이 되도록 맞춤)
-// 확률은 480~550 해리 71개 값 중 범위에 드는 비율(안전 ±11 = 23개 → 32%). 보상은 순이익 지폐 수.
-const GAMBLE_TIERS = [
-  { id: 'safe', name: '안전', tol: 11, net: 2, odds: '약 32%', zone: 'bg-green-500/35' },
-  { id: 'mid', name: '보통', tol: 8, net: 3, odds: '약 24%', zone: 'bg-yellow-400/40' },
-  { id: 'risky', name: '위험', tol: 2, net: 12, odds: '약 7%', zone: 'bg-red-500/45' },
-] as const;
-type GambleTierId = (typeof GAMBLE_TIERS)[number]['id'];
-// 결과 공개 연출: 배가 정답 주변을 오가며 점점 좁혀 든다
-const REVEAL_MS = 5200;
-// 종이 지도 그림에서 실제 종이 부분(테두리 바깥 여백 제외), 트랙 상자 대비 %
-const SWORD_W = 44; // 칼 이미지(640x1173) 표시 너비(px)
-const PAPER = { l: 5, r: 5, t: 16, b: 16 };
-const REVEAL_TIMES = [0, 0.28, 0.5, 0.7, 0.86, 1];
-/** 오리배 그림은 왼쪽을 보고 있다. 오른쪽으로 갈 때는 뒤집어(scaleX -1) 가는 쪽을 보게 한다. 방향이 바뀌는 지점에서만 빠르게 돈다 */
-function shipFlipKeys(path: number[]) {
-  const n = Math.min(path.length, REVEAL_TIMES.length);
-  if (n < 2) return { vals: [1, 1], times: [0, 1] };
-  const dir = (i: number) => (path[i] >= path[i - 1] ? -1 : 1);
-  const vals: number[] = []; const times: number[] = [];
-  for (let i = 1; i < n; i++) {
-    const a = REVEAL_TIMES[i - 1]; const b = REVEAL_TIMES[i]; const d = (b - a) * 0.04;
-    vals.push(dir(i), dir(i)); times.push(i === 1 ? 0 : a + d, i === n - 1 ? 1 : b - d);
-  }
-  return { vals, times };
-}
+/** 선상 도박장 연승 업적(hot-streak)을 주는 연승 수 */
+const HOT_STREAK_GOAL = 5;
 const TICK_AT = [300, 700, 1150, 1650, 2200, 2800, 3450, 4150, 4800];
 
 /**
@@ -130,11 +119,36 @@ function WinShower({ net, exact }: { net: number; exact: boolean }) {
   );
 }
 
-export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyMinigameViewProps) {
+export default function MoneyMinigameView({ question, onAnswer, onBack, extras, answers }: MoneyMinigameViewProps) {
+  const persona = buildPersona(answers, extras);
+  const isChild = persona.band === 'baby' || persona.band === 'kid'; // 11세 이하: 칼도, 총도, 죽는 장면도 없다
+  // Q1 에서 고른 정확한 나이. 기록이 없으면(옛 세션 등) 고른 나이 구간으로 짐작한다
+  const ageGroupKey = typeof answers?.ageGroup === 'string' ? answers.ageGroup : null;
+  const playerAge = typeof extras?.age === 'number' ? extras.age : ageGroupKey === '0-9' ? 9 : ageGroupKey === '10-17' ? 17 : null;
   // State
   const [facIndex, setFacIndex] = useState(0); // 회전 선반에서 가운데에 온 시설
+  const kidGambleTries = useRef(0); // 아이가 도박장에 지폐를 놓으려 한 횟수
+  const [gambleBanned, setGambleBanned] = useState(false); // 아이가 계속 시도해 사무장이 도박장을 치워 버렸다
+  const facilities = gambleBanned ? FACILITIES.filter((f) => f.id !== 'gamble') : FACILITIES;
+  const wheelSpins = useRef(0); // 선반을 쉬지 않고 이어서 돌린 횟수 (사무장이 지칠 때 한마디)
+  const wheelLastAt = useRef(0);
+  const candyGiven = useRef(0); // 사무장에게 건넨 사탕 수 (아이 전용)
+  const lostGamble = useRef(false); // 도박장에서 한 번이라도 잃었는가 (사무장이 다시 온 손님에게 발뺌한다)
   const [billsAvailable, setBillsAvailable] = useState(5);
+  const [duckGiven, setDuckGiven] = useState(0); // 오리 사무장에게 건넨 지폐 수
+  const [duckReturned, setDuckReturned] = useState(-1); // 돈을 돌려준 뒤 또 내밀어 거절당한 횟수 (-1: 아직 돌려주지 않음)
   const [billsInBag, setBillsInBag] = useState(0);
+  // 손에 든 지폐가 870장 이상이면 '스위트룸으로 옮기기' 버튼이 나오고, 870장을 내면 배경이 파를러 스위트룸으로 바뀐다 (1912년 파를러 스위트 편도 870파운드). 그림 /bg/suite.webp 가 없으면 버튼도 없다
+  const [suiteImgOk, setSuiteImgOk] = useState(false);
+  const [suiteBought, setSuiteBought] = useState(false); // 870장을 내고 스위트룸으로 옮긴 뒤에는 계속 스위트룸
+  const suiteOfferedRef = useRef(false);
+  const suiteOn = suiteImgOk && suiteBought;
+  const canBuySuite = suiteImgOk && !suiteBought && billsAvailable >= SUITE_BILLS;
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setSuiteImgOk(true);
+    img.src = SUITE_BG;
+  }, []);
   // 반향(밤 장면)에서 쓰는 기록: 가방에 실제로 들어간 기념품, 도박 시도 횟수, 시설별 지출
   const [bagItems, setBagItems] = useState<string[]>([]);
   const [gambleCount, setGambleCount] = useState(0);
@@ -157,8 +171,6 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const [gamblingGain, setGamblingGain] = useState(0); // 이번 판 순이익
   const [shipPath, setShipPath] = useState<number[]>([]); // 배가 오가는 지점(해리)
   const gambleTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const [targetSpendCount, setTargetSpendCount] = useState(0);
-  const [isTargetUnlocked, setIsTargetUnlocked] = useState(false);
 
   // Debug positioning state
   const [offsets, setOffsets] = useState<Record<string, { x: number, y: number }>>({
@@ -186,9 +198,20 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
 
   const [isDuckDamaged, setIsDuckDamaged] = useState(false);
   const [isBubbleYellow, setIsBubbleYellow] = useState(false);
+  // 시설끼리의 상호작용: 터진 거품 자리, 물에 친 번개, 전신 신호 기록
+  const [bubblePops, setBubblePops] = useState<BubblePop[]>([]);
+  const [waterZap, setWaterZap] = useState<WaterZapFx | null>(null);
+  const sosHistory = useRef<MorseMark[]>([]);
+  const cutNoted = useRef(false);
+  const [spot, setSpot] = useState(false); // 합선 중 수신 오리에게 스포트라이트
+  const [shorting, setShorting] = useState(false); // 전신기 합선 중
+  const [charged, setCharged] = useState<Record<number, boolean>>({}); // 번개를 맞아 대전된 칼
+  const shortCool = useRef(0);
+  const beatIdx = useRef(0); // 다음 합선에서 연주할 유명한 박자
   const [isDraggingDuck, setIsDraggingDuck] = useState(false);
   const [hasLightningAbility, setHasLightningAbility] = useState(false);
   const [hasTelegraph, setHasTelegraph] = useState(false);
+  const [colleagueIn, setColleagueIn] = useState(false); // 사무장이 동료를 소개한 뒤에야 동료 오리가 나온다
   const duckDragY = useMotionValue(0);
 
   // Morse Debug State
@@ -202,38 +225,21 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const morsePressStartTime = useRef<number>(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const oscillatorRef = useRef<OscillatorNode | null>(null);
-  const targetLastResetTime = useRef<number>(0);
 
   // Barber & Souvenir VFX State
   const [hasScissors, setHasScissors] = useState(false);
   const [hairs, setHairs] = useState<{ id: number, xPercent: number, width: number, height: number, cutY: number, src: string, isMagic: boolean }[]>([]);
   const [fallingHairs, setFallingHairs] = useState<{ id: number, xPercent: number, width: number, height: number, cutY: number, originalHeight: number, src: string }[]>([]);
-  const [souvenirItems, setSouvenirItems] = useState<{ id: number, img: string, targetX: number, targetY: number, rotation: number, isHit?: boolean, isThrown?: boolean, isStuck?: boolean, startX?: number, startY?: number, stuckX?: number, stuckY?: number }[]>([]);
+  const [souvenirItems, setSouvenirItems] = useState<{ id: number, img: string, targetX: number, targetY: number, rotation: number, isHit?: boolean, isThrown?: boolean, isStuck?: boolean, isFloating?: boolean, startX?: number, startY?: number, stuckX?: number, stuckY?: number }[]>([]);
   const [mousePos, setMousePos] = useState({ x: -1000, y: -1000 });
   const [isScissorClosed, setIsScissorClosed] = useState(false);
   const [targetHit, setTargetHit] = useState(false);
   const [isHairInWater, setIsHairInWater] = useState(false);
   const [morseExplosions, setMorseExplosions] = useState<{ id: number, x: number, y: number }[]>([]);
-  const [morseHitOffsetPercent, setMorseHitOffsetPercent] = useState(56);
   
   // Target Zombification State
-  const [targetHitCount, setTargetHitCount] = useState(0);
-  const targetWalkX = useMotionValue(0);
-  const [targetState, setTargetState] = useState<'normal' | 'zombie_bucket' | 'zombie' | 'retreating'>('normal');
-  const [bucketOffset, setBucketOffset] = useState({ x: -10, y: -90, rotate: 0, scale: 1.2 });
-  const [showQuestionMark, setShowQuestionMark] = useState(false);
 
   // Gamble UI Debug State
-  const [gmbWidth, setGmbWidth] = useState(64);
-  const [gmbMaxWidth, setGmbMaxWidth] = useState(60);
-  const [gmbPadTop, setGmbPadTop] = useState(5.75);
-  const [gmbPadBottom, setGmbPadBottom] = useState(4.75);
-  const [gmbPadX, setGmbPadX] = useState(2.5);
-  const [gmbTitleMb, setGmbTitleMb] = useState(1.5);
-  const [gmbTextMb, setGmbTextMb] = useState(5);
-  const [gmbTrackMb, setGmbTrackMb] = useState(2.5);
-  const [gmbTrackWidth, setGmbTrackWidth] = useState(51);
-  const [gmbTrackHeight, setGmbTrackHeight] = useState(5);
 
 
 
@@ -285,6 +291,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     const handleMouseDown = (e: MouseEvent) => {
       setIsScissorClosed(true);
       performCut(e.clientX - 53, e.clientY);
+      cutOthers(e.clientX - 53, e.clientY);
     };
 
     const handleMouseUp = () => {
@@ -326,117 +333,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     return () => cancelAnimationFrame(animationFrameId);
   }, [hasScissors]);
 
-  // Morse Signal Collision Detection
-  useEffect(() => {
-    if (!hasTelegraph) return;
-    
-    let frameId: number;
-    const checkCollisions = () => {
-      // Prevent hits from ghost DOM elements immediately after resetting
-      if (Date.now() - targetLastResetTime.current < 500) {
-        frameId = requestAnimationFrame(checkCollisions);
-        return;
-      }
 
-      if (isTargetUnlocked && dropZoneRefs.current['target'] && targetState !== 'retreating') {
-        const targetRect = dropZoneRefs.current['target']!.getBoundingClientRect();
-        const signals = document.querySelectorAll('.morse-signal');
-        
-        signals.forEach(sig => {
-          const rect = sig.getBoundingClientRect();
-          // Wait until the signal's front edge (left) reaches the customizable hit offset of the target
-          const targetCenterX = targetRect.left + (targetRect.width * (morseHitOffsetPercent / 100));
-          if (rect.left < targetCenterX && rect.right > targetRect.left && rect.top < targetRect.bottom && rect.bottom > targetRect.top) {
-             const id = Number(sig.getAttribute('data-id'));
-             if (id && !sig.hasAttribute('data-hit')) {
-               sig.setAttribute('data-hit', 'true'); // Prevent double triggers
-               
-               const hitX = rect.left;
-               const hitY = rect.top + rect.height / 2;
-               const hitId = Date.now() + Math.random();
-               
-               setMorseExplosions(prev => [...prev, { id: hitId, x: hitX, y: hitY }]);
-               setTimeout(() => {
-                 setMorseExplosions(prev => prev.filter(e => e.id !== hitId));
-               }, 1000);
-
-               setMorseSignals(prev => {
-                 if (prev.some(s => s.id === id)) {
-                   setTargetHitCount(c => c + 1); // Increment hit count
-                   setTargetHit(true);
-                   setTimeout(() => setTargetHit(false), 500);
-                   return prev.filter(s => s.id !== id); // Remove the hit signal
-                 }
-                 return prev;
-               });
-             }
-          }
-        });
-      }
-      frameId = requestAnimationFrame(checkCollisions);
-    };
-    
-    frameId = requestAnimationFrame(checkCollisions);
-    return () => cancelAnimationFrame(frameId);
-  }, [hasTelegraph, isTargetUnlocked, morseHitOffsetPercent, targetState]);
-
-  // Target Zombification Phase Evaluation
-  useEffect(() => {
-    if (targetHitCount >= 13) {
-      setTargetState('retreating');
-    } else if (targetHitCount >= 8) {
-      setTargetState('zombie');
-    } else if (targetHitCount >= 3) {
-      setTargetState('zombie_bucket');
-    } else {
-      setTargetState('normal');
-    }
-  }, [targetHitCount]);
-
-  // Target Movement & Collision Loop
-  useEffect(() => {
-    if (targetState === 'normal') {
-      targetWalkX.set(0);
-      return;
-    }
-    
-    let frameId: number;
-    const loop = () => {
-      if (targetState === 'retreating') {
-         const next = targetWalkX.get() - 4; // retreat speed
-         if (next <= 0) {
-            targetWalkX.set(0);
-            setTargetHitCount(0); // Trigger reset to normal
-            setMorseSignals([]); // Clear leftover signals to prevent instant ghost hits
-            setSouvenirItems(prev => prev.filter(i => !i.isStuck)); // Clear stuck items
-            targetLastResetTime.current = Date.now(); // 500ms invulnerability
-         } else {
-            targetWalkX.set(next);
-            frameId = requestAnimationFrame(loop);
-         }
-      } else if (targetState === 'zombie' || targetState === 'zombie_bucket') {
-         targetWalkX.set(targetWalkX.get() + 0.8); // walk speed
-         
-         // Check collision with Morse Machine
-         const targetEl = dropZoneRefs.current['target'];
-         const morseEl = document.getElementById('morse-machine-image');
-         if (targetEl && morseEl) {
-           const tRect = targetEl.getBoundingClientRect();
-           const mRect = morseEl.getBoundingClientRect();
-           if (tRect.right > mRect.left + 50) { // Slight overlap before collision
-             setShowQuestionMark(true);
-             setTargetHitCount(13); // Force retreat
-             setTimeout(() => setShowQuestionMark(false), 2000);
-           }
-         }
-         
-         frameId = requestAnimationFrame(loop);
-      }
-    };
-    
-    frameId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frameId);
-  }, [targetState]);
 
   // Init Audio Context for Beep
   const playBeep = () => {
@@ -480,7 +377,11 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     const duration = Date.now() - morsePressStartTime.current;
     morsePressStartTime.current = 0; // Reset
     
-    const type: 'dot' | 'dash' = duration < 200 ? 'dot' : 'dash';
+    const type: MorseType = duration < DOT_MAX_MS ? 'dot' : 'dash';
+    // 가장 유명한 신호 SOS(점 셋, 선 셋, 점 셋)를 6초 안에 보내면 사무장이 알아챈다 (money/interactions)
+    const tracked = trackMorse(sosHistory.current, type, Date.now());
+    sosHistory.current = tracked.history;
+    if (tracked.sos) onSOS();
     const newSignal = { id: Date.now() + Math.random(), type };
     
     setMorseSignals(prev => [...prev, newSignal]);
@@ -497,6 +398,99 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const duckRef = useRef<HTMLImageElement>(null);
   const duckFall = useRef<{ stop: () => void } | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
+
+  // ── 시설끼리의 상호작용 (규칙과 문구: money/interactions.ts, 화면 효과: money/InteractionOverlays.tsx) ──
+  const say = ([text, pose, ms]: readonly [string, PurserPose, number]) => purserSay(text, pose, ms);
+  // 목욕탕 거품은 가위, 던진 칼과 찻잔으로 터진다. 수영장 물에 번개를 치면 물 전체가 감전된다.
+  // 전신기로 SOS(··· −−− ···)를 보내면 오리 사무장이 알아챈다. 가위는 날아가는 전신 신호도 자른다. 기념품은 물 위에 놓으면 뜬다.
+  const popBubble = (): boolean => {
+    const r = bubbleRef.current?.getBoundingClientRect();
+    if (!r) return false;
+    const id = Date.now() + Math.random();
+    setBubblePops(p => [...p, { id, x: r.left + r.width / 2, y: r.top + r.height / 2 }]);
+    setTimeout(() => setBubblePops(p => p.filter(b => b.id !== id)), 1800);
+    setHasGiantBubble(false);
+    setIsBubbleYellow(false);
+    playPop();
+    say(INTERACTION_LINES.bubblePop);
+    return true;
+  };
+  const zapWater = (x: number) => {
+    const w = window.innerWidth; const h = window.innerHeight * 0.15;
+    const id = Date.now();
+    // 번개가 닿은 자리에서 양쪽으로 수면을 따라 갈라져 퍼진다
+    setWaterZap({ id, paths: zapPaths(x, w, h), w, h });
+    setTimeout(() => setWaterZap(z => (z && z.id === id ? null : z)), 1500);
+    playSound('electric');
+    const dr = duckRef.current?.getBoundingClientRect();
+    if (dr && dr.bottom > window.innerHeight * 0.8) setIsDuckDamaged(true); // 물에 떠 있는 고무 오리도 감전
+    say(INTERACTION_LINES.waterZap);
+  };
+  const cutOthers = (x: number, y: number) => {
+    // 가위: 거품을 찌르면 터지고, 날아가는 전신 신호는 잘린다
+    const b = bubbleRef.current?.getBoundingClientRect();
+    if (b && insideCircle(x, y, b)) popBubble();
+    document.querySelectorAll('.morse-signal').forEach(sig => {
+      const r = sig.getBoundingClientRect();
+      if (nearRect(x, y, r, 24)) {
+        const id = Number(sig.getAttribute('data-id'));
+        if (!id || sig.hasAttribute('data-hit')) return;
+        sig.setAttribute('data-hit', 'true');
+        const hid = Date.now() + Math.random();
+        setMorseExplosions(prev => [...prev, { id: hid, x: r.left + r.width / 2, y: r.top + r.height / 2 }]);
+        setTimeout(() => setMorseExplosions(prev => prev.filter(e => e.id !== hid)), 1000);
+        setMorseSignals(prev => prev.filter(s => s.id !== id));
+        if (!cutNoted.current) { cutNoted.current = true; say(INTERACTION_LINES.signalCut); }
+      }
+    });
+  };
+  const emitSignal = (type: MorseType) => {
+    const sig = { id: Date.now() + Math.random(), type };
+    setMorseSignals(prev => [...prev, sig]);
+    setTimeout(() => setMorseSignals(prev => prev.filter(x => x.id !== sig.id)), 3000);
+  };
+  // 마사지 × 전신: 번개가 전신기로 튀면 합선이 난다. 3초 동안 전신기가 혼자 신호를 쏟아 내고, 수신 오리에게 스포트라이트가 비친다
+  const shortCircuit = () => {
+    const now = Date.now();
+    if (now - shortCool.current < 6000) return;
+    const beat = famousBeat(beatIdx.current++);
+    shortCool.current = now + Math.max(0, beat.span + 2200 - 6000); // 박자와 조명이 다 끝나기 전에는 다시 시작하지 않는다
+    setShorting(true);
+    setSpot(true);
+    say(INTERACTION_LINES.shortCircuit);
+    for (const [at, kind] of beat.notes) {
+      setTimeout(() => {
+        emitSignal(kind);
+        // 전신기에서 불꽃이 튄다
+        const r = document.getElementById('morse-machine-image')?.getBoundingClientRect();
+        if (r) {
+          const hid = Date.now() + Math.random();
+          setMorseExplosions(prev => [...prev, { id: hid, x: r.left + r.width * (0.25 + Math.random() * 0.6), y: r.top + r.height * (0.15 + Math.random() * 0.5) }]);
+          setTimeout(() => setMorseExplosions(prev => prev.filter(e => e.id !== hid)), 700);
+        }
+      }, at);
+    }
+    setTimeout(() => setShorting(false), beat.span + 700);
+    setTimeout(() => setSpot(false), beat.span + 2000); // 박자가 끝난 뒤에도 잠깐 조명이 남는다
+  };
+  // 마사지 × 기념품: 번개를 맞은 찻잔은 깨지고, 칼은 번개를 먹는다
+  const zapSouvenir = (id: number) => {
+    const it = souvenirItems.find(i => i.id === id);
+    if (!it || it.isStuck) return;
+    if (it.img.includes('shop2')) {
+      shatterTeacup(it.targetX, it.targetY, id);
+      say(INTERACTION_LINES.cupShatter);
+    } else if (it.img.includes('shop1')) {
+      setCharged(c => ({ ...c, [id]: true }));
+      setTimeout(() => setCharged(c => { const n = { ...c }; delete n[id]; return n; }), 3200);
+      say(INTERACTION_LINES.knifeCharged);
+    }
+  };
+  const onSOS = () => {
+    playShipHorn();
+    say(INTERACTION_LINES.sos);
+    unlock('sos');
+  };
   
   // Gambling constants
   const ACTUAL_DISTANCE = 1450; // Miles traveled before crash approx
@@ -520,14 +514,22 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     return null;
   };
 
+  // 지폐를 오리 사무장에게 건넬 수 있다 (그림 위에 놓으면 팁). 시설 칸이 우선이다
+  const billTarget = (x: number, y: number) => {
+    const id = checkCollision(x, y);
+    if (id) return id;
+    const r = document.querySelector('[data-duck]')?.getBoundingClientRect();
+    return r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom ? 'duck' : null;
+  };
+
   const handleDrag = (event: any, info: any) => {
-    const hoveredId = checkCollision(info.point.x, info.point.y);
+    const hoveredId = billTarget(info.point.x, info.point.y);
     setHoveredDropZone(hoveredId);
   };
 
   const handleSouvenirDrag = (e: any, info: PanInfo) => {
     const id = checkCollision(info.point.x, info.point.y);
-    setHoveredDropZone((id === 'mybag' || id === 'target') ? id : null);
+    setHoveredDropZone(id === 'mybag' ? id : null);
   };
 
   const shatterTeacup = (x: number, y: number, itemId: number) => {
@@ -536,11 +538,11 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     setTimeout(() => setTargetHit(false), 500);
 
     const newShards = [
-      { id: Date.now() + 1, x, y, clip: 'polygon(0 0, 50% 20%, 30% 50%, 0 30%)', vx: -150, vy: -100 },
-      { id: Date.now() + 2, x, y, clip: 'polygon(50% 20%, 100% 0, 100% 40%, 60% 60%)', vx: 150, vy: -150 },
-      { id: Date.now() + 3, x, y, clip: 'polygon(30% 50%, 60% 60%, 80% 100%, 10% 90%)', vx: -80, vy: 150 },
-      { id: Date.now() + 4, x, y, clip: 'polygon(100% 40%, 100% 100%, 80% 100%, 60% 60%)', vx: 180, vy: 100 },
-      { id: Date.now() + 5, x, y, clip: 'polygon(0 30%, 30% 50%, 10% 90%, 0 100%)', vx: -180, vy: 50 }
+      { id: Date.now() + 1 + Math.random(), x, y, clip: 'polygon(0 0, 50% 20%, 30% 50%, 0 30%)', vx: -150, vy: -100 },
+      { id: Date.now() + 2 + Math.random(), x, y, clip: 'polygon(50% 20%, 100% 0, 100% 40%, 60% 60%)', vx: 150, vy: -150 },
+      { id: Date.now() + 3 + Math.random(), x, y, clip: 'polygon(30% 50%, 60% 60%, 80% 100%, 10% 90%)', vx: -80, vy: 150 },
+      { id: Date.now() + 4 + Math.random(), x, y, clip: 'polygon(100% 40%, 100% 100%, 80% 100%, 60% 60%)', vx: 180, vy: 100 },
+      { id: Date.now() + 5 + Math.random(), x, y, clip: 'polygon(0 30%, 30% 50%, 10% 90%, 0 100%)', vx: -180, vy: 50 }
     ];
     setShards(prev => [...prev, ...newShards]);
     setSouvenirItems(prev => prev.filter(i => i.id !== itemId));
@@ -567,6 +569,8 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const demoStopped = useRef(false);
   const facIndexRef = useRef(facIndex);
   facIndexRef.current = facIndex;
+  const facilitiesRef = useRef(facilities);
+  useEffect(() => { facilitiesRef.current = facilities; }, [facilities]);
   const billsRef = useRef(billsAvailable);
   billsRef.current = billsAvailable;
   const stopDemo = () => { demoStopped.current = true; setDemo(null); };
@@ -577,7 +581,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     const play = () => {
       if (demoStopped.current || billsRef.current < 5 || loops >= 3) { setDemo(null); return; }
       const from = billStackRef.current?.getBoundingClientRect();
-      const toEl = dropZoneRefs.current[FACILITIES[facIndexRef.current].id];
+      const toEl = dropZoneRefs.current[facilitiesRef.current[Math.min(facIndexRef.current, facilitiesRef.current.length - 1)].id];
       const to = toEl?.getBoundingClientRect();
       if (!from || !to || from.width === 0 || to.width === 0) { timer = setTimeout(play, 900); return; }
       loops += 1;
@@ -591,41 +595,61 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
 
   // ── 오리 이스터에그: 기념품 가게의 칼로 오리 사무장을 두 번 위협하면 ──
   // 첫 번째는 경고(권총이 나온다), 두 번째는 발사. 총에 맞으면 사망 카드 뒤에 처음부터 다시 시작한다.
-  const [duckArmed, setDuckArmed] = useState(false);
-  const [duckFiring, setDuckFiring] = useState(false);
   const [dead, setDead] = useState(false);
   const knifeThreats = useRef(0);
   const knifeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const THREATS = [
     '…그 칼, 정중히 내려놓으시오. 나는 비상용 장비가 있소. 한 번만 말하겠소.',
     '손님, 그것은 영수증에 포함되지 않소. 내려놓는 편이 건강에 좋소.',
-    '제복 안쪽에는 비상용 계산기가 있소. 아주 묵직한 것이오.',
+    '제복 안쪽에는 호신용 무기가 있소. 나도 보험은 있소.',
+    '나를 찌르지 마시오. 제복이 구겨지면 내 위엄도 구겨지오. 그다음은 당신일 수도 있소.',
   ];
-  const onKnifeAtDuck = () => {
+  // 마사지의 번개를 오리 사무장에게 쳤을 때의 위협 (칼과 같은 단계를 밟는다: 경고 → 발사)
+  const LIGHTNING_THREATS = [
+    '…번개라니. 방금 것은 장부에 적었소. 두 번은 없소.',
+    '찌릿하면 정상이오. …내가 맞는 건 정상이 아니오.',
+    '오리 전기구이라고 했소? 장난이 지나치오. 한 번만 말하겠소.',
+    '내 깃털이 곤두선 건 번개 탓이오. 손님 탓이기도 하오.',
+  ];
+  const [purserShock, setPurserShock] = useState(0); // 번개를 맞을 때마다 1씩 올라, 사무장이 감전된 모습을 다시 연출한다
+  // 아이에게 번개를 쳤을 때: 총도 권총도 없이 꾸짖기만 한다 (몇 번을 해도 같다)
+  const CHILD_LIGHTNING_THREATS = [
+    '…찌릿했소! 번개는 장난감이 아니오. 한 번만 말하겠소.',
+    '깃털이 곤두섰소. 한 번만 더 하면 엄마께 이르겠소.',
+    '번개를 사람한테 치면 안 되오. 오리한테도 안 되오.',
+    '이건 어른도 놀라는 일이오. …얌전히 있으시오.',
+  ];
+  const onKnifeAtDuck = (kind: 'knife' | 'lightning' = 'knife') => {
     if (dead) return;
+    if (isChild) {
+      purserSay(CHILD_LIGHTNING_THREATS[Math.floor(Math.random() * CHILD_LIGHTNING_THREATS.length)], 'refuse', 4800);
+      return;
+    }
     knifeThreats.current += 1;
     if (knifeTimer.current) clearTimeout(knifeTimer.current);
     if (knifeThreats.current === 1) {
-      setDuckArmed(true);
-      purserSay(THREATS[Math.floor(Math.random() * THREATS.length)], 'refuse', 5200);
+      // 품에서 권총을 꺼내(draw) 겨눈다(aim)
+      const pool = kind === 'lightning' ? LIGHTNING_THREATS : THREATS;
+      purserSay(pool[Math.floor(Math.random() * pool.length)], 'draw', 5200);
+      setTimeout(() => setPurserPose((p) => (p === 'draw' ? 'aim' : p)), 900);
       // 잠시 칼을 거두면 오리도 물러선다
       knifeTimer.current = setTimeout(() => {
         knifeThreats.current = 0;
-        setDuckArmed(false);
         purserSay('…방금은 못 본 걸로 하겠소. 장부에도 적지 않겠소.', 'shrug', 4200);
       }, 14000);
     } else {
-      setDuckFiring(true);
       playGunshot();
-      purserSay('…경고는 한 번이면 충분했소.', 'refuse', 1500);
-      unlock('duck-gun');
-      setTimeout(() => setDead(true), 420);
+      purserSay('기어코 선을 넘네.', 'fire', 3400);
+      if (kind === 'knife') unlock('duck-gun'); // 업적 설명이 "칼로 위협"이라 번개로는 주지 않는다
+      // 총에 맞는 순간부터 1인칭으로 털썩 쓰러진 뒤 사망 카드가 이어진다
+      // 쏜 직후 총구에서 연기를 내뿜는 모습(smoke)이 쓰러지는 화면에 남는다
+      setTimeout(() => { setPurserPose('smoke'); playCollapse().then(() => setDead(true)); }, 420);
     }
   };
   useEffect(() => () => { if (knifeTimer.current) clearTimeout(knifeTimer.current); }, []);
   // 개발 서버에서만: 브라우저 콘솔에서 위협을 시험할 수 있게 한다
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') (window as unknown as { __duck?: unknown }).__duck = { win: (net = 4, exact = false) => setWinFx({ key: Date.now(), net, exact }), threat: () => onKnifeAtDuck(), stamp: () => purserSay('도장 시험이오. 받았소.', 'stamp', 3500) };
+    if (process.env.NODE_ENV === 'development') (window as unknown as { __duck?: unknown }).__duck = { win: (net = 4, exact = false) => setWinFx({ key: Date.now(), net, exact }), threat: () => onKnifeAtDuck(), stamp: () => purserSay('도장 시험이오. 받았소.', 'stamp', 3500), say: (t: string, pose: PurserPose = 'idle') => purserSay(t, pose, 3600), shock: () => setPurserShock((n) => n + 1), vfx: (id: string) => triggerVFX(id), pop: () => popBubble(), zap: (x = 400) => zapWater(x), sos: () => onSOS(), drop: (id: string) => handleDrop(id), bills: (n: number) => setBillsAvailable(n), short: () => shortCircuit(), zapS: () => souvenirItems.forEach(i => zapSouvenir(i.id)) };
   });
 
   // 칼을 쥐고 있는 동안 빙빙 돈다. 놓으면 가까운 표적(오리 사무장, 과녁)으로 날아간다
@@ -639,24 +663,33 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     const item = souvenirItems.find(i => i.id === itemId);
     if (!item) return;
 
-    // 찻잔(shop2): 놓은 곳이 과녁 근처면 알아서 날아가 깨진다
-    if (item.img.includes('shop2')) {
-      const targetEl2 = dropZoneRefs.current['target'];
-      const tr = targetEl2?.getBoundingClientRect();
-      const px2 = info.point.x; const py2 = info.point.y;
-      if (tr && px2 >= tr.left - 70 && px2 <= tr.right + 70 && py2 >= tr.top - 70 && py2 <= tr.bottom + 70) {
-        const tcx = tr.left + tr.width * (debugHitX / 100);
-        const tcy = tr.top + tr.height * (debugHitY / 100);
-        const relX = item.targetX + info.offset.x + (tcx - px2);
-        const relY = item.targetY + info.offset.y + (tcy - py2);
-        setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: relX, targetY: relY, rotation: i.rotation + 720, isThrown: true } : i));
+    const duckBox = document.querySelector('[data-duck]')?.getBoundingClientRect();
+    const onDuck = !!duckBox && info.point.x >= duckBox.left - 20 && info.point.x <= duckBox.right + 20 && info.point.y >= duckBox.top - 20 && info.point.y <= duckBox.bottom + 20;
+
+    // 수영장을 이용한 뒤 물 위에 놓은 기념품은 가라앉지 않고 뜬다
+    if (hasWater && !onDuck && info.point.y > window.innerHeight * 0.84) {
+      const line = window.innerHeight * 0.9;
+      setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, isFloating: true, isThrown: false, targetX: item.targetX + info.offset.x, targetY: item.targetY + info.offset.y + (line - info.point.y) } : i));
+      playSound('splash');
+      return;
+    }
+
+    // 칼과 찻잔을 목욕탕 거품 가까이에서 놓으면 날아가 거품을 터뜨리고 선반으로 돌아온다
+    if ((item.img.includes('shop1') || item.img.includes('shop2')) && !onDuck) {
+      const br = bubbleRef.current?.getBoundingClientRect();
+      const bx = info.point.x; const by = info.point.y;
+      if (br && bx >= br.left - 40 && bx <= br.right + 40 && by >= br.top - 40 && by <= br.bottom + 40) {
+        const cx = br.left + br.width / 2; const cy = br.top + br.height / 2;
+        const baseX = item.targetX + info.offset.x; const baseY = item.targetY + info.offset.y;
+        setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: baseX + (cx - bx), targetY: baseY + (cy - by), rotation: i.rotation + 720, isThrown: true } : i));
         playSound('snap');
-        setTimeout(() => shatterTeacup(relX, relY, itemId), 210);
+        setTimeout(() => popBubble(), 210);
+        setTimeout(() => setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: (Math.random() - 0.5) * 500, targetY: -Math.random() * 300 - 150, isThrown: false } : i)), 1000);
         return;
       }
     }
 
-    // 칼(shop1): 놓은 곳이 표적 근처면 겨냥해 줄 필요 없이 알아서 날아가 꽂힌다 (속도나 정확한 방향은 보지 않는다)
+    // 칼(shop1): 오리 사무장 근처에 놓으면 알아서 날아가 위협이 된다 (속도나 정확한 방향은 보지 않는다)
     if (item.img.includes('shop1')) {
       const px = info.point.x; const py = info.point.y;
       const near = (r: DOMRect | undefined, pad: number) => !!r && px >= r.left - pad && px <= r.right + pad && py >= r.top - pad && py <= r.bottom + pad;
@@ -671,24 +704,6 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         setTimeout(() => setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: (Math.random() - 0.5) * 500, targetY: -Math.random() * 300 - 150, isThrown: false } : i)), 1000);
         return;
       }
-      const targetEl = dropZoneRefs.current['target'];
-      const tRect = targetEl?.getBoundingClientRect();
-      if (tRect && near(tRect, 70)) {
-        const tcx = tRect.left + tRect.width * (debugHitX / 100);
-        const tcy = tRect.top + tRect.height * (debugHitY / 100);
-        const R = tRect.width * debugHitRadius;
-        const jx = (Math.random() - 0.5) * R * 0.5; const jy = (Math.random() - 0.5) * R * 0.5;
-        const ang = Math.atan2(tcy - py, tcx - px) * 180 / Math.PI;
-        const relX = baseX + (tcx - px) + jx; const relY = baseY + (tcy - py) + jy;
-        setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, targetX: relX, targetY: relY, stuckX: jx, stuckY: jy, rotation: ang + 45 + 720, isThrown: true } : i));
-        setTimeout(() => {
-          playSound('scissors');
-          setTargetHit(true);
-          setSouvenirItems(prev => prev.map(i => i.id === itemId ? { ...i, isStuck: true, isThrown: false } : i));
-          setTimeout(() => setTargetHit(false), 500);
-        }, 210);
-        return;
-      }
     }
 
     // 칼(shop1)을 오리 사무장 위에서 놓으면 위협이 된다
@@ -700,6 +715,15 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       }
     }
 
+    // 사탕(아이에게만 나오는 기념품): 오리 사무장 위에 놓으면 건네는 것이다. 받아 가고, 단 것 앞에서 마음이 약해진다
+    if (item.img.includes('shop_candy') && onDuck) {
+      candyGiven.current += 1;
+      setSouvenirItems(prev => prev.filter(i => i.id !== itemId));
+      playSound('bag');
+      purserSay(purserCandy(candyGiven.current), 'receive', 4800);
+      return;
+    }
+
     const newX = item.targetX + info.offset.x;
     const newY = item.targetY + info.offset.y;
 
@@ -709,130 +733,28 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       const dx = info.velocity.x / speed;
       const dy = info.velocity.y / speed;
       
-      let hitTargetId: number | null = null;
-      let hitRelX = 0;
-      let hitRelY = 0;
-      let hitStuckX = 0;
-      let hitStuckY = 0;
-      
-      const targetEl = dropZoneRefs.current['target'];
-      if (targetEl) {
-        const rect = targetEl.getBoundingClientRect();
-        // Target absolute center on screen
-        const targetCenterX = rect.left + rect.width * (debugHitX / 100);
-        const targetCenterY = rect.top + rect.height * (debugHitY / 100);
-        
-        const swordScreenX = info.point.x;
-        const swordScreenY = info.point.y;
-        
-        const vx = targetCenterX - swordScreenX;
-        const vy = targetCenterY - swordScreenY;
-        const t_proj = vx * dx + vy * dy;
-        
-        if (t_proj > 0) {
-          const px = swordScreenX + t_proj * dx;
-          const py = swordScreenY + t_proj * dy;
-          const distToLine = Math.hypot(targetCenterX - px, targetCenterY - py);
-          const R = rect.width * debugHitRadius; // Exact visual bullseye radius relative to width
-          
-          if (distToLine < R) { // Exact circle hit
-            hitTargetId = 999;
-            const t_hit = t_proj - Math.sqrt(R * R - distToLine * distToLine);
-            
-            // The exact hit point relative to the throw trajectory
-            hitRelX = newX + t_hit * dx;
-            hitRelY = newY + t_hit * dy;
-
-            // The exact hit point in screen coordinates
-            const hitScreenX = swordScreenX + t_hit * dx;
-            const hitScreenY = swordScreenY + t_hit * dy;
-            
-            // The relative offset from the target's bullseye
-            hitStuckX = hitScreenX - targetCenterX;
-            hitStuckY = hitScreenY - targetCenterY;
-          }
-        }
-      }
-
-      if (hitTargetId) {
-        // Thrown and HIT!
-        const throwAngle = Math.atan2(dy, dx) * 180 / Math.PI;
-
-        if (item.img.includes('shop2')) {
-          setSouvenirItems(prev => prev.map(i => {
-            if (i.id === itemId) return { ...i, targetX: hitRelX, targetY: hitRelY, rotation: throwAngle, isThrown: true };
-            return i;
-          }));
-          setTimeout(() => shatterTeacup(hitRelX, hitRelY, itemId), 150);
-          return;
-        }
-
-        setSouvenirItems(prev => prev.map(i => {
-          if (i.id === itemId) return { ...i, targetX: hitRelX, targetY: hitRelY, stuckX: hitStuckX, stuckY: hitStuckY, rotation: throwAngle + 45, isThrown: true };
-          return i;
-        }));
-        
-        setTimeout(() => {
-          playSound('scissors');
-          setTargetHit(true);
-          setSouvenirItems(prev => prev.map(i => {
-            if (i.id === itemId) return { ...i, isStuck: true, isThrown: false }; // Keep exactly the same rotation
-            return i;
-          }));
-          
-          setTimeout(() => setTargetHit(false), 500);
-        }, 150); // Flight delay
-        return;
-      } else {
-        // Thrown and MISS! Fly off screen
-        const farX = newX + dx * 2500;
-        const farY = newY + dy * 2500;
-        
-        setSouvenirItems(prev => prev.map(i => {
-          if (i.id === itemId) return { ...i, targetX: farX, targetY: farY, rotation: i.rotation + 1080, isThrown: true };
-          return i;
-        }));
-        
-        // Respawn from opposite side
-        setTimeout(() => {
-          setSouvenirItems(prev => {
-            const filtered = prev.filter(i => i.id !== itemId);
-            const oppositeX = dx > 0 ? -1500 : 1500;
-            const oppositeY = dy > 0 ? -1000 : 1000;
-            const landX = (Math.random() - 0.5) * 500;
-            const landY = -Math.random() * 300 - 150;
-            
-            return [...filtered, {
-              id: Date.now() + Math.random(),
-              img: item.img,
-              startX: oppositeX,
-              startY: oppositeY,
-              targetX: landX,
-              targetY: landY,
-              rotation: item.rotation + 720,
-              isThrown: true
-            }];
-          });
-        }, 400);
-        return;
-      }
-    }
-
-    // Direct drop onto target
-    if (droppedId === 'target') {
-      if (item.img.includes('shop1')) {
-        playSound('scissors');
-        setTargetHit(true);
-        setSouvenirItems(prev => prev.map(i => {
-          if (i.id === itemId) return { ...i, isStuck: true, targetX: newX, targetY: newY };
-          return i;
-        }));
-        setTimeout(() => setTargetHit(false), 500);
-        return;
-      } else if (item.img.includes('shop2')) {
-        shatterTeacup(newX, newY, itemId);
-        return;
-      }
+      // 빠르게 던지면 화면 밖으로 날아갔다가 반대편에서 선반으로 돌아온다
+      const farX = newX + dx * 2500;
+      const farY = newY + dy * 2500;
+      setSouvenirItems(prev => prev.map(i => (i.id === itemId ? { ...i, targetX: farX, targetY: farY, rotation: i.rotation + 1080, isThrown: true } : i)));
+      setTimeout(() => {
+        setSouvenirItems(prev => {
+          const filtered = prev.filter(i => i.id !== itemId);
+          const oppositeX = dx > 0 ? -1500 : 1500;
+          const oppositeY = dy > 0 ? -1000 : 1000;
+          return [...filtered, {
+            id: Date.now() + Math.random(),
+            img: item.img,
+            startX: oppositeX,
+            startY: oppositeY,
+            targetX: (Math.random() - 0.5) * 500,
+            targetY: -Math.random() * 300 - 150,
+            rotation: item.rotation + 720,
+            isThrown: true,
+          }];
+        });
+      }, 400);
+      return;
     }
 
     if (droppedId === 'mybag') {
@@ -869,7 +791,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   };
 
   const handleDragEnd = (event: any, info: any) => {
-    const hoveredId = checkCollision(info.point.x, info.point.y);
+    const hoveredId = billTarget(info.point.x, info.point.y);
     setHoveredDropZone(null);
 
     // 가위(Scissors)를 들고 있을 때 모바일/터치 환경에서 의도치 않게 클릭 이벤트가 겹치는 것을 방지
@@ -896,6 +818,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       }
       setHasWater(true);
     } else if (id === 'barber') {
+      hairThanked.current = false;
       setHasScissors(true);
       playSound('scissors');
       
@@ -924,11 +847,10 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     } else if (id === 'souvenir') {
       playSound('cash');
       setActiveEffect(id);
-      setIsTargetUnlocked(true);
       
       const images = ['/spend/shop2.webp', '/spend/shop3.webp', '/spend/shop4.webp'];
       const newItems = [
-        { img: '/spend/shop1.webp' }, // guarantee sword
+        { img: isChild ? '/spend/shop_candy.webp' : '/spend/shop1.webp' }, // 칼은 꼭 하나 나온다. 아이에게는 칼 대신 사탕 (shop1 이 아니라서 위협에도 쓰이지 않는다)
         { img: images[Math.floor(Math.random() * images.length)] },
         { img: images[Math.floor(Math.random() * images.length)] },
         { img: images[Math.floor(Math.random() * images.length)] },
@@ -951,11 +873,9 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       playSound('electric');
     } else if (id === 'telegraph') {
       setHasTelegraph(true);
-    } else if (id === 'target') {
-      playSound('scissors');
-      setTargetHit(true);
-      setTimeout(() => setTargetHit(false), 500);
-      setTargetSpendCount(prev => prev + 1);
+      // 구입 대사가 끝난 뒤에 동료 이야기를 한다 (겹쳐서 앞 대사를 끊지 않는다)
+      // 동료 이야기를 하는 순간, 춤추는 동료 오리가 왼쪽에서 걸어 나온다
+      sayWhenFree(INTERACTION_LINES.telegraphColleague, 600, () => setColleagueIn(true));
     } else {
       setActiveEffect(id);
     }
@@ -1019,54 +939,183 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const [purserKey, setPurserKey] = useState(0);
   const purserTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [purserPose, setPurserPose] = useState<PurserPose>('idle');
-  const purserSay = (text: string, pose: PurserPose = 'idle', ms = 3600) => {
+  const purserSeq = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const purserSeqUntil = useRef(0);
+  const monologueRunning = useRef(false);
+  // 빼꼼 오리: 도박장 창이 사무장을 가릴 때 화면 가장자리에서 고개를 내민다 (처음 설명, 그리고 당첨 같은 사건에 궁금해서)
+  const [peek, setPeek] = useState(false);
+  const casinoToldRef = useRef(false);
+  const peekTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const peekBusy = useRef(false);
+  useEffect(() => () => peekTimers.current.forEach(clearTimeout), []);
+  const purserSay = (text: string, pose: PurserPose = 'idle', ms = 3600, keepSeq = false) => {
+    // 숨은 독백이 끝나기 전에는 다른 대사가 끼어들지 못한다 (업적 "오리무중"은 독백을 끝까지 들어야 얻는다)
+    if (!keepSeq && Date.now() < purserSeqUntil.current) return;
     if (purserTimer.current) clearTimeout(purserTimer.current);
     setPurserLineText(text);
     setPurserPose(pose);
     setPurserKey((k) => k + 1);
+    // 글자가 서서히 나오므로, 다 나온 뒤 읽을 시간까지 넉넉히 둔다. 1.5초 안팎의 짧은 즉발 대사(총성 직전)는 그대로 둔다
+    const showMs = ms < 2000 ? ms : purserLineMs(text, ms);
+    purserBusyUntil.current = Date.now() + showMs;
     purserTimer.current = setTimeout(() => {
       setPurserLineText(null);
       setPurserPose('idle');
-    }, ms);
+    }, showMs);
+  };
+  // 지금 말하는 대사가 끝난 뒤에 다음 대사를 한다 (끼어들어 끊지 않는다). 그 사이 다른 대사가 또 들어오면 그 대사가 끝나길 기다린다
+  const purserBusyUntil = useRef(0);
+  const sayWhenFree = (args: readonly [string, PurserPose, number], earliestMs = 0, onSay?: () => void) => {
+    const tryIt = () => {
+      const wait = purserBusyUntil.current - Date.now();
+      if (wait > 0) { purserSeq.current.push(setTimeout(tryIt, wait + 350)); return; }
+      purserSay(args[0], args[1], args[2]);
+      onSay?.();
+    };
+    purserSeq.current.push(setTimeout(tryIt, earliestMs));
   };
   useEffect(() => {
-    const t = setTimeout(() => purserSay(purserGreeting(runIndex), 'greet', 4800), 1200);
+    const t = setTimeout(() => {
+      // 세 방의 오리를 모두 찾은 손님은 처음 만날 때 한 번 그 이야기를 듣는다
+      if (ducksAllFoundUntold()) {
+        markDucksTold();
+        purserSay(PURSER_DUCKS, 'think', 6800);
+        return;
+      }
+      purserSay(purserGreeting(runIndex), runIndex === 1 ? 'hips' : 'greet', 4800);
+    }, 1200);
+    const seqTimers = purserSeq.current; // 배열은 바뀌지 않고 항목만 쌓인다
     return () => {
       clearTimeout(t);
       if (purserTimer.current) clearTimeout(purserTimer.current);
+      seqTimers.forEach(clearTimeout);
+      // 독백 도중에 화면을 떠나면 끝까지 듣지 못한 것이므로 다음에 다시 들을 수 있게 되돌린다
+      if (monologueRunning.current) purserMonologueReset();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 여러 줄을 이어서 말한다 (숨은 독백). 끝날 때까지 다른 대사가 끼어들지 않는다
+  const purserSayAll = (first: { line: string; pose: PurserPose }, follow: { line: string; pose: PurserPose }[]) => {
+    purserSay(first.line, first.pose, 4200);
+    let at = purserLineMs(first.line, 4200) + 300;
+    follow.forEach((l) => {
+      const when = at;
+      purserSeq.current.push(setTimeout(() => purserSay(l.line, l.pose, 4200, true), when));
+      at += purserLineMs(l.line, 4200) + 300;
+    });
+    purserSeqUntil.current = Date.now() + at;
+    monologueRunning.current = true;
+    // 마지막 줄까지 다 말한 뒤에만 업적을 준다
+    purserSeq.current.push(setTimeout(() => { monologueRunning.current = false; unlock('serious-talk'); }, at - 300));
+  };
+
+  // 이발소: 오리를 가리던 머리카락을 잘라 앞이 보이게 되면 사무장이 고마워한다 (구입 한 번에 한 번)
+  const hairBlocked = useRef(false);
+  const hairThanked = useRef(false);
+  const hairThanksTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const d = document.querySelector('[data-duck]');
+    if (hairs.length === 0 || !d) { hairBlocked.current = false; return; }
+    const r = d.getBoundingClientRect();
+    if (r.height === 0) return;
+    const covers = hairs.some((h) => {
+      const x = (h.xPercent / 100) * window.innerWidth;
+      return x < r.right && x + h.width > r.left && h.cutY > r.top + r.height * 0.35;
+    });
+    if (covers) hairBlocked.current = true;
+    else if (hairBlocked.current && !hairThanked.current) {
+      hairBlocked.current = false;
+      hairThanked.current = true;
+      // 머리카락이 떨어지는 동안은 기다린다. (마법 머리카락이 매 프레임 hairs 를 바꾸므로, 효과가 다시 돌아도 이 타이머는 지우지 않는다)
+      hairThanksTimer.current = setTimeout(() => purserSay(PURSER_HAIR_CLEAR, 'bow', 4600), 900);
+    }
+  }, [hairs]);
+  useEffect(() => () => { if (hairThanksTimer.current) clearTimeout(hairThanksTimer.current); }, []);
+
   const handleDrop = (id: string) => {
     if (billsAvailable <= 0) return;
 
-    if (id === 'mybag') {
+    if (id === 'duck') {
+      // 오리에게 팁: 가방에도 시설에도 쓰이지 않고 오리의 주머니로 간다
+      if (duckReturned >= 0) {
+        // 이미 한 번 돌려준 뒤에는 받지 않는다: 지폐는 쓰이지 않고 돌아온다
+        const r = duckReturned + 1;
+        setDuckReturned(r);
+        playSound('snap');
+        purserSay(purserRefuseTip(r), 'hips', 3800);
+        return;
+      }
+      const n = duckGiven + 1;
+      setBillsAvailable(prev => prev - 1);
+      setDuckGiven(n);
+      playStamp();
+      purserSay(purserTip(n), n >= 5 ? 'hips' : 'receive', 4200);
+      if (n >= 5) {
+        // 다섯 장을 다 받으면 발끈하고는 전부 돌려준다 (업적은 돌려주는 순간)
+        setTimeout(() => {
+          setBillsAvailable(prev => prev + n);
+          setDuckGiven(0);
+          setDuckReturned(0);
+          playStamp();
+          purserSay(PURSER_RETURN, 'bow', 4200);
+          unlock('duck-beggar');
+        }, purserLineMs(purserTip(n), 4200) - 600);
+      }
+    } else if (id === 'mybag') {
       setBillsAvailable(prev => prev - 1);
       setBillsInBag(prev => prev + 1);
       playSound('bag');
-      purserSay(billsAvailable === 1 ? purserLast(runIndex, true) : purserLine('mybag', billsInBag), billsAvailable === 1 ? 'bow' : 'stamp');
+      purserSay(billsAvailable === 1 ? purserLast(runIndex, true) : purserLine('mybag', billsInBag), billsAvailable === 1 ? 'bow' : 'shrug'); // 아낀 돈 앞에서는 아쉬운 듯 어깨를 으쓱한다
+    } else if (id === 'gamble' && playerAge !== null && playerAge < 18) {
+      // 미성년자는 도박장에 들이지 않는다: 지폐는 쓰이지 않고 돌아온다
+      playSound('snap');
+      if (playerAge < 12) {
+        // 아이가 계속 시도하면 경고하고, 세 번째에는 도박장을 선반에서 치워 버린다
+        kidGambleTries.current += 1;
+        const t = kidGambleTries.current;
+        if (t === 1) purserSay('…아이에게는 절망을 팔지 않소. 사탕이라면 저쪽 기념품점이오.', 'refuse', 4600);
+        else if (t === 2) purserSay('…또요? 한 번만 더 내밀면, 그 시설을 치워 버리겠소.', 'refuse', 4200);
+        else if (t > 3) purserSay('…문은 닫는다고 했소. 같은 말을 세 번 하게 하지 마시오.', 'hips', 3800);
+        else {
+          purserSay('…세 번째요. 이 문은 닫겠소. 아이는 사탕이나 고르시오.', 'stamp', 4600);
+          // 말이 나온 뒤 도박장이 선반에서 사라진다. 가운데 시설이 달라지지 않게 번호를 하나 당긴다
+          setTimeout(() => { setFacIndex((i) => (i > 0 ? i - 1 : 0)); setGambleBanned(true); }, 1600);
+        }
+      } else {
+        purserSay('…미성년자요. 패가망신은 어른들의 몫이오. 다른 시설을 권하겠소.', 'refuse', 4600);
+      }
     } else if (id === 'gamble') {
+      purserMarkFacility('gamble');
       // Don't consume bill immediately, open modal
       setIsGamblingMode(true);
-      purserSay(purserLine('gamble', gambleCount), 'refuse');
+      // 도박장 창이 오리를 가리므로, 처음 들어갈 때만 화면 가장자리에서 고개를 내밀어 설명하고 들어간다. 그 뒤로는 말하지 않는다
+      if (!casinoToldRef.current) {
+        casinoToldRef.current = true;
+        peekBusy.current = true;
+        peekTimers.current.forEach(clearTimeout);
+        const explain = purserLine('gamble', 0);
+        const t1 = purserLineMs(explain, 4800);
+        const bye = '그럼 즐거운 시간 보내시오.';
+        peekTimers.current = [
+          setTimeout(() => setPeek(true), 600), // 창이 다 자리 잡은 뒤에 틀 가장자리를 재야 한다
+          setTimeout(() => purserSay(explain, 'refuse', 4800), 1500),
+          setTimeout(() => purserSay(bye, 'bow', 3000), 1500 + t1 + 200),
+          setTimeout(() => { setPeek(false); peekBusy.current = false; }, 1500 + t1 + 200 + purserLineMs(bye, 3000) + 200),
+        ];
+      }
     } else {
       // Regular facilities
+      purserMarkFacility(id);
       setBillsAvailable(prev => prev - 1);
       setSpentOn(prev => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
       triggerVFX(id);
-      purserSay(billsAvailable === 1 ? purserLast(runIndex, false) : purserLine(id, spentOn[id] ?? 0), billsAvailable === 1 ? 'calc' : (spentOn[id] ?? 0) > 0 ? 'calc' : 'stamp');
+      purserSay(billsAvailable === 1 ? purserLast(runIndex, false) : ((spentOn[id] ?? 0) === 1 ? purserFacilityLine(id, persona) : null) ?? purserLine(id, spentOn[id] ?? 0), billsAvailable === 1 ? 'calc' : (spentOn[id] ?? 0) > 0 ? 'calc' : 'stamp');
     }
   };
 
-  const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePick = (distance: number) => {
     if (gamblingState !== 'idle') return;
-    
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    // 종이 안쪽 영역 기준으로 환산한다
-    const inner = (x / rect.width - PAPER.l / 100) / (1 - (PAPER.l + PAPER.r) / 100);
-    const distance = Math.round(480 + (Math.max(0, Math.min(1, inner)) * 70));
     setGamblingGuess(distance);
     setSwordHit((n) => n + 1);
     playSound('snap'); // 칼이 꽂히는 소리
@@ -1074,8 +1123,10 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
 
   useEffect(() => () => gambleTimers.current.forEach(clearTimeout), []);
 
-  const handleGambleSubmit = () => {
+  // stake: 걸 지폐 수. 이기면 배당(장당 순이익)도 그만큼 곱해지고, 지면 건 만큼 잃는다 (기댓값은 장수와 상관없이 같다)
+  const handleGambleSubmit = (stakeIn = 1) => {
     if (billsAvailable <= 0 || gamblingState !== 'idle') return;
+    const stake = Math.max(1, Math.min(stakeIn, billsAvailable));
 
     const tier = GAMBLE_TIERS.find((t) => t.id === gamblingTier)!;
     const streakBefore = gamblingStreak;
@@ -1093,16 +1144,27 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     gambleTimers.current.push(setTimeout(() => {
       const error = Math.abs(gamblingGuess - target);
       const won = error <= tier.tol;
-      const isExact = won && error <= 1;
+      // 불즈아이: 배가 칼끝(칩) ±1해리 안에 멈추면 받는 돈이 두 배
+      const isExact = won && error <= BULLSEYE_TOL;
+      const net = (tier.net + streakBefore) * stake * (isExact ? BULLSEYE_MULT : 1); // 연승할수록 장당 보상이 1장씩 늘어난다
 
       setGamblingResult(isExact ? 'exact' : (won ? 'win' : 'lose'));
-      if (won) { setWinFx({ key: Date.now(), net: tier.net + streakBefore, exact: isExact }); gambleTimers.current.push(setTimeout(() => setWinFx(null), 4600)); }
+      if (won) {
+        setWinFx({ key: Date.now(), net, exact: isExact }); gambleTimers.current.push(setTimeout(() => setWinFx(null), 7000));
+        // 시끌벅적한 소리에 궁금해진 사무장이 화면 가장자리에서 빼꼼 내다본다 (말은 하지 않는다)
+        if (!peekBusy.current) {
+          peekBusy.current = true;
+          peekTimers.current.push(setTimeout(() => setPeek(true), 900));
+          peekTimers.current.push(setTimeout(() => { setPeek(false); peekBusy.current = false; }, 900 + (isExact ? 5200 : 3800)));
+        }
+      }
       setGamblingState('result');
 
       if (won) {
-        const net = tier.net + streakBefore; // 연승할수록 보상이 1장씩 늘어난다
         setGamblingGain(net);
         setGamblingStreak(streakBefore + 1);
+        // 5연승 업적 (당첨 연출이 지나간 뒤 알린다)
+        if (streakBefore + 1 >= HOT_STREAK_GOAL) gambleTimers.current.push(setTimeout(() => unlock('hot-streak'), 1400));
         playSound('jackpot');
         confetti({
           particleCount: isExact ? 300 : 120 + Math.min(net, 12) * 12,
@@ -1113,10 +1175,14 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         setBillsAvailable(prev => prev + net);
         setTotalEarnedBills(prev => prev + net);
       } else {
-        setGamblingGain(-1);
+        setGamblingGain(-stake);
         setGamblingStreak(0);
+        lostGamble.current = true;
         playSound('lose');
-        setBillsAvailable(prev => prev - 1);
+        setBillsAvailable(prev => prev - stake);
+        // 도박장에서 가진 지폐를 전부 잃으면 업적
+        if (billsAvailable - stake <= 0) gambleTimers.current.push(setTimeout(() => unlock('house-always-wins'), 1400));
+        if (billsAvailable - stake <= 0 && suiteBought) gambleTimers.current.push(setTimeout(() => unlock('suite-bust'), 2200)); // 스위트룸으로 옮긴 뒤 전부 잃었다
       }
     }, REVEAL_MS));
   };
@@ -1124,12 +1190,24 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
   const handleGambleCancel = () => {
     gambleTimers.current.forEach(clearTimeout);
     gambleTimers.current = [];
+    // 창을 닫으면 빼꼼 오리도 들어가고 말풍선도 거둔다
+    peekTimers.current.forEach(clearTimeout);
+    peekTimers.current = [];
+    peekBusy.current = false;
+    setPeek(false);
+    if (purserTimer.current) clearTimeout(purserTimer.current);
+    setPurserLineText(null);
     setIsGamblingMode(false);
     setGamblingState('idle');
     setGamblingStreak(0);
   };
 
-  const closeGambleResult = handleGambleCancel;
+  const closeGambleResult = () => {
+    // 가진 지폐를 모두 잃고 나오면 창이 닫힌 뒤 사무장이 한마디 한다
+    const busted = gamblingResult === 'lose' && billsAvailable <= 0;
+    handleGambleCancel();
+    if (busted) sayWhenFree(purserBusted(billsInBag > 0), 700);
+  };
 
   // 이기고 나서 한 번 더: 같은 창에서 바로 다시 건다
   const handleGambleAgain = () => {
@@ -1152,8 +1230,33 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     if (!hasLightningAbility) return;
 
     const id = Date.now() + Math.random();
-    setLightningStrikes(prev => [...prev, { id, x: e.clientX, y: e.clientY }]);
+    // 전신기 위를 누르면 키를 두드리는 것이라 번개가 치지 않는다. 가까운 곳을 누르면 번개가 금속인 전신기로 튄다(피뢰침처럼)
+    let sx = e.clientX; let sy = e.clientY; let toMachine = false;
+    const mEl = hasTelegraph ? document.getElementById('morse-machine-image') : null;
+    if (mEl) {
+      const mr = mEl.getBoundingClientRect();
+      if (e.clientX >= mr.left && e.clientX <= mr.right && e.clientY >= mr.top && e.clientY <= mr.bottom) return;
+      if (e.clientX >= mr.left - 170 && e.clientX <= mr.right + 170 && e.clientY >= mr.top - 170 && e.clientY <= mr.bottom + 170) {
+        sx = mr.left + mr.width * 0.62; sy = mr.top + mr.height * 0.28; toMachine = true;
+      }
+    }
+    setLightningStrikes(prev => [...prev, { id, x: sx, y: sy }]);
+    playThunder();
+    if (toMachine) setTimeout(() => shortCircuit(), 350);
+    document.querySelectorAll('[data-souvenir-id]').forEach(el => {
+      const r = el.getBoundingClientRect();
+      if (e.clientX >= r.left - 18 && e.clientX <= r.right + 18 && e.clientY >= r.top - 18 && e.clientY <= r.bottom + 18) zapSouvenir(Number(el.getAttribute('data-souvenir-id')));
+    });
     
+    // 오리 사무장이 번개를 맞으면: 감전된 모습이 되고, 칼과 같은 위협이 따른다
+    const purserEl = document.querySelector('[data-duck]');
+    if (purserEl) {
+      const pr = purserEl.getBoundingClientRect();
+      if (e.clientX >= pr.left - 20 && e.clientX <= pr.right + 20 && e.clientY >= pr.top - 20 && e.clientY <= pr.bottom + 20) {
+        setPurserShock((n) => n + 1);
+        setTimeout(() => onKnifeAtDuck('lightning'), 350);
+      }
+    }
     // Check lightning collision with duck and bubble
     if (duckRef.current) {
       const rect = duckRef.current.getBoundingClientRect();
@@ -1161,6 +1264,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         setIsDuckDamaged(true);
       }
     }
+    if (hasWater && e.clientY > window.innerHeight * 0.85) zapWater(e.clientX); // 수영장 물에 번개
     if (bubbleRef.current) {
       const rect = bubbleRef.current.getBoundingClientRect();
       // Increase hit area slightly for the bubble since it's round
@@ -1172,7 +1276,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
     // Auto clear the strike after animation completes (600ms)
     setTimeout(() => {
       setLightningStrikes(prev => prev.filter(strike => strike.id !== id));
-    }, 600);
+    }, 1100);
   };
 
   // 내 가방(저축 드롭 영역): 지폐 아래에 둔다. 좁은 화면에서는 예전 자리(오른쪽)에 둔다.
@@ -1201,6 +1305,8 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       <div
         ref={inline ? billStackRef : undefined}
         className={inline ? 'relative h-44 w-56 shrink-0 flex justify-center items-center z-50 pointer-events-none' : 'relative w-full h-32 flex justify-center items-center mt-12 z-50 pointer-events-none'}
+        // 도박장이 열려 있는 동안에는 지폐 더미를 숨긴다 (도박장 창 위로 비쳐 보이지 않게. 보유 지폐는 도박장이 보여 준다)
+        style={{ visibility: isGamblingMode ? 'hidden' : undefined }}
       >
         {Array.from({ length: displayCount }).map((_, i) => (
           <motion.div
@@ -1230,15 +1336,6 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         {/* 지폐를 다 쓰면 지폐가 있던 자리에 선택 완료 버튼이 나온다 */}
         {billsAvailable === 0 && (
           <div className="absolute inset-0 z-[150] flex flex-col items-center justify-center gap-3 pointer-events-auto">
-            {targetSpendCount > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-red-400 font-bold text-xl drop-shadow-md text-center"
-              >
-                이상한 소비 습관을 가지셨네요
-              </motion.div>
-            )}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <ClassicButton onClick={handleSubmitFinal} className={inline ? 'px-8 text-base' : 'px-12 text-base'}>선택 완료</ClassicButton>
             </motion.div>
@@ -1249,12 +1346,57 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             x{billsAvailable}
           </div>
         )}
+        {/* 870장 이상: 스위트룸으로 옮기기 (870장을 낸다) */}
+        {canBuySuite && !isGamblingMode && (
+          <motion.button
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            onClick={(e) => { e.stopPropagation(); buySuite(); }}
+            className="absolute left-1/2 -translate-x-1/2 -bottom-12 z-[150] pointer-events-auto whitespace-nowrap rounded-full border-2 border-amber-200/80 bg-gradient-to-b from-amber-400 to-amber-600 px-5 py-2 text-sm font-black tracking-wide text-amber-950 shadow-[0_4px_0_#7a4a0a]"
+          >
+            스위트룸으로 옮기기 (지폐 {SUITE_BILLS}장)
+          </motion.button>
+        )}
       </div>
     );
   };
 
+  // 870장을 처음 모으면 사무장이 스위트룸을 권한다 (버튼이 같이 나온다)
+  useEffect(() => {
+    if (canBuySuite && !suiteOfferedRef.current) {
+      suiteOfferedRef.current = true;
+      sayWhenFree(['…870장이라. 파를러 스위트의 편도 값이오. 원하시면 방을 옮겨 드리겠소, 손님.', 'bow', 4800], 900);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canBuySuite]);
+
+  // 870장을 내고 스위트룸으로 옮긴다
+  const buySuite = () => {
+    if (!canBuySuite || billsAvailable < SUITE_BILLS) return;
+    setBillsAvailable((prev) => prev - SUITE_BILLS);
+    setSuiteBought(true);
+    playStamp();
+    unlock('parlour-suite');
+    sayWhenFree(['…파를러 스위트, 편도 870장. 짐은 이미 옮겨 놓았소. 편히 쉬시오.', 'stamp', 4800], 700);
+  };
+
   return (
     <div ref={containerRef} onClick={handleGlobalClick} className="w-full relative min-h-screen py-12 px-6 overflow-hidden flex flex-col items-center">
+
+      {/* 870장 이상: 배경이 스위트룸으로 천천히 바뀐다 (장면 배경 위, 시설과 글 아래) */}
+      <AnimatePresence>
+        {suiteOn && (
+          <motion.div
+            key="suite-bg"
+            aria-hidden
+            initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 2.2, ease: 'easeInOut' }}
+            className="pointer-events-none fixed inset-0 z-[1] bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url('${SUITE_BG}')` }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/55" />
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* SVG Distortion Filters */}
       <svg className="w-0 h-0 absolute">
@@ -1286,35 +1428,6 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             >
               + 지폐 5장 추가
             </button>
-            <div className="font-bold mb-1 text-amber-400">Morse Hit Offset (%)</div>
-            <div className="flex gap-2 items-center mb-1">
-              <input 
-                type="range" min="0" max="100" 
-                value={morseHitOffsetPercent}
-                onChange={e => setMorseHitOffsetPercent(Number(e.target.value))}
-                className="w-full"
-              />
-              <span className="w-8 text-right">{morseHitOffsetPercent}%</span>
-            </div>
-          </div>
-          
-          <div className="mb-4 border-b-2 border-amber-500 pb-2">
-            <div className="font-bold mb-1 text-amber-400">Target Bucket Setup</div>
-            {['x', 'y', 'rotate', 'scale'].map((axis) => (
-              <div key={axis} className="flex gap-2 items-center mb-1">
-                <span className="w-12">{axis.toUpperCase()}</span>
-                <input 
-                  type="range" 
-                  min={axis === 'scale' ? "0" : "-360"} 
-                  max={axis === 'scale' ? "3" : "360"} 
-                  step={axis === 'scale' ? "0.1" : "1"}
-                  value={(bucketOffset as any)[axis]} 
-                  onChange={e => setBucketOffset(prev => ({ ...prev, [axis]: Number(e.target.value) }))}
-                  className="w-full"
-                />
-                <span className="w-8 text-right">{(bucketOffset as any)[axis]}</span>
-              </div>
-            ))}
           </div>
 
           <div className="mb-4 border-b-2 border-amber-500 pb-2">
@@ -1438,59 +1551,6 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             </div>
           ))}
 
-          <div className="mb-2 border-b border-gray-700 pb-2">
-            <div className="font-bold mb-1 text-amber-400">Gamble Modal UI</div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Width %</label>
-              <input type="range" min="50" max="100" value={gmbWidth} onChange={e => setGmbWidth(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbWidth}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">MaxW(rem)</label>
-              <input type="range" min="20" max="60" value={gmbMaxWidth} onChange={e => setGmbMaxWidth(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbMaxWidth}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Pad Top</label>
-              <input type="range" min="0" max="10" step="0.25" value={gmbPadTop} onChange={e => setGmbPadTop(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbPadTop}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Pad Bot</label>
-              <input type="range" min="0" max="10" step="0.25" value={gmbPadBottom} onChange={e => setGmbPadBottom(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbPadBottom}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Pad X</label>
-              <input type="range" min="0" max="10" step="0.25" value={gmbPadX} onChange={e => setGmbPadX(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbPadX}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Title MB</label>
-              <input type="range" min="0" max="5" step="0.25" value={gmbTitleMb} onChange={e => setGmbTitleMb(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbTitleMb}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Text MB</label>
-              <input type="range" min="0" max="5" step="0.25" value={gmbTextMb} onChange={e => setGmbTextMb(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbTextMb}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Track MB</label>
-              <input type="range" min="0" max="5" step="0.25" value={gmbTrackMb} onChange={e => setGmbTrackMb(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbTrackMb}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Tr Width</label>
-              <input type="range" min="30" max="100" step="1" value={gmbTrackWidth} onChange={e => setGmbTrackWidth(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbTrackWidth}</span>
-            </div>
-            <div className="flex gap-2 items-center mb-1">
-              <label className="w-16">Tr Height</label>
-              <input type="range" min="1" max="10" step="0.5" value={gmbTrackHeight} onChange={e => setGmbTrackHeight(Number(e.target.value))} className="w-full" />
-              <span className="w-8 text-right">{gmbTrackHeight}</span>
-            </div>
-          </div>
           <button 
             className="mt-2 bg-blue-600 w-full py-1 rounded"
             onClick={() => {
@@ -1656,18 +1716,6 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         </motion.div>
       )}
 
-      {/* Background Dim for Modal */}
-      <AnimatePresence>
-        {isGamblingMode && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 z-[100]"
-          />
-        )}
-      </AnimatePresence>
-
       {/* Permanent Giant Bubble */}
       {hasGiantBubble && (
         <motion.div
@@ -1796,47 +1844,9 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         />
       )}
 
-      {/* Permanent Global Lightning Strikes on Click */}
+      {/* 클릭한 자리에 떨어지는 번개: 매번 모양이 다른 실제 번개처럼 */}
       {lightningStrikes.map(strike => (
-        <div key={strike.id} className="fixed inset-0 pointer-events-none z-[100]">
-          {/* Main Bolt */}
-          <motion.svg
-            className="absolute top-0"
-            style={{ 
-              left: strike.x - 50,
-              width: '100px',
-              height: `${strike.y}px` 
-            }}
-            viewBox={`0 0 100 1000`}
-            preserveAspectRatio="none"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 0, 1, 0, 0.8, 0] }}
-            transition={{ duration: 0.6, times: [0, 0.1, 0.2, 0.3, 0.4, 0.6, 1] }}
-          >
-            <path
-              d="M 50,0 L 20,150 L 70,300 L 10,450 L 80,600 L 30,750 L 60,900 L 50,1000"
-              stroke="#fbbf24"
-              strokeWidth="6"
-              fill="none"
-              style={{ filter: 'drop-shadow(0 0 10px #fbbf24) drop-shadow(0 0 20px #fef08a)' }}
-            />
-            <path
-              d="M 50,0 L 70,200 L 20,400 L 90,600 L 10,800 L 50,1000"
-              stroke="#ffffff"
-              strokeWidth="3"
-              fill="none"
-              style={{ filter: 'drop-shadow(0 0 5px #ffffff)' }}
-            />
-          </motion.svg>
-          
-          {/* White Screen Flash */}
-          <motion.div
-            className="absolute inset-0 bg-white mix-blend-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.8, 0, 0.5, 0] }}
-            transition={{ duration: 0.4 }}
-          />
-        </div>
+        <LightningBolt key={strike.id} x={strike.x} y={strike.y} w={typeof window !== 'undefined' ? window.innerWidth : 1280} h={typeof window !== 'undefined' ? window.innerHeight : 720} />
       ))}
 
       {/* Header */}
@@ -1870,9 +1880,19 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             {isMd && renderBag(true)}
           </div>
           <FacilityWheel
-            items={FACILITIES}
+            items={facilities}
             index={facIndex}
-            onIndex={(i) => { setFacIndex(i); purserSay(purserIntro(FACILITIES[i].id), purserIntroPose(FACILITIES[i].id), 4800); }}
+            onIndex={(i) => {
+              setFacIndex(i);
+              // 쉬지 않고(10초 안 간격) 계속 돌리면 소개 대신 사무장이 한마디 한다
+              const now = Date.now();
+              wheelSpins.current = now - wheelLastAt.current < 10000 ? wheelSpins.current + 1 : 1;
+              wheelLastAt.current = now;
+              const w = purserWheelLine(wheelSpins.current);
+              if (w) purserSay(w.line, w.pose, 4800);
+              else if (billsAvailable <= 0) purserSay(purserBroke(), 'palms', 4200); // 돈이 없는데 둘러볼 때
+              else purserSay(purserIntro(facilities[i].id, lostGamble.current, isChild), purserIntroPose(facilities[i].id), 4800);
+            }}
             hoveredId={hoveredDropZone}
             activeEffect={activeEffect}
             setRef={(id, el) => { dropZoneRefs.current[id] = el; }}
@@ -1884,10 +1904,14 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                       <motion.img
                         key={item.id}
                         src={item.img}
+                        data-no-wheel
+                        data-souvenir-id={item.id}
+                        style={{ filter: charged[item.id] ? 'drop-shadow(0 0 8px #bcd0ff) drop-shadow(0 0 20px #6f93ff) brightness(1.5)' : undefined }}
                         drag={true}
                         dragMomentum={false}
                         onDragStart={() => {
                           if (item.img.includes('shop1') || item.img.includes('shop2')) setHeldKnife(item.id); // 칼과 찻잔은 쥐고 있는 동안 빙빙 돈다
+                          if (item.isFloating) setSouvenirItems(prev => prev.map(i => i.id === item.id ? { ...i, isFloating: false } : i));
                           if (item.isStuck) {
                             setSouvenirItems(prev => prev.map(i => i.id === item.id ? { ...i, isStuck: false } : i));
                           }
@@ -1900,7 +1924,12 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                           x: item.targetX,
                           y: item.targetY,
                           rotate: [item.rotation - 15, item.rotation + 15, item.rotation],
-                        } : { 
+                        } : item.isFloating ? {
+                          scale: 1,
+                          x: item.targetX,
+                          y: [item.targetY - 5, item.targetY + 7, item.targetY - 5],
+                          rotate: [item.rotation - 7, item.rotation + 7, item.rotation - 7],
+                        } : {
                           scale: 1,
                           x: item.targetX,
                           y: item.targetY,
@@ -1908,7 +1937,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                         }}
                         whileHover={item.isStuck ? {} : { scale: 1.15 }}
                         whileDrag={item.isStuck ? {} : { scale: 1.25, zIndex: 300 }}
-                        transition={heldKnife === item.id ? { rotate: { duration: 0.55, repeat: Infinity, ease: 'linear' }, default: { duration: 0.15 } } : item.isHit ? { duration: 0.4, type: "tween" } : item.isThrown ? { duration: 0.2, ease: "linear" } : { duration: 0.7, type: "spring", bounce: 0.4 }}
+                        transition={item.isFloating ? { y: { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }, rotate: { duration: 3.4, repeat: Infinity, ease: 'easeInOut' }, default: { duration: 0.5 } } : heldKnife === item.id ? { rotate: { duration: 0.55, repeat: Infinity, ease: 'linear' }, default: { duration: 0.15 } } : item.isHit ? { duration: 0.4, type: "tween" } : item.isThrown ? { duration: 0.2, ease: "linear" } : { duration: 0.7, type: "spring", bounce: 0.4 }}
                         className={`absolute top-1/2 left-1/2 -ml-12 -mt-12 w-24 h-24 object-contain pointer-events-auto ${item.isStuck ? 'z-[100]' : 'cursor-grab active:cursor-grabbing z-[200]'}`}
                       />
                     ))}
@@ -1936,123 +1965,13 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   </AnimatePresence>
           </FacilityWheel>
           {winFx && <WinShower key={winFx.key} net={winFx.net} exact={winFx.exact} />}
-          <DuckPurser line={purserLineText} lineKey={purserKey} pose={purserPose} armed={duckArmed} firing={duckFiring} onPoke={() => { const p = purserPoke(runIndex); purserSay(p.line, p.pose, 3800); }} />
+          <DuckPurser line={purserLineText} lineKey={purserKey} pose={purserPose} shock={purserShock} peek={peek} glow={hoveredDropZone === 'duck'} onPoke={() => { if (Date.now() < purserSeqUntil.current) return; const p = purserPoke(runIndex); if (p.follow) purserSayAll(p, p.follow); else purserSay(p.line, p.pose, 3800); }} />
         </div>
       </div>
 
       {/* Fixed Interactive Elements Container */}
         <div className="fixed bottom-8 w-full max-w-6xl px-8 flex justify-between items-end z-20 pointer-events-none" style={{ left: '50%', transform: 'translateX(-50%)' }}>
           
-          {/* Target (Left) */}
-          <AnimatePresence>
-            {isTargetUnlocked && (
-              <motion.div
-                initial={{ opacity: 0, y: 100, scale: 0.3 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 100, scale: 0.3 }}
-                transition={{ type: "spring", bounce: 0.5 }}
-              >
-                <motion.div 
-                  ref={el => { dropZoneRefs.current['target'] = el; }}
-                  onClick={handleTargetClick}
-                  className={`relative w-64 md:w-96 flex flex-col items-center justify-end gap-2 select-none pointer-events-auto cursor-pointer`}
-                  style={{ x: targetWalkX }}
-                  animate={{
-                    scaleX: targetState === 'retreating' ? -1 : 1,
-                    scale: targetHit ? [1, 1.2, 0.9, 1] : hoveredDropZone === 'target' ? 1.1 : 1,
-                  }}
-                  transition={{ scaleX: { type: 'tween', duration: 0.15 }, scale: { duration: 0.5 } }}
-                  draggable={false}
-                >
-                  {/* Waddling wrapper using pure CSS — no Framer Motion rotate so it can cleanly stop */}
-                  <div
-                    className={[
-                      'relative w-full flex flex-col items-center',
-                      !targetHit && (targetState === 'zombie' || targetState === 'zombie_bucket') ? 'target-waddle' : '',
-                      !targetHit && targetState === 'retreating' ? 'target-waddle-fast' : '',
-                    ].join(' ')}
-                  >
-                    {/* Question Mark Pop-up */}
-                    <AnimatePresence>
-                      {showQuestionMark && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0, y: 20, scaleX: targetState === 'retreating' ? -1 : 1 }}
-                          animate={{ opacity: 1, scale: 1, y: -40, scaleX: targetState === 'retreating' ? -1 : 1 }}
-                          exit={{ opacity: 0, scale: 0 }}
-                          className="absolute -top-16 right-0 text-6xl font-black text-red-500 drop-shadow-[0_0_10px_white] z-20"
-                        >
-                          ?
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* Bucket Overlay */}
-                    <AnimatePresence>
-                      {targetState === 'zombie_bucket' && (
-                        <motion.img 
-                          initial={{ y: -200, opacity: 0 }}
-                          animate={{ y: bucketOffset.y, x: bucketOffset.x, rotate: bucketOffset.rotate, scale: bucketOffset.scale, opacity: 1 }}
-                          exit={{ y: 300, opacity: 0, rotate: 180 }}
-                          src="/spend/bucket.webp"
-                          className="absolute pointer-events-none z-10"
-                          style={{ top: '0%', left: '50%' }}
-                        />
-                      )}
-                    </AnimatePresence>
-
-                    <img 
-                      src={targetState === 'normal' ? "/spend/target.webp" : "/spend/target_zombified.webp"} 
-                      alt="Target" 
-                      draggable={false}
-                      className="w-full h-auto drop-shadow-xl pointer-events-none"
-                    />
-                    
-                    {/* Stuck Souvenirs (Knives, etc.) */}
-                    {souvenirItems.filter(i => i.isStuck).map(item => (
-                      <img 
-                        key={item.id}
-                        src={item.img}
-                        className="absolute w-12 h-12 md:w-16 md:h-16 object-contain pointer-events-none z-20"
-                        style={{
-                          left: `calc(${debugHitX}% + ${item.stuckX}px)`,
-                          top: `calc(${debugHitY}% + ${item.stuckY}px)`,
-                          transform: `translate(-50%, -50%) rotate(${item.rotation}deg)`,
-                          filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.5))'
-                        }}
-                      />
-                    ))}
-                    <div className="font-bold text-red-300 text-lg md:text-xl z-10 bg-black/50 px-4 py-2 rounded pointer-events-none opacity-0 select-none">과녁</div>
-                  </div>
-                  
-                  {showDebug && (
-                    <div 
-                      className="absolute border-4 border-red-500 bg-red-500/30 rounded-full pointer-events-none z-50 shadow-[0_0_10px_red]"
-                      style={{
-                        width: `${debugHitRadius * 2 * 100}%`,
-                        aspectRatio: '1 / 1',
-                        top: `${debugHitY}%`,
-                        left: `${debugHitX}%`,
-                        transform: 'translate(-50%, -50%)'
-                      }}
-                    />
-                  )}
-
-                  {/* Morse Hit Plane Debug Line */}
-                  {showDebug && (
-                    <div 
-                      className="absolute top-0 bottom-0 w-1 bg-yellow-400 z-[60] pointer-events-none"
-                      style={{
-                        left: `${morseHitOffsetPercent}%`,
-                        transform: 'translateX(-50%)',
-                        boxShadow: '0 0 10px yellow'
-                      }}
-                    />
-                  )}
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* 내 가방: 좁은 화면에서만 예전 자리(오른쪽)에 둔다. 넓은 화면에서는 지폐 아래(왼쪽 열) */}
           {!isMd && renderBag(false)}
       </div>
@@ -2081,278 +2000,36 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
         </button>
       )}
 
-      {/* Gambling Modal */}
+      {/* 도박장 창 뒤에서 내다보는 오리 (창과 같은 쌓임 맥락에 있어야 창 뒤로 숨는다) */}
+      <PurserPeek show={peek} />
+
+      {/* 선상 도박장 (money/CasinoModal) */}
       <AnimatePresence>
         {isGamblingMode && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 50 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 50 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[110] flex flex-col items-center w-full"
-            style={{ 
-              width: `${gmbWidth}%`,
-              maxWidth: `${gmbMaxWidth}rem`,
-            }}
-          >
-            {/* Rotating Comic Book Concentration Lines (Sunburst) */}
-            <motion.div
-              className="absolute top-1/2 left-1/2 w-[250vw] h-[250vw] -translate-x-1/2 -translate-y-1/2 -z-30 pointer-events-none"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.3, rotate: 360 }}
-              transition={{ 
-                opacity: { delay: 1, duration: 1.5, ease: "easeOut" },
-                rotate: { duration: 40, repeat: Infinity, ease: "linear" } 
-              }}
-              style={{
-                background: `repeating-conic-gradient(
-                  from 0deg,
-                  rgba(251, 191, 36, 0.25) 0deg 2deg,
-                  transparent 2deg 4deg
-                )`
-              }}
-            />
-            {/* Title (Outside the table) */}
-            <motion.div 
-              className="z-50"
-              initial={{ y: -250, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 12, delay: 0.1 }}
-            >
-              <motion.div
-                className="flex items-center justify-center relative w-64 h-16"
-                animate={{ rotate: [2, -2, 2] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                style={{ 
-                  marginBottom: `${gmbTitleMb}rem`,
-                  transformOrigin: 'center -130px',
-                  filter: 'drop-shadow(0 10px 15px rgba(0,0,0,0.5))'
-                }}
-              >
-                {/* Ropes */}
-                <div className="absolute left-[15%] bottom-[50%] w-[2px] h-[150px] bg-white border-x-[0.5px] border-slate-400 z-[5]" />
-                <div className="absolute right-[15%] bottom-[50%] w-[2px] h-[150px] bg-white border-x-[0.5px] border-slate-400 z-[5]" />
-
-                {/* Label Background */}
-                <div className="absolute inset-0 w-full h-full z-0" style={{ backgroundImage: "url('/spend/label.webp')", backgroundSize: '100% 100%', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} />
-
-                <h3 className="text-3xl font-serif text-amber-100 font-black text-center drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] relative z-10" style={{ transform: 'translateY(-2px)' }}>
-                  선상 도박장
-                </h3>
-              </motion.div>
-            </motion.div>
-
-            {/* Background Image Container */}
-            <div className="w-full relative flex flex-col justify-center">
-              
-              {/* Rainbow Glow Mask Layer */}
-              <div className="absolute inset-0 w-full h-full -z-20 pointer-events-none" style={{ filter: 'blur(25px)' }}>
-                <motion.div 
-                  className="w-full h-full opacity-90"
-                  animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-                  transition={{ duration: 5, repeat: Infinity, ease: 'linear' }}
-                  style={{
-                    background: 'linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff0000)',
-                    backgroundSize: '200% 200%',
-                    WebkitMaskImage: "url('/spend/gamble.webp')",
-                    WebkitMaskSize: '100% 100%',
-                    WebkitMaskRepeat: 'no-repeat',
-                    WebkitMaskPosition: 'center',
-                  }}
-                />
-              </div>
-
-              {/* Actual Table Image */}
-              <img 
-                src="/spend/gamble.webp" 
-                alt="Gamble Table"
-                className="absolute inset-0 w-full h-full object-fill -z-10 pointer-events-none"
-              />
-
-              {/* Duck Spectators (Composed with parts & bobbing heads) */}
-              <div className="absolute left-[3%] bottom-[5%] w-48 flex flex-col items-center justify-end z-20 pointer-events-none" style={{ filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.5))' }}>
-                <motion.div 
-                  className="relative w-36 h-36 z-30 -mb-6 origin-bottom"
-                  animate={{ rotate: [0, 15, 0] }}
-                  transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut" }}
-                >
-                  <img src="/spend/duckhead.webp" alt="Head" className="absolute inset-0 w-full h-full object-contain" />
-                </motion.div>
-                <img src="/spend/duckbody.webp" alt="Body" className="w-40 h-auto object-contain z-20" />
-              </div>
-
-              <div className="absolute right-[3%] bottom-[5%] w-48 flex flex-col items-center justify-end z-20 pointer-events-none" style={{ transform: 'scaleX(-1)', filter: 'drop-shadow(-2px 4px 6px rgba(0,0,0,0.5))' }}>
-                <motion.div 
-                  className="relative w-36 h-36 z-30 -mb-6 origin-bottom"
-                  animate={{ rotate: [0, 15, 0] }}
-                  transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut", delay: 0.25 }}
-                >
-                  <img src="/spend/duckhead.webp" alt="Head" className="absolute inset-0 w-full h-full object-contain" />
-                </motion.div>
-                <img src="/spend/duckbody_thumbsup.webp" alt="Body" className="w-40 h-auto object-contain z-20" />
-              </div>
-              <div 
-                className="w-full flex flex-col justify-center relative z-10"
-                style={{
-                  paddingTop: `${gmbPadTop}rem`,
-                  paddingBottom: `${gmbPadBottom}rem`,
-                  paddingLeft: `${gmbPadX}rem`,
-                  paddingRight: `${gmbPadX}rem`,
-                }}
-              >
-
-            <p className="text-slate-200 text-center text-lg drop-shadow-md" style={{ marginBottom: `${gmbTitleMb}rem` }}>
-              타이타닉호의 <strong>일일 항해 거리</strong>를 맞추세요!<br/>
-              <span className="text-sm text-slate-400 font-bold">(실제 기록: 480~550 해리 사이 랜덤)</span>
-            </p>
-
-            <div className="w-full flex flex-col items-center">
-              {/* Track */}
-              <div 
-                className={`relative ${gamblingState === 'idle' ? 'cursor-pointer hover:brightness-110' : ''}`}
-                style={{ 
-                  marginBottom: `${gmbTrackMb}rem`,
-                  width: `${gmbTrackWidth}%`,
-                  height: `${gmbTrackHeight}rem`,
-                  backgroundImage: "url('/spend/paper.webp')",
-                  backgroundSize: '100% 100%',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat'
-                }}
-                onClick={handleTrackClick}
-              >
-                {/* 종이 지도 안쪽 영역: 480~550 눈금, 범위 띠, 칼, 배가 모두 이 영역 기준이다 */}
-                <div className="absolute pointer-events-none" style={{ left: `${PAPER.l}%`, right: `${PAPER.r}%`, top: `${PAPER.t}%`, bottom: `${PAPER.b}%` }}>
-                  <div className="absolute left-1 top-1/2 -translate-y-1/2 text-white/50 text-xs font-bold">480</div>
-                  <div className="absolute right-1 top-1/2 -translate-y-1/2 text-white/50 text-xs font-bold">550</div>
-
-                  {/* 선택한 범위: 지도 밖으로 나가지 않게 자른다 */}
-                  <div className="absolute inset-0 overflow-hidden">
-                    <div
-                      className={`absolute top-0 bottom-0 transition-all duration-300 ${GAMBLE_TIERS.find((t) => t.id === gamblingTier)!.zone}`}
-                      style={{
-                        left: `${((gamblingGuess - 480) / 70) * 100}%`,
-                        transform: 'translateX(-50%)',
-                        width: `${(GAMBLE_TIERS.find((t) => t.id === gamblingTier)!.tol * 2 / 70) * 100}%`
-                      }}
-                    />
-                  </div>
-
-                  {/* 칼: 위에서 내리꽂힌다. 클릭할 때마다 새로 꽂힌다 */}
-                  <div className="absolute z-10" style={{ left: `${((gamblingGuess - 480) / 70) * 100}%`, top: '50%', width: 0, height: 0 }}>
-                    <motion.div
-                      key={`ring-${gamblingGuess}-${swordHit}`}
-                      initial={{ opacity: 0.9, scale: 0.2 }}
-                      animate={{ opacity: 0, scale: 2.4 }}
-                      transition={{ delay: 0.16, duration: 0.45, ease: 'easeOut' }}
-                      className="absolute -left-4 -top-1.5 h-3 w-8 rounded-full border border-amber-200"
-                    />
-                    <motion.div
-                      key={`sword-${gamblingGuess}-${swordHit}`}
-                      initial={{ y: -170, opacity: 0, rotate: 199 }}
-                      animate={{ y: 0, opacity: 1, rotate: [199, 199, 205, 195, 201, 199] }}
-                      transition={{ y: { duration: 0.16, ease: 'easeIn' }, opacity: { duration: 0.05 }, rotate: { delay: 0.16, duration: 0.45 } }}
-                      style={{ position: 'absolute', left: -SWORD_W * 0.21, top: -SWORD_W * 1.833 * 0.06, width: SWORD_W, height: SWORD_W * 1.833, transformOrigin: '21% 6%' }}
-                    >
-                      {/* 기념품샵의 타이타닉 칼. 칼끝이 아래로 가도록 뒤집어 꽂는다 */}
-                      <img src="/spend/shop1.webp" alt="칼" className="h-full w-full object-fill drop-shadow-[0_3px_4px_rgba(0,0,0,0.7)]" />
-                    </motion.div>
-                  </div>
-                  <div className="absolute z-10 -translate-x-1/2 rounded bg-black/60 px-1 text-xs text-amber-200" style={{ left: `${((gamblingGuess - 480) / 70) * 100}%`, bottom: '-1.4rem' }}>{gamblingGuess}</div>
-
-                  {/* Ship */}
-                  {gamblingState !== 'idle' && (
-                    <motion.div
-                      initial={{ left: 0 }}
-                      animate={{ left: shipPath.map((d) => `${((d - 480) / 70) * 100}%`), scaleX: shipFlipKeys(shipPath).vals }}
-                      transition={{ left: { duration: REVEAL_MS / 1000, times: REVEAL_TIMES, ease: 'easeInOut' }, scaleX: { duration: REVEAL_MS / 1000, times: shipFlipKeys(shipPath).times, ease: 'easeInOut' } }}
-                      className="absolute top-1/2 -translate-y-1/2 -ml-6 z-20"
-                    >
-                      <img src="/spend/titanic_duck.webp" alt="Ship" className="w-12 h-12 object-contain drop-shadow-lg" />
-                    </motion.div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-
-            <p className={`text-amber-400 font-bold text-center mt-2 transition-opacity ${gamblingState === 'idle' ? 'opacity-100 animate-bounce' : 'opacity-0 pointer-events-none'}`} style={{ marginBottom: `${gmbTitleMb}rem` }}>
-              항로를 클릭하여 칼을 꽂으세요
-            </p>
-            <div className="text-slate-300 text-center" style={{ marginBottom: `${gmbTextMb}rem` }}>
-              <div role="radiogroup" aria-label="베팅 범위" className="flex justify-center gap-2">
-                {GAMBLE_TIERS.map((t) => {
-                  const on = t.id === gamblingTier;
-                  return (
-                    <button
-                      key={t.id}
-                      role="radio"
-                      aria-checked={on}
-                      disabled={gamblingState !== 'idle'}
-                      onClick={() => { setGamblingTier(t.id); playSound('snap'); }}
-                      className={`min-w-24 rounded-[3px] border px-3 py-1.5 text-center transition-colors disabled:cursor-default ${on ? 'border-bright-brass bg-brass/30 text-bright-brass' : 'border-white/20 bg-black/40 text-slate-300 hover:border-brass'}`}
-                    >
-                      <span className="block text-sm font-bold">{t.name}</span>
-                      <span className="block text-xs">±{t.tol}해리 / +{t.net + (gamblingStreak)}장</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-2 text-sm">
-                적중 확률 {GAMBLE_TIERS.find((t) => t.id === gamblingTier)!.odds}
-                {gamblingStreak > 0 && <span className="ml-2 font-bold text-yellow-400 animate-pulse">{gamblingStreak}연승 중! 보상 +{gamblingStreak}장</span>}
-              </div>
-            </div>
-
-            </div>
-            </div>
-
-            {/* Action Area (Outside the background image) */}
-            <div className="w-full mt-6 px-4 min-h-[60px] flex items-center justify-center relative">
-              {gamblingState === 'idle' && (
-                <div className="flex gap-6 justify-center">
-                  <ClassicButton onClick={handleGambleCancel}>베팅 취소</ClassicButton>
-                  <ClassicButton onClick={handleGambleSubmit}>목표 확정 (지폐 1장 베팅)</ClassicButton>
-                </div>
-              )}
-
-              {gamblingState === 'animating' && (
-                <div className="absolute inset-0 flex items-center justify-center text-amber-400 animate-pulse font-bold text-xl drop-shadow-lg z-10">
-                  과연... 어디에 멈출까?
-                </div>
-              )}
-
-              {gamblingState === 'result' && (
-                <div className="flex flex-col gap-4 w-full text-center z-10 absolute top-0">
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                    {gamblingResult === 'exact' ? (
-                      <div className="text-yellow-400 font-black text-4xl mb-1 drop-shadow-[0_0_15px_rgba(250,204,21,1)] animate-pulse">잭팟!!</div>
-                    ) : gamblingResult === 'win' ? (
-                      <div className="text-green-400 font-bold text-3xl mb-1 drop-shadow-md">승리! (오차 {Math.abs(gamblingGuess - targetDistance)}해리)</div>
-                    ) : (
-                      <div className="text-red-400 font-bold text-3xl mb-1 drop-shadow-md">패배... (정답: {targetDistance}해리)</div>
-                    )}
-                    <p className="text-slate-200 font-bold text-lg mb-2">
-                      {gamblingResult === 'exact' ? `정확히 맞혔습니다! 지폐 ${gamblingGain}장을 획득했습니다!` :
-                       gamblingResult === 'win' ? `지폐 ${gamblingGain}장을 획득했습니다.${gamblingStreak > 1 ? ` (${gamblingStreak}연승)` : ''}` :
-                       Math.abs(gamblingGuess - targetDistance) <= (GAMBLE_TIERS.find((t) => t.id === gamblingTier)!.tol) * 1.5
-                         ? `아깝습니다. ${Math.abs(gamblingGuess - targetDistance)}해리 차이로 베팅한 지폐를 잃었습니다.`
-                         : '범위를 벗어나 베팅한 지폐를 잃었습니다.'}
-                    </p>
-                  </motion.div>
-                  <div className="flex justify-center gap-6">
-                    {billsAvailable > 0 && (
-                      <ClassicButton onClick={handleGambleAgain}>
-                        {gamblingResult === 'lose' ? '다시 걸기' : `한 번 더 걸기 (+${gamblingStreak}장 보너스)`}
-                      </ClassicButton>
-                    )}
-                    <ClassicButton onClick={closeGambleResult}>창 닫기</ClassicButton>
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
+          <CasinoModal
+            key="casino"
+            bills={billsAvailable}
+            state={gamblingState}
+            result={gamblingResult}
+            guess={gamblingGuess}
+            target={targetDistance}
+            gain={gamblingGain}
+            streak={gamblingStreak}
+            tier={gamblingTier}
+            shipPath={shipPath}
+            swordHit={swordHit}
+            fireworks={winFx}
+            onPick={handlePick}
+            onTier={(t) => { setGamblingTier(t); playSound('snap'); }}
+            onBet={handleGambleSubmit}
+            onAgain={handleGambleAgain}
+            onClose={closeGambleResult}
+          />
         )}
       </AnimatePresence>
+
+      {/* 전신 반대편에서 기다리는 오리: 엉덩이를 흔들다가 날아오는 신호를 숙여 피한다 */}
+      {hasTelegraph && <DodgeDuck spot={spot} enter={colleagueIn} />}
 
       {/* Morse Telegraph UI */}
       <AnimatePresence>
@@ -2363,6 +2040,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] pointer-events-none flex flex-col justify-center overflow-hidden"
           >
+            <style>{`@keyframes machine-jolt { 0%,100% { transform: translate(0,0) } 20% { transform: translate(-3px,2px) } 40% { transform: translate(3px,-2px) } 60% { transform: translate(-2px,-2px) } 80% { transform: translate(2px,3px) } }`}</style>
             {/* Signals Flying Left */}
             <div 
               className="absolute bottom-[200px] w-full flex items-center pr-[350px]"
@@ -2387,9 +2065,9 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                     className="morse-signal absolute right-0 flex items-center justify-center"
                   >
                     {signal.type === 'dot' ? (
-                      <div className="w-6 h-6 rounded-full bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.8)]" />
+                      <div className="w-6 h-6 rounded-full bg-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.85)]" />
                     ) : (
-                      <div className="w-24 h-6 rounded-full bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.8)]" />
+                      <div className="w-24 h-6 rounded-full bg-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.85)]" />
                     )}
                   </motion.div>
                 ))}
@@ -2419,7 +2097,9 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                   draggable={false}
                   className="h-96 w-auto object-contain cursor-pointer drop-shadow-2xl transition-all"
                   style={{
-                    transform: morseFlip ? 'scaleX(-1)' : 'none'
+                    transform: morseFlip ? 'scaleX(-1)' : 'none',
+                    animation: shorting ? 'machine-jolt .12s linear infinite' : undefined,
+                    filter: shorting ? 'brightness(1.6) drop-shadow(0 0 14px #8fb4ff) drop-shadow(0 0 30px #5b86ff)' : undefined,
                   }}
                 />
               </motion.div>
@@ -2427,6 +2107,10 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 시설 상호작용의 화면 효과 (money/InteractionOverlays) */}
+      <BubblePops pops={bubblePops} />
+      <WaterZap zap={waterZap} />
 
       {/* Morse Hit Explosions */}
       {morseExplosions.map(ex => (
@@ -2441,7 +2125,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
             initial={{ scale: 0.2, opacity: 1 }}
             animate={{ scale: 3, opacity: 0 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            className="absolute w-12 h-12 border-4 border-cyan-300 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-[0_0_20px_cyan]"
+            className="absolute w-12 h-12 border-4 border-amber-300 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-[0_0_20px_rgba(251,191,36,0.9)]"
           />
           
           {/* Spreading Particles */}
@@ -2459,7 +2143,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
                     scale: 0
                   }}
                   transition={{ duration: 0.6, ease: "easeOut" }}
-                  className="absolute w-3 h-3 bg-cyan-100 rounded-full shadow-[0_0_10px_white] -translate-x-1/2 -translate-y-1/2"
+                  className="absolute w-3 h-3 bg-amber-100 rounded-full shadow-[0_0_10px_rgba(251,191,36,0.9)] -translate-x-1/2 -translate-y-1/2"
                 />
              )
           })}
@@ -2614,7 +2298,7 @@ export default function MoneyMinigameView({ question, onAnswer, onBack }: MoneyM
       </AnimatePresence>
 
       {/* 총에 맞았을 때: 사망 카드가 나온 뒤 처음부터 다시 시작한다 */}
-      {dead && <DeathCard onDone={restartJourney} />}
+      {dead && <DeathCard soft onDone={restartJourney} />}
 
     </div>
   );

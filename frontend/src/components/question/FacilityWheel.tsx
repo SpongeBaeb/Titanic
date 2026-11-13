@@ -44,6 +44,8 @@ export default function FacilityWheel({ items, index, onIndex, hoveredId, active
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (disabled || e.button > 0) return;
+    // 기념품 같은 상호작용 요소를 쥐고 있을 때는 선반이 따라 돌지 않는다
+    if ((e.target as HTMLElement).closest?.('[data-no-wheel]')) return;
     drag.current = { startY: e.clientY, moved: false };
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -152,9 +154,18 @@ export default function FacilityWheel({ items, index, onIndex, hoveredId, active
                 }}
               >
                 <div className="relative w-full" style={{ height: BASE }}>
-                  <div
+                  {/* 시설 아래 받침대: 시설 모형과 같은 등각 시점(facility_plinth.webp). 모형의 바닥 마름모가 받침대 윗면에 놓인다 */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/spend/facility_plinth.webp"
+                    alt=""
                     aria-hidden
-                    className={`absolute inset-[3%] rounded-full border-2 bg-[#07111a]/75 transition-colors duration-300 ${hovered ? 'border-bright-brass bg-[#12293a]/90 shadow-[0_0_30px_rgba(255,214,120,0.55)]' : 'border-brass/60'}`}
+                    draggable={false}
+                    className="pointer-events-none absolute z-[5] max-w-none select-none transition-[filter] duration-300"
+                    style={{
+                      width: '93.6%', left: '3.2%', top: '46.8%',
+                      filter: hovered ? 'brightness(1.35) saturate(1.1) drop-shadow(0 0 18px rgba(255,214,120,0.75))' : 'drop-shadow(0 10px 12px rgba(0,0,0,0.6))',
+                    }}
                   />
                   <motion.img
                     src={it.img}
@@ -166,18 +177,21 @@ export default function FacilityWheel({ items, index, onIndex, hoveredId, active
                       : {}}
                     transition={{ duration: 0.5 }}
                   />
-                </div>
-                <div
-                  className={`pointer-events-none relative z-20 -mt-4 whitespace-nowrap px-9 py-1.5 font-display text-lg font-semibold tracking-[0.14em] transition-colors duration-300 ${hovered ? 'text-ocean-black' : 'text-bright-brass'}`}
-                  style={{
-                    borderStyle: 'solid',
-                    borderWidth: 12,
-                    borderImage: "url('/ui/ui_nameplate.webp') 64 / 12px stretch",
-                    backgroundImage: hovered ? 'linear-gradient(180deg,#e1c88e,#b08e52)' : 'linear-gradient(180deg,#0e1f29,#07111a)',
-                    backgroundClip: 'padding-box',
-                  }}
-                >
-                  {it.name}
+                  {/* 이름표: 받침대 왼쪽 옆면에 붙은 놋쇠 명판. 옆면의 기울기(등각 약 29도)에 맞춰 비스듬히 붙이고, 면의 한가운데에 맞춘다 */}
+                  <div
+                    className={`pointer-events-none absolute z-20 whitespace-nowrap px-3 py-0.5 font-display text-[13px] font-semibold tracking-[0.1em] transition-colors duration-300 ${hovered ? 'text-ocean-black' : 'text-bright-brass'}`}
+                    style={{
+                      left: '26.8%', top: '92.5%', // 왼쪽 옆면의 한가운데(받침대 아랫 꼭짓점에서 왼쪽으로 면 너비의 절반)
+                      transform: 'translate(-50%, -50%) skewY(29deg)',
+                      borderStyle: 'solid',
+                      borderWidth: 8,
+                      borderImage: "url('/ui/ui_nameplate.webp') 64 / 8px stretch",
+                      backgroundImage: hovered ? 'linear-gradient(180deg,#e1c88e,#b08e52)' : 'linear-gradient(180deg,#0e1f29,#07111a)',
+                      backgroundClip: 'padding-box',
+                    }}
+                  >
+                    {it.name}
+                  </div>
                 </div>
               </div>
             );

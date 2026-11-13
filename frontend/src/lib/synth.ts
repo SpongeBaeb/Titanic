@@ -81,6 +81,38 @@ export function playThud() {
   o.stop(c.currentTime + 0.32);
 }
 
+/** 아이가 으아앙 우는 소리: 떨리는 높은 음에 입 모양처럼 열리는 필터를 건 짧은 울음. 아주 작게 낸다 */
+export function playChildWail() {
+  const c = ctx();
+  if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(380, t);
+  o.frequency.linearRampToValueAtTime(760, t + 0.35);
+  o.frequency.linearRampToValueAtTime(640, t + 0.8);
+  o.frequency.linearRampToValueAtTime(430, t + 1.25);
+  const lfo = c.createOscillator();
+  lfo.frequency.value = 6.5;
+  const lg = c.createGain();
+  lg.gain.value = 26;
+  lfo.connect(lg).connect(o.frequency);
+  const f = c.createBiquadFilter();
+  f.type = 'bandpass';
+  f.Q.value = 3;
+  f.frequency.setValueAtTime(700, t);
+  f.frequency.linearRampToValueAtTime(1500, t + 0.4);
+  f.frequency.linearRampToValueAtTime(900, t + 1.2);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.07, t + 0.12);
+  g.gain.setValueAtTime(0.07, t + 0.8);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+  o.connect(f).connect(g).connect(c.destination);
+  o.start(t); lfo.start(t);
+  o.stop(t + 1.35); lfo.stop(t + 1.35);
+}
+
 /** 전신기 레버가 한 칸 넘어가는 래칫 소리: 짧은 금속 클릭과 낮은 걸림음 */
 export function playRatchet() {
   const c = ctx();
@@ -636,4 +668,154 @@ export function playShipHorn() {
     o.start(t);
     o.stop(t + 2.3);
   }
+}
+
+/** 천둥: 번쩍인 직후의 날카로운 균열음과, 낮게 구르며 잦아드는 울림 */
+export function playThunder() {
+  const c = ctx();
+  if (!c) return;
+  const t0 = c.currentTime + 0.08;
+  // 균열: 짧고 거친 잡음
+  const crack = noise(c, 0.25);
+  const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
+  const cg = c.createGain();
+  cg.gain.setValueAtTime(0.0001, t0);
+  cg.gain.exponentialRampToValueAtTime(0.35, t0 + 0.012);
+  cg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+  crack.connect(hp).connect(cg).connect(c.destination);
+  crack.start(t0);
+  // 울림: 저역 잡음이 굽이쳐 구른다
+  const rum = noise(c, 2.6);
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(420, t0); lp.frequency.exponentialRampToValueAtTime(70, t0 + 2.4);
+  const rg = c.createGain();
+  rg.gain.setValueAtTime(0.0001, t0);
+  rg.gain.exponentialRampToValueAtTime(0.5, t0 + 0.05);
+  [0.45, 0.9, 1.4].forEach((d, i) => { rg.gain.exponentialRampToValueAtTime(0.36 - i * 0.07, t0 + d); rg.gain.exponentialRampToValueAtTime(0.18, t0 + d + 0.15); });
+  rg.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.5);
+  rum.connect(lp).connect(rg).connect(c.destination);
+  rum.start(t0);
+}
+
+/** 타임머신 소용돌이: 낮은 웅웅거림이 점점 빨라지며 높아지다가 마지막에 하얗게 터지는 소리 */
+export function playTimeVortex(duration = 3.4) {
+  const c = ctx();
+  if (!c) return;
+  const t = c.currentTime;
+  // 기계음: 낮은 톱니파가 음높이를 올리며 떨린다
+  const o = c.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(48, t);
+  o.frequency.exponentialRampToValueAtTime(520, t + duration * 0.92);
+  const lfo = c.createOscillator();
+  lfo.frequency.setValueAtTime(3, t);
+  lfo.frequency.exponentialRampToValueAtTime(34, t + duration * 0.92);
+  const lfoGain = c.createGain();
+  lfoGain.gain.value = 0.035;
+  const f = c.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(260, t);
+  f.frequency.exponentialRampToValueAtTime(2600, t + duration * 0.92);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.08, t + 0.5);
+  g.gain.setValueAtTime(0.08, t + duration * 0.88);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + duration + 0.2);
+  lfo.connect(lfoGain).connect(g.gain);
+  o.connect(f).connect(g).connect(c.destination);
+  // 바람: 소용돌이가 빨라질수록 거세지는 잡음
+  const n = noise(c, duration + 0.4);
+  const nf = c.createBiquadFilter();
+  nf.type = 'bandpass';
+  nf.Q.value = 0.8;
+  nf.frequency.setValueAtTime(300, t);
+  nf.frequency.exponentialRampToValueAtTime(3200, t + duration * 0.92);
+  const ng = c.createGain();
+  ng.gain.setValueAtTime(0.0001, t);
+  ng.gain.exponentialRampToValueAtTime(0.12, t + duration * 0.9);
+  ng.gain.exponentialRampToValueAtTime(0.0001, t + duration + 0.3);
+  n.connect(nf).connect(ng).connect(c.destination);
+  o.start(t); lfo.start(t); n.start(t);
+  o.stop(t + duration + 0.3); lfo.stop(t + duration + 0.3); n.stop(t + duration + 0.4);
+  // 마지막에 터지는 흰 울림
+  const b = c.createOscillator();
+  b.type = 'sine';
+  b.frequency.setValueAtTime(880, t + duration * 0.9);
+  b.frequency.exponentialRampToValueAtTime(110, t + duration + 0.9);
+  const bg = c.createGain();
+  bg.gain.setValueAtTime(0.0001, t + duration * 0.9);
+  bg.gain.exponentialRampToValueAtTime(0.12, t + duration * 0.93);
+  bg.gain.exponentialRampToValueAtTime(0.0001, t + duration + 0.9);
+  b.connect(bg).connect(c.destination);
+  b.start(t + duration * 0.9);
+  b.stop(t + duration + 1);
+}
+
+
+/** 고무·나무·양철 오리를 눌렀을 때의 작은 삑 소리 (power: 0~1) */
+export function playSqueak(power = 1) {
+  const c = ctx();
+  if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(900, t);
+  o.frequency.exponentialRampToValueAtTime(1700, t + 0.08);
+  o.frequency.exponentialRampToValueAtTime(1100, t + 0.2);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.18 * power, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+  o.connect(g).connect(c.destination);
+  o.start(t);
+  o.stop(t + 0.26);
+}
+
+/** 아날로그 화면이 켜지는 소리: 가는 고음이 올라갔다 사라지고, 작게 둔탁하게 켜지는 소리 */
+export function playCrtOn() {
+  const c = ctx();
+  if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(180, t);
+  o.frequency.exponentialRampToValueAtTime(6200, t + 0.5);
+  o.frequency.exponentialRampToValueAtTime(3800, t + 1.4);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.05, t + 0.12);
+  g.gain.exponentialRampToValueAtTime(0.012, t + 1.0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+  o.connect(g).connect(c.destination);
+  o.start(t);
+  o.stop(t + 1.9);
+  const th = c.createOscillator();
+  const tg = c.createGain();
+  th.type = 'triangle';
+  th.frequency.setValueAtTime(90, t + 0.45);
+  th.frequency.exponentialRampToValueAtTime(40, t + 0.8);
+  tg.gain.setValueAtTime(0.0001, t + 0.45);
+  tg.gain.exponentialRampToValueAtTime(0.22, t + 0.48);
+  tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+  th.connect(tg).connect(c.destination);
+  th.start(t + 0.45);
+  th.stop(t + 1.0);
+}
+
+/** 단말기에서 확률이 오르거나(높아지는 음) 내릴 때(낮아지는 음)의 짧은 신호음 */
+export function playBlip(up: boolean) {
+  const c = ctx();
+  if (!c) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  const g = c.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(up ? 520 : 300, t);
+  o.frequency.exponentialRampToValueAtTime(up ? 880 : 150, t + 0.16);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.045, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  o.connect(g).connect(c.destination);
+  o.start(t);
+  o.stop(t + 0.24);
 }

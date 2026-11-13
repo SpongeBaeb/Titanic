@@ -204,7 +204,7 @@ export default function GenderView({ question, onAnswer, onBack }: GenderViewPro
       <div 
         className="relative w-[300px] h-[450px] md:w-[400px] md:h-[600px] z-[10] pointer-events-none"
         style={{
-          transform: `translate(${config.mirror.x}px, calc(${(-0.15 * vh).toFixed(1)}px + ${config.mirror.y}px)) scale(${config.mirror.scale * mirrorFit})`
+          transform: `translate(${config.mirror.x}px, calc(${(-0.2 * vh).toFixed(1)}px + ${config.mirror.y}px)) scale(${config.mirror.scale * mirrorFit})`
         }}
       >
         

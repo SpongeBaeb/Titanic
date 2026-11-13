@@ -10,7 +10,7 @@ export const demoScenes: CineScene[] = [
   {
     id: 'N1', at: 25, title: '구명조끼 착용 안내', bg: '/bg/crash.webp', fx: ['kenburns'],
     story: ({ run, extras }) => [
-      { text: '갑판 위, 승무원이 목청을 높여 구명조끼를 입으라고 외칩니다. 그런데 사람들은 웃으며 발밑의 얼음 조각을 줍고 있습니다.' },
+      { text: '갑판 위, 승무원이 목청을 높여 구명조끼를 입으라고 외칩니다. 그런데 앞 갑판에서는 사람들이 웃으며 떨어진 얼음 조각을 차고 놉니다.' },
       ...(run > 1 ? [{ text: '…이 풍경, 어딘가 낯이 익습니다. 한 번 겪어 본 듯한 기분이 듭니다.', changed: true }] : []),
       ...(bagItemNames(extras).length ? [{ text: `객실에 두고 온 가방 안에서 ${bagItemNames(extras).join(', ')} 같은 물건들이 부딪히던 소리가 떠오릅니다.`, changed: true }] : []),
     ],
@@ -30,7 +30,7 @@ export const demoScenes: CineScene[] = [
     story: ({ flags, elapsed = 0 }) => [
       { text: '첫 구명정이 도르래 소리를 내며 내려갑니다. 줄은 길고, 사람들의 숨소리가 거칩니다.' },
       ...(flags.neighbor ? [{ text: '복도에서 깨운 이웃집 아이가 당신의 소매를 꼭 쥐고 있습니다.', changed: true }] : []),
-      ...(flags.vest ? [{ text: '구명조끼 덕분에 승무원이 당신을 앞줄로 안내합니다.', changed: true }] : []),
+      ...(flags.vest ? [{ text: '구명조끼를 입은 당신을 보고 승무원이 손짓합니다. "이쪽으로."', changed: true }] : []),
       ...(flags.waited ? [{ text: '기다리는 사이 줄은 이미 길게 늘어졌습니다. 뒤쪽이 웅성거립니다.', changed: true }] : []),
       ...(flags.bag ? [{ text: '무거운 가방 때문에 승무원이 짐은 두고 타라고 합니다.', changed: true }] : []),
       ...(flags.crewTip ? [{ text: '선원이 귀띔해 준 대로, 이쪽 구명정에는 아직 자리가 남아 있습니다.', changed: true }] : []),
@@ -59,7 +59,7 @@ export const demoScenes: CineScene[] = [
     story: ({ flags, elapsed = 0, extras }) => flags.boat
       ? [
           { text: '당신은 구명정에 몸을 싣고 있습니다.', changed: true },
-          { text: '노 젓는 소리 너머로, 불이 하나둘 꺼지는 배가 기울어 가는 것이 보입니다. 어디선가 악단의 연주가 희미하게 들려옵니다.' },
+          { text: '노 젓는 소리 너머로, 불을 끝까지 밝힌 채 기울어 가는 배가 보입니다. 어디선가 악단의 연주가 희미하게 들려옵니다.' },
         ]
       : [
           { text: '갑판이 눈에 띄게 기울기 시작했습니다. 어디선가 악단의 연주가 들려옵니다. 발밑의 물건들이 한쪽으로 미끄러집니다.' },

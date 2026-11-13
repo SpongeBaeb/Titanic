@@ -60,6 +60,9 @@ interface QuizState {
   resetQuiz: () => void;
   showDebug: boolean;
   toggleDebug: () => void;
+  /** 개발용: 켜 두면 장면의 제한 시간이 흐르지 않는다 (디버그 패널) */
+  debugPause: boolean;
+  setDebugPause: (v: boolean) => void;
 }
 
 export const useQuizStore = create<QuizState>((set, get) => ({
@@ -112,4 +115,11 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   },
   resetQuiz: () => set({ currentStep: PROLOGUE, answers: {}, flags: {}, picks: [], extras: {}, history: [] }),
   toggleDebug: () => set((state) => ({ showDebug: !state.showDebug })),
+  debugPause: false,
+  setDebugPause: (v) => set({ debugPause: v }),
 }));
+
+// 개발 서버에서만: 브라우저 콘솔에서 상태를 직접 바꿔 특정 화면을 시험할 수 있게 한다
+if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined') {
+  (window as unknown as { __quizStore?: unknown }).__quizStore = useQuizStore;
+}

@@ -10,6 +10,9 @@ import { scenes, sceneIds, PROLOGUE, RESULT } from '@/engine/scenes';
 import { renderers } from '@/engine/renderers';
 import NightScene from '@/components/cinematic/NightScene';
 import SpecialCard from '@/components/cinematic/SpecialCard';
+import BeatenEnding from '@/components/cinematic/BeatenEnding';
+import { personalize } from '@/data/variants';
+import { buildPersona } from '@/engine/persona';
 import type { CineOption } from '@/engine/cinematic';
 import { loadRuns, completeRun } from '@/engine/memory';
 import { onRunCompleted, onRunStarted, unlock } from '@/engine/achievements';
@@ -21,14 +24,46 @@ import { preloadImages } from '@/lib/preloadImages';
 import { loadSession, saveSession, clearSession } from '@/lib/session';
 import SoundToggle from '@/components/ui/SoundToggle';
 import EnginePulse from '@/components/ui/EnginePulse';
+import SceneTransition, { TransitionCard, type TransitionInfo } from '@/components/ui/SceneTransition';
 import { setMix, type Mix } from '@/lib/ambience';
+import TimeVortex from '@/components/ui/TimeVortex';
+import BgLights from '@/components/ui/BgLights';
+import CrtPowerOn from '@/components/ui/CrtPowerOn';
+import DebugPanel from '@/components/ui/DebugPanel';
+import BgSway from '@/components/ui/BgSway';
+import BoatSeaBg, { BOAT_SEA_URL } from '@/components/ui/BoatSeaBg';
+import { playTimeVortex, playCrtOn } from '@/lib/synth';
+import { decideBoarding, estimateAdjusted, rollW2, type W2Way } from '@/engine/boarding';
 
 // 장면별 배경 소리: 엔진은 Q6에서 끊기고 그 뒤로 돌아오지 않는다 (뒤로 가면 앞 장면의 소리로 복원)
 function mixFor(step: string): Mix {
   if (step === 'Q5') return 'deck';
   if (step === 'Q6') return 'hold';
-  if (['Q7', 'N1', 'N2', 'N3', 'DQ3', 'DQ4', 'DQ5'].includes(step) || step === RESULT) return 'quiet';
+  if (['Q7', 'B1', 'WB', 'W1', 'W2', 'N1', 'N2', 'N3', 'DQ3', 'DQ4', 'DQ5'].includes(step) || step === RESULT) return 'quiet';
   return 'interior';
+}
+
+// 자기 화면 전체를 직접 그리는 장면: 뒤의 공용 배경 사진을 깔지 않는다 (장면이 바뀌는 사이에 엉뚱한 사진이 비치지 않게)
+const OWN_BACKDROP = new Set(['companion', 'staircase', 'deck', 'rumor', 'lifeboat', 'sinkside', 'deckbridge', 'swim']);
+
+const CHAPTER_NAME = ['탑승', '항해', '그날 밤'];
+const PORT_DAY: Record<string, string> = {
+  S: '1912년 4월 10일 정오 · 사우샘프턴',
+  C: '1912년 4월 10일 저녁 · 셰르부르',
+  Q: '1912년 4월 11일 · 퀸스타운',
+};
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 로딩 화면에 보여 줄 장 이름, 날짜, 항해 진행 */
+function transitionInfo(next: string, answers: Record<string, unknown>): TransitionInfo {
+  if (next === RESULT) return { chapter: '기록', when: '1912년 4월 15일 새벽', progress: 1 };
+  const ch = scenes[next]?.chapter ?? 0;
+  const q = questionsData[next];
+  const progress = q ? q.step / (q.totalSteps + 1) : [0.15, 0.5, 0.85][ch] ?? 0.5;
+  const when = ch === 0 ? (PORT_DAY[String(answers.embarked)] ?? '1912년 4월 10일 · 사우샘프턴')
+    : ch === 1 ? '1912년 4월 · 대서양 한가운데'
+      : '1912년 4월 14일 밤 · 북대서양';
+  return { chapter: CHAPTER_NAME[ch] ?? '항해', when, progress };
 }
 
 // 바로가기 패널은 개발 서버에서만 노출 (빌드 시 값이 고정되어 운영 화면에는 나타나지 않는다)
@@ -37,6 +72,7 @@ const IS_DEV = process.env.NODE_ENV === 'development';
 export default function QuizContainer() {
   const { currentStep, nextStep, advance, back, answers, flags, picks, extras, history, runIndex, setRun, setExtras, showDebug, toggleDebug, restore, rewindTo } = useQuizStore();
   const scene = scenes[currentStep];
+  const tilt = scene?.tilt ?? 0; // 못 탄 쪽 장면(W1·W2): 배가 뱃머리부터 가라앉으며 갑판이 눈앞에서 위로 솟구친다 (옆으로 눕지 않고 앞뒤로 기운다)
   const [mounted, setMounted] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
   const shouldReduceMotion = useReducedMotion();
@@ -44,6 +80,13 @@ export default function QuizContainer() {
   const enteredAt = useRef(0);
   useEffect(() => { enteredAt.current = Date.now(); }, [currentStep]);
   useEffect(() => { setMix(mixFor(currentStep)); }, [currentStep]);
+  // 지난 결과 주소(?result=...)가 남은 채로 새 판을 시작하면 이번 판의 결과가 '공유 링크'로 오인되어 인쇄 연출이 건너뛰어진다.
+  // 결과 화면이 아닌 장면으로 넘어오면 남은 결과 주소를 지운다 (공유 링크로 들어온 사람은 곧바로 결과 장면이라 영향이 없다)
+  useEffect(() => {
+    if (currentStep === RESULT || currentStep === PROLOGUE || typeof window === 'undefined') return;
+    if (!new URLSearchParams(window.location.search).has('result')) return;
+    try { window.history.replaceState(window.history.state, '', window.location.pathname); } catch { /* 무시 */ }
+  }, [currentStep]);
 
   useEffect(() => {
     const init = async () => {
@@ -78,6 +121,12 @@ export default function QuizContainer() {
         const speed = Number(params.get('livespeed'));
         if (IS_DEV && speed > 0) setExtras({ liveSpeed: speed });
       }
+      // 개발용: ?age=7 처럼 나이를 정해 둔다 (아이·노인 분기를 ?step= 으로 바로 확인할 때)
+      const ageParam = params.get('age');
+      if (IS_DEV && ageParam !== null && Number.isFinite(Number(ageParam))) setExtras({ age: Number(ageParam) });
+      // 개발용: ?run=5 처럼 회차를 정해 둔다 (오리 사무장의 회차별 대사 확인용)
+      const runParam = params.get('run');
+      if (IS_DEV && runParam !== null && Number.isFinite(Number(runParam))) setRun(Number(runParam));
       // 개발용: ?step=Q4 처럼 특정 장면으로 바로 이동한다
       const jump = params.get('step');
       if (IS_DEV && jump) nextStep(jump as Parameters<typeof nextStep>[0]);
@@ -138,7 +187,20 @@ export default function QuizContainer() {
   };
 
   const [isFlashing, setIsFlashing] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transition, setTransition] = useState<TransitionInfo | null>(null);
+  // 나이를 확정하면 타임머신이 작동해 소용돌이로 빨려 들어간 뒤 카메라 속 항구(Q2)가 드러난다
+  const [vortex, setVortex] = useState<'in' | 'out' | null>(null);
+  // Q7 을 마치고 서버 확률로 탑승을 판정하는 동안 화면을 하얗게 덮는다 (LifeboatView 의 플래시에서 이어진다)
+  const [whiteout, setWhiteout] = useState(false);
+  // 헤엄(W2)의 끝: 구하러 온 손에 끌려 올라가거나 못 닿아 가라앉은 뒤 어두워지고, 못 산 쪽은 아날로그 화면이 켜지며 결과로 넘어간다
+  const [blackout, setBlackout] = useState(false);
+  const [crt, setCrt] = useState(false);
+  const [resultStage, setResultStage] = useState<string | null>(null); // 결과 화면의 연출 단계 (ResultView 가 알려 준다)
+  useEffect(() => {
+    const on = (e: Event) => setResultStage((e as CustomEvent<string | null>).detail);
+    window.addEventListener('titanic:result-stage', on);
+    return () => window.removeEventListener('titanic:result-stage', on);
+  }, []);
 
   // 밤 장면(N1~N3)에서 선택지를 고른 뒤: 점수용 답 없이 플래그·소모 시간만 누적하고 다음 장면으로
   const handleNightChoose = (option: CineOption, ms: number) => {
@@ -164,15 +226,78 @@ export default function QuizContainer() {
     const next = nextSceneId(scene, { answers: { ...answers, [key]: value }, flags, picks, run: runIndex, extras });
     const tempAnswers = { ...answers, [key]: value };
     const ms = Date.now() - enteredAt.current;
+    // W2: 고른 방식(헤엄·뛰어들기·침몰)의 생존 여부를 확률로 굴려 결과가 쓴다
+    let commitExtra = extra;
+    if (scene.id === 'W2') {
+      const adj = typeof extras.boardP === 'number' ? extras.boardP : estimateAdjusted(answers as Record<string, unknown>, extras);
+      // 헤엄 화면(SwimView)은 스스로 굴린 결과를 넘긴다. 없을 때만 예전 규칙으로 굴린다
+      commitExtra = typeof extra?.w2Survived === 'boolean' ? extra : { ...(extra ?? {}), w2: value, w2Survived: rollW2(value as W2Way, adj) };
+    }
     const commit = () => {
       emitPick({ run: runIndex, scene: scene.id, value, ms });
-      advance({ next, key, value, extras: extra });
+      advance({ next, key, value, extras: commitExtra });
       if (next === RESULT) {
         const runs = completeRun();
         setRun(runs + 1);
         onRunCompleted(runs);
       }
     };
+
+    // W2 의 끝: 헤엄 화면이 마지막 연출(구명정에 끌려 올라가거나 가라앉음)을 끝내고 어두워진 상태로 넘겨 준다. 곧바로 결과로 간다.
+    // 못 산 쪽(헤엄이 다했는데 못 닿은 판)은 암흑 속에서 아날로그 화면이 켜지며 결과로 이어진다.
+    if (scene.id === 'W2') {
+      const died = commitExtra?.w2Survived === false && commitExtra?.w2 !== 'sink';
+      setBlackout(true);
+      await sleep(shouldReduceMotion ? 300 : 700);
+      await preloadImages(assetsFor(RESULT, tempAnswers));
+      commit();
+      if (died) { setCrt(true); playCrtOn(); }
+      await sleep(250);
+      setBlackout(false);
+      if (died) {
+        await sleep(shouldReduceMotion ? 700 : 2400);
+        setCrt(false);
+      }
+      return;
+    }
+
+    // Q7: 선택까지 반영한 서버 확률로 구명정에 탔는지 판정하고, 탑승(B1)과 미탑승(W1)으로 가른다
+    if (scene.id === 'Q7') {
+      // 구명정을 내려 보내거나 물러선 판은 흰 화면 없이 난간 장면(WB)으로 이어진다
+      const quietExit = value === 'yield_seat' || value === 'observe' || value === 'yield_weak';
+      if (!quietExit) setWhiteout(true);
+      const finalAnswers = { ...answers, [key]: value } as Record<string, unknown>;
+      const verdict = await decideBoarding(finalAnswers, extras, flags.boat === true);
+      const verdictExtras = { ...(extra ?? {}), boarded: verdict.boarded, boardP: verdict.adjusted, boardSrc: verdict.source };
+      if (verdict.boarded && extra?.pushedIn === true) unlock('pushed-in'); // 장교의 팔을 밀치고 실제로 오른 판에서만
+      const nextAfter = nextSceneId(scene, { answers: finalAnswers, flags: { ...flags, boat: verdict.boarded }, picks, run: runIndex, extras: { ...extras, ...verdictExtras } });
+      await preloadImages(assetsFor(nextAfter, finalAnswers));
+      emitPick({ run: runIndex, scene: scene.id, value, ms });
+      advance({ next: nextAfter, key, value, sets: { boat: verdict.boarded }, extras: verdictExtras });
+      await sleep(250);
+      setWhiteout(false);
+      return;
+    }
+
+    // 장면이 자기 연출로 다음 화면에 이어 준다 (Q7 의 플래시 → 결과의 사진)
+    if (scene.seamlessAnswer) {
+      commit();
+      return;
+    }
+
+    // 나이 확정(Q1) → 소용돌이 → 카메라 속 항구(Q2). 전보 프린트 대신 이 연출로 이어 준다
+    if (scene.id === 'Q1') {
+      const dur = shouldReduceMotion ? 600 : 3200;
+      setVortex('in');
+      playTimeVortex(dur / 1000);
+      await Promise.all([preloadImages(assetsFor(next, tempAnswers)), sleep(dur)]);
+      commit();
+      await sleep(250);
+      setVortex('out');
+      await sleep(shouldReduceMotion ? 500 : 1800);
+      setVortex(null);
+      return;
+    }
 
     if (scene.flashOnAnswer) {
       setIsFlashing(true);
@@ -184,17 +309,27 @@ export default function QuizContainer() {
       return;
     }
 
-    setIsTransitioning(true);
-    await preloadImages(assetsFor(next, tempAnswers));
+    // 둥근 창이 완전히 닫힌 뒤(약 0.45초) 장면을 바꾸고, 새 장면이 자리를 잡을 때까지 덮어 둔 다음 연다
+    setTransition(transitionInfo(next, tempAnswers));
+    await Promise.all([preloadImages(assetsFor(next, tempAnswers)), sleep(480)]);
     commit();
-    setIsTransitioning(false);
+    await sleep(750);
+    setTransition(null);
   };
 
+  // 앞 선택에 따라 배경이 바뀌는 갈래
+  const variantBg = useMemo(
+    () => scene?.variant?.({ answers, flags, picks, run: runIndex, extras }),
+    [scene, answers, flags, picks, runIndex, extras],
+  );
   const bgImageUrl = useMemo(() => {
     if (currentStep === PROLOGUE) return '/bg/bg-titanic.webp';
     if (currentStep === RESULT) return '/bg/collasping.webp';
-    return bgFor(currentStep, answers) ?? '/bg/bg-titanic.webp';
-  }, [currentStep, answers]);
+    if (scene && OWN_BACKDROP.has(scene.renderer)) return null;
+    return variantBg?.bgImage ?? bgFor(currentStep, answers) ?? null;
+  }, [currentStep, answers, scene, variantBg]);
+  // B1: 바다와 배를 따로 그린 두 겹 배경 (움직임 줄이기 설정이면 한 장짜리 사진)
+  const layeredBg = bgImageUrl === BOAT_SEA_URL && !shouldReduceMotion;
 
   useEffect(() => {
     // 다음 장면 배경 미리 받기
@@ -217,16 +352,16 @@ export default function QuizContainer() {
 
   if (!initialLoaded) {
     return (
-      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950">
-        <div className="w-12 h-12 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin mb-4" />
-        <div className="text-amber-500/80 font-serif tracking-widest text-sm animate-pulse">
-          BOARDING TITANIC...
-        </div>
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center" style={{ background: '#05070d' }}>
+        <TransitionCard info={{ chapter: '승선 준비', when: '1912년 4월 10일', progress: 0 }} />
       </div>
     );
   }
 
   if (!mounted) return null;
+
+  // Q7 을 끝낸 결과 화면은 플래시에서 곧바로 이어지므로 장면 전환 페이드를 쓰지 않는다
+  const bridgeIn = currentStep === RESULT && !!answers.finalAction;
 
   const renderStep = () => {
     if (currentStep === PROLOGUE) {
@@ -245,6 +380,9 @@ export default function QuizContainer() {
 
     // 선택 없이 시간이 모두 흐른 경우
     if (extras.sunk) return <SpecialCard key="special" />;
+
+    // 히든 엔딩: 갑판에서 100명을 쓰러뜨려 성난 승객들에게 맞은 경우
+    if (extras.beaten) return <BeatenEnding key="beaten" />;
 
     // 밤 장면 (N1 ~ N3): 장면 패널
     if (scene?.renderer === 'night' && scene.cine) {
@@ -267,10 +405,12 @@ export default function QuizContainer() {
     if (scene && baseQuestion && scene.renderer !== 'night') {
       // 앞 선택에 따라 문구가 바뀌는 장면(예: 구명정에 탄 경우의 Q7)
       const v = scene.variant?.({ answers, flags, picks, run: runIndex, extras });
-      const question = v
+      const variantQuestion = v
         ? { ...baseQuestion, title: v.title ?? baseQuestion.title, subtitle: v.subtitle ?? baseQuestion.subtitle,
             options: v.omit ? baseQuestion.options.filter((o) => !v.omit!.includes(o.value)) : baseQuestion.options }
         : baseQuestion;
+      // 승객(항구, 성별, 나이)에 따라 글을 바꾸고 못 하는 선택지를 잠근다 (선택지_개정안.md)
+      const question = personalize(currentStep, variantQuestion, buildPersona(answers as Record<string, unknown>, extras));
       const Renderer = renderers[scene.renderer];
       return (
         <Renderer
@@ -279,6 +419,8 @@ export default function QuizContainer() {
           onAnswer={handleAnswer}
           onBack={() => back(scene.prev)}
           extras={extras}
+          answers={answers as Record<string, unknown>}
+          onBeaten={() => { setExtras({ beaten: true, knocked: 100 }); unlock('angry-mob'); }}
         />
       );
     }
@@ -287,11 +429,15 @@ export default function QuizContainer() {
   };
 
   return (
-    <div className={`w-full relative min-h-screen ${currentStep === PROLOGUE ? '' : 'overflow-hidden'}`}>
+    <div id="game-root" className={`w-full relative min-h-screen ${currentStep === PROLOGUE ? '' : 'overflow-hidden'}`}>
       <AchievementToast />
       <SoundToggle />
       <EnginePulse active={currentStep !== RESULT} />
-      {(currentStep === PROLOGUE || currentStep === RESULT) && <AchievementsButton />}
+      {/* 연출이 중요한 장면(결과 연출, 밤 시네마틱, 엔딩 카드, 플래시, 장면 전환)에서는 숨긴다.
+          프롤로그·결과 정리 화면은 왼쪽 위, 그 밖의 장면에서는 소리 버튼 옆(뒤로 가기와 겹치지 않게) */}
+      {!isFlashing && !transition && !extras.sunk && !extras.beaten && !(scene?.renderer === 'night' && scene.cine)
+        && (currentStep !== RESULT || resultStage === 'STAGE_SUMMARY' || answers.companion === 'dog')
+        && <AchievementsButton compact={currentStep !== PROLOGUE && currentStep !== RESULT} />}
       {/* Global Camera Flash Overlay */}
       <AnimatePresence>
         {isFlashing && (
@@ -305,22 +451,21 @@ export default function QuizContainer() {
         )}
       </AnimatePresence>
 
-      {/* Global Loading Transition Overlay */}
+      {/* 장면 사이 로딩: 놋쇠 둥근 창이 닫혔다 열린다 (ui/SceneTransition) */}
+      <SceneTransition info={transition} />
+      {vortex && <TimeVortex phase={vortex} />}
+      {blackout && <div aria-hidden className="pointer-events-none fixed inset-0 z-[9995] bg-black" />}
+      {crt && <CrtPowerOn />}
       <AnimatePresence>
-        {isTransitioning && (
+        {whiteout && (
           <motion.div
-            key="global-loader"
-            initial={{ opacity: 0 }}
+            key="q7-whiteout"
+            aria-hidden
+            initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm pointer-events-auto"
-          >
-            <div className="w-12 h-12 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin mb-4" />
-            <div className="text-amber-500/80 font-serif tracking-widest text-sm animate-pulse">
-              LOADING...
-            </div>
-          </motion.div>
+            exit={{ opacity: 0, transition: { duration: 1.6, ease: 'easeOut' } }}
+            className="fixed inset-0 z-[9997] bg-white pointer-events-none"
+          />
         )}
       </AnimatePresence>
 
@@ -333,20 +478,31 @@ export default function QuizContainer() {
       </svg>
 
       {/* Base Background Image Layer with AnimatePresence and SVG filter */}
-      <div className="absolute inset-0 bg-slate-950 z-0">
-        <AnimatePresence mode="wait">
-          <motion.div
+      <div
+        className="absolute inset-0 bg-slate-950 z-0"
+        style={tilt ? { transform: `perspective(1100px) rotateX(${-tilt * 2.2}deg) scale(${1 + tilt / 40})`, transformOrigin: '50% 100%', transition: 'transform 9s ease-in-out' } : undefined}
+      >
+        {/* 구명정이 있는 사진은 물결에 흔들린다 (BgSway) */}
+        <BgSway url={bgImageUrl}>
+        <AnimatePresence>
+          {bgImageUrl && <motion.div
             key={bgImageUrl}
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.05 }}
             animate={shouldReduceMotion 
               ? { opacity: bgOpacity } 
               : { opacity: bgOpacity, scale: 1, filter: currentStep === RESULT || scene?.ripple ? 'url(#water-ripple)' : 'none' }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
-            transition={{ duration: 1.5, ease: [0.76, 0, 0.24, 1] }}
+            transition={{ duration: 0.9, ease: [0.76, 0, 0.24, 1] }}
             className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-            style={{ backgroundImage: `url('${bgImageUrl}')` }}
-          />
+            style={layeredBg ? undefined : { backgroundImage: `url('${bgImageUrl}')`, backgroundPosition: variantBg?.bgPosition }}
+          >
+            {/* 바다와 배를 따로 그린 장면: 배만 흔들리고, 랜턴 불빛도 배와 같이 움직인다 */}
+            {layeredBg && <BoatSeaBg opacity={bgOpacity} out={false} />}
+          </motion.div>}
         </AnimatePresence>
+        {/* 배경 사진 속 랜턴 불빛이 일렁인다 */}
+        {!layeredBg && <BgLights key={bgImageUrl ?? 'none'} url={bgImageUrl} opacity={bgOpacity} out={false} />}
+        </BgSway>
       </div>
       
       {/* Gradient Overlay for dark cinematic mode */}
@@ -371,57 +527,18 @@ gradientClass
       <AnimatePresence mode="wait">
         <motion.div
           key={currentStep}
-          initial={shouldReduceMotion || scene?.fastEnter ? { opacity: 0 } : { opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={shouldReduceMotion || scene?.fastEnter || bridgeIn ? { opacity: 0, rotateX: -tilt * 0.6, transformPerspective: 1300 } : { opacity: 0, y: 20, rotateX: -tilt * 0.6, transformPerspective: 1300 }}
+          animate={{ opacity: 1, y: 0, rotateX: shouldReduceMotion ? -tilt * 0.6 : -tilt * 1.0, transformPerspective: 1300 }}
           exit={shouldReduceMotion || scene?.fastExit ? { opacity: 0, transition: { duration: 0.01 } } : { opacity: 0, y: -20 }}
-          transition={{ duration: scene?.fastEnter ? 0.01 : 0.8, ease: [0.76, 0, 0.24, 1] }}
+          transition={{ duration: scene?.fastEnter || bridgeIn ? 0.01 : 0.8, ease: [0.76, 0, 0.24, 1], rotateX: { duration: tilt ? 20 : 0.8, ease: 'linear' } }}
           className="w-full min-h-screen relative z-10"
         >
           {renderStep()}
         </motion.div>
       </AnimatePresence>
 
-      {/* 디버그용 바로가기 패널 */}
-      {IS_DEV && currentStep === PROLOGUE && (
-        <div className="absolute top-4 right-4 z-50 flex flex-col items-end gap-2">
-          <button 
-            onClick={toggleDebug}
-            className="text-[10px] bg-slate-900/30 text-slate-400 px-2 py-1 rounded hover:bg-slate-800/50 transition-colors border border-slate-700/50 backdrop-blur-sm"
-          >
-            {showDebug ? 'Hide Debug' : 'Show Debug'}
-          </button>
-          
-          <AnimatePresence>
-            {showDebug && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex flex-col gap-2 bg-slate-900/20 p-3 rounded-lg border border-slate-700/30 backdrop-blur-md"
-              >
-                <div className="text-xs text-slate-400/80 font-bold mb-1">[Debug] 바로가기</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {sceneIds.map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => nextStep(q)}
-                      className="bg-blue-500/20 text-white/80 px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-500/50 transition-colors backdrop-blur-sm"
-                    >
-                      {q}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => nextStep(RESULT)}
-                    className="col-span-2 bg-red-500/20 text-white/80 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-500/50 transition-colors backdrop-blur-sm"
-                  >
-                    RESULT
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
+      {/* 디버그 패널: 개발 서버에서만. 어느 장면에서든 건너뛴다 (ui/DebugPanel) */}
+      {IS_DEV && <DebugPanel />}
     </div>
   );
 }

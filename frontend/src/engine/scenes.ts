@@ -1,4 +1,5 @@
 import type { SceneDef } from './types';
+import { ageOf, isChildAge } from './boarding';
 
 export const PROLOGUE = 'PROLOGUE';
 export const RESULT = 'RESULT';
@@ -51,6 +52,7 @@ function dogFinalText(a: DogAnswers): string {
   return `${base} 구명정 가장자리에서 라벤더 향이 짙어집니다. 주인의 외투입니다. 주인은 인파에 밀려 당신을 보지 못하고 있습니다. 구명정은 곧 내려갑니다.`;
 }
 
+
 export const CHAPTERS = ['탑승', '항해', '그날 밤'] as const;
 
 export const scenes: Record<string, SceneDef> = {
@@ -64,7 +66,7 @@ export const scenes: Record<string, SceneDef> = {
     id: 'Q2', renderer: 'companion', answerKey: 'companion',
     // 부두 구석에 숨은 강아지를 찍으면 강아지 시점 분기로 간다
     next: (ctx) => (ctx.answers.companion === 'dog' ? 'DQ0' : 'Q3'), prev: 'Q1', chapter: 0, gradient: 'default',
-    assets: ['/lens.webp'], preloadOptionBg: true, flashOnAnswer: true, fastExit: true,
+    assets: ['/lens.webp'], preloadOptionBg: true, flashOnAnswer: true, fastExit: true, fastEnter: true,
   },
   // ── 강아지 시점 분기: Q2 에서 숨은 강아지를 찍은 경우에만 거친다. 백엔드 점수 없이 자체 결과 카드로 끝난다 ──
   // 시작: 트랩 위에서 목줄이 툭 끊어진다 (선택 없는 연출 장면)
@@ -111,8 +113,11 @@ export const scenes: Record<string, SceneDef> = {
   N2: { id: 'N2', renderer: 'night', cine: 'N2', next: 'N3', prev: 'N1', chapter: 2, gradient: 'rumor', nightOnly: true },
   N3: { id: 'N3', renderer: 'night', cine: 'N3', next: 'Q7', prev: 'N2', chapter: 2, gradient: 'rumor', nightOnly: true },
   Q7: {
-    id: 'Q7', renderer: 'cinematic', answerKey: 'finalAction', next: RESULT, prev: 'Q6', chapter: 2,
+    // 선택 뒤 서버 확률로 탑승을 판정해 B1(탑승)과 W1(미탑승)로 갈린다. 판정 전에는 결과로 가지 않는다
+    id: 'Q7', renderer: 'lifeboat', seamlessAnswer: true, fastExit: true, answerKey: 'finalAction',
+    next: (ctx) => (ctx.extras?.boarded === true ? 'B1' : ctx.extras?.boarded === false ? 'WB' : RESULT), prev: 'Q6', chapter: 2,
     gradient: 'lifeboat', ripple: true,
+    assets: ['/q7/deck_sea.webp', '/q7/deck_fg.webp', '/q7/boat_officer.webp', '/q7/officer/doubt.webp', '/q7/officer/urgent.webp', '/q7/officer/angry.webp', '/q7/officer/relief.webp', '/q7/officer/block.webp', '/q7/officer/receive.webp', '/q7/officer/pull.webp', '/q7/officer/pity.webp', '/q7/child_back.webp', '/q7/child_lifted.webp'],
     // 이미 구명정에 탔다면 같은 질문이 "구명정 위에서" 벌어지는 일로 바뀐다 (문구 초안)
     variant: ({ flags }) => flags.boat
       ? {
@@ -122,6 +127,20 @@ export const scenes: Record<string, SceneDef> = {
         }
       : undefined,
   },
+  // ── Q7 뒤의 갈래. 탑승했으면 B1, 못 탔으면 W1 → W2 → 결과. 선택은 점수와 서버에 쓰이지 않는다 ──
+  B1: {
+    id: 'B1', renderer: 'cinematic', answerKey: 'boatDilemma', next: RESULT, prev: 'Q7', chapter: 2, gradient: 'lifeboat', bgOpacity: 0.85,
+    // 11세 이하에게는 사람을 던지는 선택지를 보이지 않는다
+    variant: ({ answers, extras }) => (isChildAge(ageOf(answers as Record<string, unknown>, extras ?? {})) ? { omit: ['injured'] } : undefined),
+  },
+  // 다리 연출: 구명정이 떠나고 갑판이 기운 뒤 난간을 붙잡는다 (DeckBridge). 놓치면 W1 을 건너뛰고 바다(W2)로 떨어진다
+  WB: {
+    id: 'WB', renderer: 'deckbridge', seamlessAnswer: true, fastExit: true, answerKey: 'gripResult',
+    next: (ctx) => (ctx.answers.gripResult === 'slipped' ? 'W2' : 'W1'), prev: 'Q7', chapter: 2, gradient: 'lifeboat',
+    assets: ['/q7/deck_sea.webp', '/q7/deck_fg.webp', '/q7/boat_officer.webp'],
+  },
+  W1: { id: 'W1', renderer: 'sinkside', answerKey: 'lastWords', next: 'W2', prev: 'WB', chapter: 2, gradient: 'rumor', bgOpacity: 0.7 }, // 난간에 매달린 침몰 옆모습 (SinkSideView). 화면이 스스로 기울므로 장면 기울기(tilt)는 쓰지 않는다
+  W2: { id: 'W2', renderer: 'swim', answerKey: 'lastWay', next: RESULT, prev: 'W1', chapter: 2, gradient: 'rumor', bgOpacity: 0.65 }, // 바다에서 헤엄치기 (SwimView). 생존 여부는 화면이 직접 굴려 넘긴다
 };
 
 /** 개발용 바로가기 목록 (장면 id 순서) */

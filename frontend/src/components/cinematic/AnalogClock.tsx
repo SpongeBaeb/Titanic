@@ -53,7 +53,7 @@ export default function AnalogClock({ elapsed, size, sinkMark = true }: Props) {
       <image href="/clock/dial.webp" x="0" y="0" width="100" height="100" />
       {/* 침몰 시각이 가리키는 분침 위치 */}
       {sinkMark && <line x1={mark[0].x} y1={mark[0].y} x2={mark[1].x} y2={mark[1].y} stroke="#C8352B" strokeWidth="1.8" strokeLinecap="round" />}
-      <g transform={`rotate(${hourDeg} 50 50)`} fill="#1c2128" stroke="#B89A5B" strokeWidth="0.35" strokeLinejoin="round">
+      <g transform={`rotate(${hourDeg} 50 50)`} fill="#1c2128" stroke="#B79F71" strokeWidth="0.35" strokeLinejoin="round">
         <path d="M50 26 L54.6 37.5 L51.6 39 L51.8 55 L48.2 55 L48.4 39 L45.4 37.5 Z" />
       </g>
       <g transform={`rotate(${minuteDeg} 50 50)`} fill="#1c2128" stroke="#0a0d11" strokeWidth="0.2">
@@ -63,7 +63,7 @@ export default function AnalogClock({ elapsed, size, sinkMark = true }: Props) {
         <line x1="50" y1="59" x2="50" y2="14" strokeWidth="0.5" />
         <circle cx="50" cy="57" r="1.1" fill="#C8352B" strokeWidth="0" />
       </g>
-      <circle cx="50" cy="50" r="2.3" fill="#B89A5B" stroke="#6f5a2c" strokeWidth="0.4" />
+      <circle cx="50" cy="50" r="2.3" fill="#B79F71" stroke="#6f5a2c" strokeWidth="0.4" />
       <circle cx="50" cy="50" r="0.8" fill="#3a2f18" />
     </svg>
   );

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuizStore } from '@/store/quizStore';
 import { restartJourney } from '@/lib/session';
+import ResetLift from '@/components/ui/ResetLift';
+import AnalogOverlay from '@/components/ui/AnalogOverlay';
 import { unlock, onDogEnding, DOG_ENDING_KEYS } from '@/engine/achievements';
 import { captainBond, tomBond } from '@/engine/scenes';
 
@@ -140,6 +142,20 @@ export default function DogResultView() {
     setSeenCount(onDogEnding(ending.key)); // 본 결말을 기록한다 (일곱 가지를 모두 보면 업적)
   }, [ending.key]);
 
+  // 글이 다 나온 뒤 화면 아래에서 RESET 승강 버튼이 올라온다 (기록 밖, 기계 쪽에서 손님이 되돌린다)
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setArmed(true), (2.4 + ending.lines.length * 1.1) * 1000);
+    return () => clearTimeout(t);
+  }, [ending.lines.length]);
+
+  // 승강 버튼이 글을 가리지 않도록, 올라오는 동안 글이 위로 올라오게 아래까지 천천히 스크롤한다
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }), 500);
+    return () => clearTimeout(t);
+  }, [armed]);
+
   useEffect(() => {
     if (!ending.img2) return;
     const t = setTimeout(() => setShot(1), 1000 + ending.lines.length * 1100);
@@ -182,23 +198,24 @@ export default function DogResultView() {
           </>
         )}
       </motion.p>
-      <motion.button
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2.2 + ending.lines.length * 1.1, duration: 1 }}
-        onClick={restartJourney}
-        className="mt-10 border border-slate-500 bg-black/30 px-8 py-3 text-sm tracking-widest text-slate-300 transition-colors hover:bg-slate-800 hover:text-slate-100"
-      >
-        새로운 여정 시작하기
-      </motion.button>
+      {/* 승강 버튼이 올라올 자리를 비워 둔다 */}
+      <motion.div aria-hidden initial={false} animate={{ height: armed ? 'min(38vh, 460px)' : 0 }} transition={{ duration: 1.2, ease: 'easeInOut' }} />
     </div>
   );
 
   const imgs = [ending.img, ending.img2].filter(Boolean) as string[];
+  // 결말이 끝나면 기록 밖(기계 쪽)의 아날로그 화면이 서서히 번지고, 그 아래에서 RESET 승강 버튼이 올라온다
+  const resetLift = (
+    <>
+      <AnalogOverlay fixed delay={1.5} duration={6} />
+      <ResetLift armed={armed} onReset={restartJourney} />
+    </>
+  );
 
   // 가로 그림: 화면 전체 배경으로 깔고 글을 그 위에 올린다 (천천히 다가가는 카메라)
   if (ending.img && ending.shape === 'wide') {
     return (
+      <>
       <div className="relative flex min-h-[80vh] items-center justify-center px-6 py-12 md:justify-end md:pr-[7vw]">
         <motion.img
           src={ending.img}
@@ -215,12 +232,15 @@ export default function DogResultView() {
           {text}
         </motion.div>
       </div>
+      {resetLift}
+      </>
     );
   }
 
   // 세로 그림: 그림을 액자처럼 옆에 놓는다 (좁은 화면에서는 위에)
   if (ending.img && ending.shape === 'tall') {
     return (
+      <>
       <div className="flex min-h-[80vh] items-center justify-center px-6 py-10">
         <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1.2, ease: [0.2, 0.7, 0.2, 1] }} className="flex w-full max-w-4xl flex-col items-center gap-8 md:flex-row md:gap-12">
           <div
@@ -243,15 +263,20 @@ export default function DogResultView() {
           <div className="min-w-0 flex-1">{text}</div>
         </motion.div>
       </div>
+      {resetLift}
+      </>
     );
   }
 
   // 그림이 없는 경우: 글만
   return (
+    <>
     <div className="flex min-h-[80vh] items-center justify-center px-6 py-12">
       <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1.2, ease: [0.2, 0.7, 0.2, 1] }} className="w-full max-w-md">
         {text}
       </motion.div>
     </div>
+    {resetLift}
+    </>
   );
 }

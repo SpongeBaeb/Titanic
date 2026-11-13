@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Question } from '@/data/questions';
 import ProgressLine from '@/components/ui/ProgressLine';
-import { playRoomChoose } from '@/lib/synth';
+import { playRoomChoose, playSqueak } from '@/lib/synth';
+import { unlock, onDuckFound, DUCK_ROOMS, loadFoundDucks } from '@/engine/achievements';
 
 interface StaircaseViewProps {
   question: Question;
@@ -34,6 +35,15 @@ const SPOTS: Record<string, { x: number; y: number; w: number; h: number }> = ((
   return out;
 })();
 const HIT_PAD = 10; // 핫스팟 주변 여유(px): 작은 점이라도 누르기 쉽게
+
+// 방 그림(1920x1072, object-cover)에 숨겨 둔 오리: 방마다 한 마리, 재질이 다르다. 위치는 그림 크기에 대한 % (x: 가운데, y: 발 닿는 곳, w: 폭)
+// 그림은 public/bg/room_duck_{방}.webp (투명 배경). 파일이 없으면 오리도 눌리는 자리도 없다
+const ROOM_IMG = { w: 1920, h: 1072 };
+const ROOM_DUCKS: Record<string, { x: number; y: number; w: number; found: string; dim?: number }> = {
+  '1': { x: 40.6, y: 49.9, w: 2.4, found: '은빛 도자기 오리. 벽난로 선반 위에서 시계를 지켜보고 있었다.' },
+  '2': { x: 36.8, y: 60.3, w: 3.0, found: '나무로 깎은 오리. 책 위에서 졸고 있었다.' },
+  '3': { x: 68.0, y: 76.6, w: 2.4, dim: 0.42, found: '노란 양철 오리. 긴 의자 밑 어둠 속에 숨어 있었다.' }, // 오른쪽 긴 의자 밑 그늘진 곳. 어둡게 그려 그림자에 묻힌다(dim: 밝기), 마우스가 가까이 오면 조금 밝아진다
+};
 
 // 등급마다 안내벌레의 색과 움직임이 다르다: 올려 보기 전부터 그 공간의 성격을 암시한다
 interface Tone {
@@ -137,7 +147,9 @@ function ScoutCanvas({ pointer, focus }: { pointer: React.MutableRefObject<{ x: 
         col.core[i] += (tc[i] - col.core[i]) * 0.08;
         col.glow[i] += (tg[i] - col.glow[i]) * 0.08;
       }
-      const p = fo ? { x: fo.x, y: fo.y } : pointer.current;
+      // 선택지에 올리면 벌레들이 그쪽으로 쏠리되, 손을 떠나 완전히 끌려가지는 않는다 (자석처럼 느껴지지 않게 절반만 쏠린다)
+      const pc = pointer.current;
+      const p = fo && pc.x > -500 ? { x: pc.x + (fo.x - pc.x) * 0.4, y: pc.y + (fo.y - pc.y) * 0.4 } : fo ? { x: fo.x, y: fo.y } : pc;
       if (p.x > -500) {
         for (const f of flies) {
           const rr = f.r * (1 - 0.35 * mix);
@@ -182,6 +194,32 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
   const focus = useRef<Focus | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [size, setSize] = useState({ vw: 1280, vh: 720 });
+  // 둘러보기: 세 방을 모두 들여다보면 업적 (고르기 전)
+  const viewed = useRef(new Set<string>());
+  // 숨은 오리: 방이 다 열린 뒤에야 보인다
+  const [revealedFor, setRevealedFor] = useState<string | null>(null);
+  const [duckArt, setDuckArt] = useState<Record<string, boolean>>({}); // 그림 파일이 있는 방
+  const [duckRatio, setDuckRatio] = useState<Record<string, number>>({}); // 오리 그림의 세로/가로 (그릴 때 쓴다)
+  const [duckMsg, setDuckMsg] = useState<{ room: string; text: string } | null>(null);
+  const [taken, setTaken] = useState<Record<string, boolean>>({}); // 이번 방문에서 집어 간 오리: 누르면 사라진다
+  // 주소에 ?duckdebug 를 붙이면 숨은 오리의 눌리는 자리를 점선으로 보이고, 마지막 입력이 어디에 닿았는지 화면 위에 적는다 (오리가 눌리지 않을 때 원인을 찾는 용)
+  const [dbgOn, setDbgOn] = useState(false);
+  const [dbgLog, setDbgLog] = useState<string[]>([]);
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has('duckdebug')) return;
+    setDbgOn(true);
+    const on = (e: Event) => {
+      const pe = e as PointerEvent;
+      const t = e.target as HTMLElement;
+      const label = `${t.tagName}${t.getAttribute?.('aria-label') ? `:${t.getAttribute('aria-label')}` : ''}${t.className && typeof t.className === 'string' ? `.${t.className.split(' ').slice(0, 2).join('.')}` : ''}`;
+      setDbgLog((l) => [`${e.type} ${Math.round(pe.clientX)},${Math.round(pe.clientY)} → ${label}`, ...l].slice(0, 6));
+    };
+    ['pointerdown', 'click'].forEach((t) => window.addEventListener(t, on, true));
+    return () => ['pointerdown', 'click'].forEach((t) => window.removeEventListener(t, on, true));
+  }, []);
+  const [duckNear, setDuckNear] = useState(false); // 마우스가 숨은 오리 가까이 오면 설명 상자가 흐려져 오리가 보인다
+  const [, setDuckTick] = useState(0); // 오리를 찾으면 다시 그린다 (찾은 기록은 localStorage 에서 읽는다)
+  const duckMsgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 화면 크기에 맞춘 그림 변환 (object-cover 와 같은 계산)
   useEffect(() => {
@@ -221,6 +259,88 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
     focus.current = hovered && rect ? { x: rect.cx, y: rect.cy, tone: TONES[hovered] ?? DEFAULT_TONE } : null;
   }, [hovered, rectFor]);
 
+  useEffect(() => () => { if (duckMsgTimer.current) clearTimeout(duckMsgTimer.current); }, []);
+  // 오리 그림은 미리 받아 둔다: 방이 열린 순간 바로 눌릴 수 있게
+  useEffect(() => {
+    DUCK_ROOMS.forEach((room) => {
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = im.naturalWidth; c.height = im.naturalHeight;
+          const g = c.getContext('2d');
+          if (g) {
+            g.drawImage(im, 0, 0);
+            const d = g.getImageData(0, 0, c.width, c.height).data;
+            const a = new Uint8ClampedArray(c.width * c.height);
+            for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+            duckMask.current[room] = { w: c.width, h: c.height, a };
+          }
+        } catch { /* 마스크를 못 읽으면 그림 상자 전체로 판정한다 */ }
+        setDuckRatio((r) => ({ ...r, [room]: im.naturalHeight / im.naturalWidth }));
+        setDuckArt((a) => ({ ...a, [room]: true }));
+      };
+      im.src = `/bg/room_duck_${room}.webp`;
+    });
+  }, []);
+  useEffect(() => {
+    if (!hovered) return;
+    viewed.current.add(hovered);
+    if (DUCK_ROOMS.every((r) => viewed.current.has(r))) unlock('be-right-back');
+  }, [hovered]);
+  useEffect(() => {
+    if (!hovered) return;
+    const t = setTimeout(() => setRevealedFor(hovered), reduce ? 200 : 1600);
+    return () => clearTimeout(t);
+  }, [hovered, reduce]);
+
+  /** 숨은 오리의 화면 자리 (그림 속 자리를 화면 좌표로). 오리를 그릴 때와 마우스 범위를 정할 때 같이 쓴다 */
+  const duckBox = useCallback((room: string) => {
+    const d = ROOM_DUCKS[room];
+    if (!d) return null;
+    const s = Math.max(size.vw / ROOM_IMG.w, size.vh / ROOM_IMG.h);
+    const ox = (size.vw - ROOM_IMG.w * s) / 2;
+    const oy = (size.vh - ROOM_IMG.h * s) / 2;
+    const w = (d.w / 100) * ROOM_IMG.w * s;
+    const cx = ox + (d.x / 100) * ROOM_IMG.w * s;
+    const bottom = oy + (d.y / 100) * ROOM_IMG.h * s;
+    return { w, cx, bottom, cy: bottom - w * 0.37 };
+  }, [size]);
+
+  const lastDuckAt = useRef(0); // 오리를 집은 시각: 그 직후의 클릭으로 방이 골라지지 않게 한다
+  // 오리 그림의 투명도: 눌리는 자리를 오리 모양 그대로 정한다 (그림 파일에서 읽는다)
+  const duckMask = useRef<Record<string, { w: number; h: number; a: Uint8ClampedArray }>>({});
+  /** 숨은 오리 그림이 놓인 화면 상자 */
+  const duckImgBox = (room: string) => {
+    const db = duckBox(room);
+    if (!db) return null;
+    const h = db.w * (duckRatio[room] ?? 0.731);
+    return { left: db.cx - db.w / 2, top: db.bottom - h, width: db.w, height: h };
+  };
+  /** 오리 위(그림 속 오리 모양, 투명한 곳은 제외)를 눌렀는가. 그림 상자 안이어도 투명한 곳이면 아니다 */
+  const hitsDuck = (room: string, clientX: number, clientY: number, box: { left: number; top: number; width: number; height: number }): boolean => {
+    const lx = clientX - box.left;
+    const ly = clientY - box.top;
+    if (lx < 0 || ly < 0 || lx > box.width || ly > box.height) return false;
+    const m = duckMask.current[room];
+    if (!m) return true;
+    const px = Math.min(m.w - 1, Math.max(0, Math.floor((lx / box.width) * m.w)));
+    const py = Math.min(m.h - 1, Math.max(0, Math.floor((ly / box.height) * m.h)));
+    return m.a[py * m.w + px] > 24;
+  };
+
+  const findDuck = (room: string, at: number) => {
+    if (chosen || taken[room]) return;
+    lastDuckAt.current = at;
+    const n = onDuckFound(room);
+    setTaken((t) => ({ ...t, [room]: true }));
+    setDuckTick((x) => x + 1);
+    playSqueak();
+    setDuckMsg({ room, text: `${ROOM_DUCKS[room].found} (${n}/${DUCK_ROOMS.length})` });
+    if (duckMsgTimer.current) clearTimeout(duckMsgTimer.current);
+    duckMsgTimer.current = setTimeout(() => setDuckMsg(null), 4200);
+  };
+
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   // 선택: 고른 방으로 파고들며 어두워진 뒤 다음 질문으로 넘어간다. 한 번만 처리된다(빠르게 두 번 눌러도 한 번).
@@ -250,11 +370,39 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
     lastType.current = e.pointerType;
     if (e.pointerType !== 'mouse') return;
     pointer.current = { x: e.clientX - 4, y: e.clientY - 4 };
-    // 방이 열려 있는 동안에는 그 방을 마음껏 둘러볼 수 있다: 선택지 자리에서 한참 벗어나야 닫힌다
-    // (다른 선택지 자리에 들어가면 그 방으로 바뀐다)
+    // 방이 열려 있는 동안에는 그 방을 둘러볼 수 있다: 선택지 자리에서 어느 정도 벗어나면 닫힌다
+    // (다른 선택지 자리에 들어가면 그 방으로 바뀐다. 예전에는 화면의 3분의 1이나 벗어나야 닫혀서 방이 마우스에 달라붙은 느낌이었다)
+    // 다른 선택지 자리 위에 있으면 그 방으로 바꾼다 (자리에 들어서는 순간의 enter 이벤트와 이 이동 이벤트가 겹쳐도 방이 닫히지 않게)
+    if (!chosen) {
+      const inside = question.options.find((o) => {
+        const r = rectFor(o.value);
+        return !!r && e.clientX >= r.left && e.clientX <= r.left + r.width && e.clientY >= r.top && e.clientY <= r.top + r.height;
+      });
+      if (inside) {
+        if (inside.value !== hovered) setHovered(inside.value);
+        return;
+      }
+    }
     if (hovered && !chosen) {
       const rect = rectFor(hovered);
-      if (rect && Math.hypot(e.clientX - rect.cx, e.clientY - rect.cy) > Math.max(300, size.vw * 0.36)) setHovered(null);
+      const R = Math.max(150, size.vw * 0.15);
+      let inRange = !!rect && Math.hypot(e.clientX - rect.cx, e.clientY - rect.cy) <= R;
+      // 숨은 오리는 선택지 자리에서 멀리 있을 수 있다: 오리까지 이어지는 길과 오리 둘레도 범위 안으로 본다 (오리를 집어 가기 전까지)
+      const db = duckBox(hovered);
+      if (!inRange && rect && db && !taken[hovered]) {
+        const ax = rect.cx, ay = rect.cy, bx = db.cx, by = db.cy;
+        const dx = bx - ax, dy = by - ay;
+        const t = Math.max(0, Math.min(1, ((e.clientX - ax) * dx + (e.clientY - ay) * dy) / (dx * dx + dy * dy || 1)));
+        const onPath = Math.hypot(e.clientX - (ax + dx * t), e.clientY - (ay + dy * t)) <= 110;
+        const nearDuck = Math.hypot(e.clientX - bx, e.clientY - by) <= Math.max(90, db.w * 1.6);
+        inRange = onPath || nearDuck;
+      }
+      if (!inRange) setHovered(null);
+      // 오리 가까이: 아래 설명 상자가 오리를 가리므로 그동안 흐려 준다
+      const near = !!db && !taken[hovered] && revealedFor === hovered && Math.hypot(e.clientX - db.cx, e.clientY - db.cy) <= Math.max(110, db.w * 2.4);
+      setDuckNear((v) => (v === near ? v : near));
+    } else {
+      setDuckNear((v) => (v ? false : v));
     }
   };
 
@@ -267,23 +415,34 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 h-full w-full select-none overflow-hidden bg-slate-950 cursor-none"
+      className={`fixed inset-0 h-full w-full select-none overflow-hidden bg-slate-950 ${hovered && revealedFor === hovered && !taken[hovered] && ROOM_DUCKS[hovered] && !chosen ? 'cursor-crosshair' : 'cursor-none'}`}
       onPointerMove={handlePointerMove}
       onPointerDown={(e) => {
         lastType.current = e.pointerType;
+        // 오리 그 자체(그림 속 오리 모양)를 누르면 오리를 집는다. 이 클릭은 방을 고르지 않는다 (findDuck 이 시각을 적어 둔다)
+        if (hovered && !chosen && !taken[hovered] && revealedFor === hovered && duckArt[hovered]) {
+          const box = duckImgBox(hovered);
+          if (box && hitsDuck(hovered, e.clientX, e.clientY, box)) {
+            e.preventDefault();
+            findDuck(hovered, e.timeStamp);
+          }
+        }
       }}
       onPointerLeave={() => {
         if (!chosen && lastType.current === 'mouse') setHovered(null);
       }}
       onClick={(e) => {
         if (chosen) return;
+        if (lastDuckAt.current && e.timeStamp - lastDuckAt.current < 2500) return; // 오리를 집은 직후에는 방을 고르지 않는다
         // 터치: 빈 곳을 누르면 미리보기를 닫는다
         if (e.target === e.currentTarget && lastType.current === 'touch') {
           setHovered(null);
           return;
         }
         // 마우스: 방이 열려 있으면 어디를 눌러도 그 방을 고른다 (뒤로 가기 버튼과 진행 표시는 제외)
-        if (lastType.current === 'mouse' && hovered && !(e.target as HTMLElement).closest('[data-nochoose]')) choose(hovered);
+        if (lastType.current === 'mouse' && hovered && !(e.target as HTMLElement).closest('[data-nochoose]')) {
+          choose(hovered);
+        }
       }}
     >
       {!reduce && !chosen && <ScoutCanvas pointer={pointer} focus={focus} />}
@@ -351,7 +510,7 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
               <motion.div
                 key={hoverData.id}
                 initial={{ opacity: 0, y: reduce ? 0 : 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                animate={{ opacity: duckNear && !!hovered && !taken[hovered] ? 0 : 1, y: 0 }}
                 exit={{ opacity: 0, y: reduce ? 0 : 10 }}
                 transition={{ duration: reduce ? 0.15 : 0.4 }}
                 className="max-w-2xl rounded-2xl border border-white/10 bg-black/40 px-8 py-6 text-center shadow-2xl backdrop-blur-md"
@@ -385,7 +544,8 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
                 if (e.pointerType === 'mouse' && !chosen) setHovered(opt.value);
               }}
 
-              onClick={() => {
+              onClick={(e) => {
+                if (lastDuckAt.current && e.timeStamp - lastDuckAt.current < 2500) return;
                 if (lastType.current === 'touch' && hovered !== opt.value) {
                   setHovered(opt.value);
                   return;
@@ -410,6 +570,60 @@ export default function StaircaseView({ question, onAnswer, onBack }: StaircaseV
           );
         })}
       </div>
+
+      {/* 숨은 오리: 열린 방 그림 위, 그림 속 자리에 올린다. 누르면 방이 골라지지 않고 오리를 집어 가며 사라진다 */}
+      {hovered && revealedFor === hovered && !chosen && ROOM_DUCKS[hovered] && duckBox(hovered) && (() => {
+        const db = duckBox(hovered)!;
+        const w = db.w;
+        const found = loadFoundDucks().includes(hovered);
+        const gone = !!taken[hovered];
+        return (
+          // 집어 간 오리는 위로 떠오르며 사라진다 (AnimatePresence 의 퇴장에 기대지 않고 투명도로 숨긴다: 퇴장 연출이 멈추면 오리가 남는 일이 없게)
+          <motion.div
+            key={`duck-${hovered}`}
+            className="pointer-events-none absolute inset-0 z-[45]"
+            initial={false}
+            animate={gone ? (reduce ? { opacity: 0 } : { opacity: 0, y: -14, scale: 1.5 }) : { opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: reduce ? 0.15 : 0.35, ease: 'easeOut' }}
+            style={{ transformOrigin: `${db.cx}px ${db.bottom}px`, visibility: gone ? undefined : 'visible' }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/bg/room_duck_${hovered}.webp`} alt="" aria-hidden className="hidden" onLoad={() => setDuckArt((a) => ({ ...a, [hovered]: true }))} />
+            {duckArt[hovered] && (() => {
+              // 오리 그림 상자(투명한 곳 포함). 눌리는 곳은 이 안의 오리 모양뿐이다
+              const box = duckImgBox(hovered)!;
+              const dim = ROOM_DUCKS[hovered].dim ?? 1;
+              const light = duckNear ? Math.min(1, dim + 0.4) : dim; // 그늘에 있는 오리는 마우스가 가까이 오면 조금 밝아진다
+              const room = hovered;
+              return (
+                <button
+                  type="button"
+                  data-nochoose
+                  aria-label="숨은 오리"
+                  disabled={gone}
+                  className="absolute"
+                  style={{ pointerEvents: 'none', left: box.left, top: box.top, width: box.width, height: box.height, background: 'transparent', outline: dbgOn ? '2px dashed #ff3b3b' : undefined }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/bg/room_duck_${room}.webp`} alt="" draggable={false} className="pointer-events-none absolute inset-0 select-none"
+                    style={{ width: '100%', height: '100%', transition: 'filter 300ms', filter: `brightness(${light}) ${found ? 'drop-shadow(0 0 6px rgba(255,220,120,0.9))' : ''}` }} />
+                </button>
+              );
+            })()}
+          </motion.div>
+        );
+      })()}
+      {dbgOn && (
+        <div data-nochoose className="pointer-events-none fixed left-2 top-2 z-[9999] max-w-[90vw] rounded bg-black/80 p-2 font-mono text-[11px] leading-snug text-lime-300">
+          <div>duckdebug · hovered={String(hovered)} · revealed={String(revealedFor)} · taken={JSON.stringify(taken)} · chosen={String(chosen)}</div>
+          {dbgLog.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      )}
+      {duckMsg && (
+        <div data-nochoose className="pointer-events-none absolute inset-x-0 top-1/3 z-[65] flex justify-center px-6">
+          <div className="max-w-md rounded-xl border border-amber-200/30 bg-black/65 px-6 py-3 text-center font-serif text-sm leading-relaxed text-amber-100 backdrop-blur-sm">{duckMsg.text}</div>
+        </div>
+      )}
 
       {/* 고른 뒤 화면이 어두워지며 넘어간다 */}
       <AnimatePresence>

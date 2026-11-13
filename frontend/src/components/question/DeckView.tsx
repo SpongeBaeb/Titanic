@@ -9,6 +9,8 @@ import { wallClock } from '@/engine/cinematic';
 import { scenes } from '@/engine/scenes';
 import { unlock } from '@/engine/achievements';
 import ScopeView from './ScopeView';
+import { FireworkShow, type ShellKind } from './deck/fireworks';
+import { NORTH_SKY, CONSTELLATIONS, POINTER, starByName, starColor } from './deck/northSky';
 import { playCorkPop, playFireworkBurst, playStarChime, playWhaleCall, playSplash } from '@/lib/synth';
 
 /**
@@ -58,16 +60,14 @@ const LINES: Record<Choice, string> = {
 const DUR: Record<Choice, number> = { experience: 6.6, stability: 7.0, change: 8.0 };
 const FADE_AT: Record<Choice, number> = { experience: 5.7, stability: 6.1, change: 7.1 };
 
-// 별자리: 북두칠성과 북극성, 카시오페이아 (그림 좌표)
-const BIG_DIPPER = [
-  { x: 640, y: 150 }, { x: 705, y: 172 }, { x: 770, y: 168 }, { x: 832, y: 194 },
-  { x: 842, y: 262 }, { x: 922, y: 276 }, { x: 935, y: 212 },
-];
-const POLARIS = { x: 985, y: 84 };
-const CASSIOPEIA = [{ x: 1060, y: 190 }, { x: 1115, y: 136 }, { x: 1172, y: 170 }, { x: 1220, y: 120 }, { x: 1280, y: 154 }];
-// 별 번호(0~6 북두칠성, 7 북극성, 8~12 카시오페이아) 순서대로 이어 그린다
-const STARS = [...BIG_DIPPER, POLARIS, ...CASSIOPEIA];
-const SEGMENTS: [number, number][] = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 3], [5, 6], [6, 7], [8, 9], [9, 10], [10, 11], [11, 12]];
+// 별자리: 1912년 4월 14일 밤 북쪽 하늘의 실제 별 위치 (deck/northSky.ts)
+/** 별자리마다 이어 그릴 별의 순서 (처음 나오는 순서) */
+const CONST_STARS = CONSTELLATIONS.map((c) => {
+  const seen: string[] = [];
+  for (const [a, b] of c.lines) for (const n of [a, b]) if (!seen.includes(n)) seen.push(n);
+  return seen;
+});
+const STAR_STEP = 0.11; // 별자리 안에서 별이 하나씩 켜지는 간격(초)
 
 const VERT = `#version 300 es
 in vec2 a; void main(){ gl_Position = vec4(a,0.,1.); }`;
@@ -131,16 +131,22 @@ vec3 sky(vec2 p){
   float bright = (0.85 + uStar * 1.1) * (.45 + .55 * h) * mix(.7 * smoothstep(.22, .6, h), 1., uNight);
   float st = on * smoothstep(.10, .0, d) * (.35 + .65 * tw) * bright;
   float big = step(.975, r);
-  float halo = smoothstep(.26, .0, d) * .30;
+  float halo = smoothstep(.26, .0, d) * .20;
   float cross = smoothstep(.025, .0, abs(e2.x)) * smoothstep(.36, .0, abs(e2.y)) + smoothstep(.025, .0, abs(e2.y)) * smoothstep(.36, .0, abs(e2.x));
-  st += big * (halo + cross * .7) * (.4 + .6 * tw2) * bright * 1.3;
+  // 육안으로 보는 별에는 사진 같은 십자 빛줄기가 거의 없다: 아주 옅게만
+  st += big * (halo + cross * .12) * (.4 + .6 * tw2) * bright * 1.3;
   c += mix(vec3(.85, .9, 1.), vec3(1., .9, .75), hash(id + 11.)) * st * (1. - dens * .9);
   // 은하수
-  float dd = (p.y - (.34 * p.x - 30.));
-  float band = exp(-dd * dd / (2. * 80. * 80.));
+  // 1912년 4월 14일 밤 9시 무렵 북쪽 하늘: 은하수는 머리 위가 아니라 북동쪽 수평선에서 카시오페이아를 지나 북서쪽으로 낮게 걸친다
+  // (은하 적도를 그날 하늘에 투영해 맞춘 곡선, tools/q5_north_sky.py)
+  float dd = p.y - (-0.000913 * p.x * p.x + 1.8177 * p.x - 428.3);
+  float band = exp(-dd * dd / (2. * 42. * 42.));
+  band *= .75 + .5 * fbm(p * .02 + 5.); // 별구름이 뭉치고 비는 결
+  band *= 1. - .55 * smoothstep(.5, 1., fbm(vec2(p.x * .012, dd * .05) + 9.)); // 가운데를 가르는 어두운 먼지띠
   float cloud = .35 + fbm(p * .011 + 2.) * 1.3;
   float dust = step(.86, hash(floor(p * .6))) * .5 * band;
-  c += (vec3(.48, .55, .80) * band * cloud * .55 + vec3(.9) * dust * .35) * uMilky * uNight;
+  // 수평선 가까이 낮게 뜬 은하수는 대기를 두껍게 지나 옅다: 은은하게만
+  c += (vec3(.46, .52, .74) * band * cloud * .34 + vec3(.9) * dust * .12) * uMilky * uNight;
   return c;
 }
 
@@ -209,7 +215,6 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 interface View { zoom: number; cx: number; cy: number }
 interface Fx { x: number; y: number; vx: number; vy: number; life: number; max: number; col: string; hist: [number, number][]; size: number; drag: number }
-interface Rocket { x: number; y: number; tx: number; ty: number; vy: number; col: string; burst: () => void }
 
 interface DeckViewProps {
   question: Question;
@@ -303,7 +308,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       return;
     }
     timers.current.push(setTimeout(() => onAnswer(v, buoyRef.current ? { lifebuoy: true } : undefined), (DUR[v] + 0.3) * 1000));
-    timers.current.push(setTimeout(() => setLineOn(true), (v === 'experience' ? 3.0 : v === 'stability' ? 4.2 : 5.2) * 1000));
+    timers.current.push(setTimeout(() => setLineOn(true), (v === 'experience' ? 3.0 : v === 'stability' ? 2.6 : 5.2) * 1000));
   }, [onAnswer, reduce]);
 
   // 키보드: 1·2·3
@@ -421,8 +426,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
     const cur = { night: 0, calm: 0.12, star: 0, milky: 0, dawn: 0, glow: 0, gr: 1, gg: 0.8, gb: 0.45 };
     const view: View = { zoom: 1, cx: 688, cy: 230 };
     const ripples: { x: number; y: number; t0: number; amp: number }[] = [];
-    const fw: Fx[] = [];
-    const rockets: Rocket[] = [];
+    const show = new FireworkShow(HY); // 폭죽 (deck/fireworks.ts)
     const spray: Fx[] = [];
     const events: { at: number; done: boolean; fn: () => void }[] = [];
     let phase: Choice | null = null;
@@ -432,30 +436,12 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
     let energy = 0;
     let shake = 0;
 
-    const PAL = ['255,214,120', '255,170,90', '255,236,205', '255,120,145', '165,205,255'];
-
-    const burst = (x: number, y: number, ci: number, kind: 'radial' | 'ring' | 'willow' | 'big') => {
-      const n = kind === 'big' ? 190 : kind === 'ring' ? 70 : 100;
-      const col = PAL[ci % PAL.length];
-      for (let i = 0; i < n; i++) {
-        const ang = kind === 'ring' ? (i / n) * Math.PI * 2 : Math.random() * Math.PI * 2;
-        const sp = kind === 'ring' ? 150 : (kind === 'big' ? 120 + Math.random() * 190 : 60 + Math.random() * 150);
-        fw.push({
-          x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 0,
-          max: kind === 'willow' ? 2.8 + Math.random() : 1.4 + Math.random() * 1.1, col, hist: [],
-          size: kind === 'big' ? 1.8 : 1.4, drag: kind === 'willow' ? 1.6 : 0.9,
-        });
-      }
-      if (kind === 'big') for (let i = 0; i < 60; i++) {
-        const ang = Math.random() * Math.PI * 2;
-        const sp = 40 + Math.random() * 80;
-        fw.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 0, max: 1.8 + Math.random(), col: PAL[(ci + 2) % PAL.length], hist: [], size: 1.2, drag: 1.1 });
-      }
+    const launch = (x: number, y: number, ci: number, kind: ShellKind) => {
+      // 섬광이 먼저 보이고 소리는 조금 늦게 닿는다 (멀리서 터지는 폭죽)
+      show.launch(x, y, ci, kind, (k) => playFireworkBurst(0.25, k === 'big' ? 1.3 : 0.8));
     };
-    const launch = (x: number, y: number, ci: number, kind: 'radial' | 'ring' | 'willow' | 'big') => {
-      const sx = x + (Math.random() - 0.5) * 60;
-      rockets.push({ x: sx, y: HY + 6, tx: x, ty: y, vy: (HY + 6 - y) / 0.8, col: PAL[ci % PAL.length], burst: () => { burst(x, y, ci, kind); playFireworkBurst(0, kind === 'big' ? 1.3 : 0.8); } });
-    };
+    // 개발 서버에서만: 콘솔에서 window.__fw.test() 로 선택 없이 폭죽만 쏘아 볼 수 있다 (밤하늘로 어둡게 한 뒤)
+    if (process.env.NODE_ENV === 'development') (window as unknown as { __fw?: unknown }).__fw = { test: () => { cur.night = 0.82; const sh: [number, number, number, number, ShellKind][] = [[0, 760, 190, 0, 'radial'], [0.7, 1050, 150, 1, 'radial'], [1.3, 890, 250, 2, 'ring'], [1.9, 640, 210, 3, 'willow'], [2.6, 920, 180, 0, 'big']]; for (const [d, x, y, c, k] of sh) setTimeout(() => launch(x, y, c, k), d * 1000); }, night: (v: number) => { cur.night = v; }, show };
     const splash = (x: number, y: number, power: number) => {
       for (let i = 0; i < 80 * power; i++) {
         const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.5;
@@ -481,14 +467,14 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       const at = (t: number, fn: () => void) => events.push({ at: t, done: false, fn });
       if (v === 'experience') {
         at(0.05, playCorkPop);
-        const shots: [number, number, number, number, 'radial' | 'ring' | 'willow' | 'big'][] = [
+        const shots: [number, number, number, number, ShellKind][] = [
           [1.0, 760, 190, 0, 'radial'], [1.7, 1050, 150, 1, 'radial'], [2.3, 890, 250, 2, 'ring'], [2.9, 640, 210, 3, 'radial'],
           [3.2, 1210, 200, 4, 'radial'], [3.6, 850, 120, 0, 'willow'], [3.95, 1010, 220, 1, 'radial'], [4.15, 730, 270, 2, 'ring'],
           [4.35, 1150, 150, 3, 'radial'], [4.6, 920, 180, 0, 'big'],
         ];
         for (const [t, x, y, c, k] of shots) at(t - 0.8, () => launch(x, y, c, k));
       } else if (v === 'stability') {
-        STARS.forEach((_, i) => at(1.8 + i * 0.3, () => playStarChime(i % 8)));
+        CONSTELLATIONS.forEach((c, ci) => CONST_STARS[ci].forEach((_, j) => at(c.at + j * STAR_STEP, () => playStarChime((j + ci * 2) % 8))));
       } else {
         at(scopeFailRef.current ? 1.5 : 1.9, playWhaleCall);
         if (scopeFailRef.current) {
@@ -505,42 +491,70 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
     };
 
     const drawStarShape = (e: number) => {
-      // 별이 하나씩 켜지고, 별 사이를 선이 이어 그린다
-      const s0 = 1.8;
-      const per = 0.3;
-      const a = (i: number) => smooth(s0 + i * per, s0 + i * per + 0.5, e);
+      // 실제 별: 밝기(등급)에 따라 크기, 색지수에 따라 색. 육안으로 보듯 작은 점과 옅은 번짐만 (십자 빛줄기 없음)
+      const night = smooth(0.9, 2.6, e);
+      if (night <= 0) return;
       fx.save();
       fx.globalCompositeOperation = 'lighter';
-      // 선
+      // 별자리별로 켜진 정도 (선을 잇는 별은 켜질 때 잠깐 더 밝게 빛난다)
+      const lit: Record<string, number> = {};
+      CONSTELLATIONS.forEach((c, ci) => CONST_STARS[ci].forEach((n, j) => {
+        const t0s = c.at + j * STAR_STEP;
+        lit[n] = Math.max(lit[n] ?? 0, smooth(t0s, t0s + 0.25, e) * (1 + 0.8 * Math.exp(-Math.max(0, e - t0s) * 2.5)));
+      }));
+      // 북두칠성 국자 끝에서 북극성을 찾아가는 안내선 (잠깐 나타났다 사라진다)
+      const pk = smooth(2.5, 2.9, e) * (1 - smooth(4.2, 5.2, e));
+      if (pk > 0.01) {
+        const a = toScreen(starByName[POINTER[0]].x, starByName[POINTER[0]].y);
+        const b = toScreen(starByName[POINTER[1]].x, starByName[POINTER[1]].y);
+        fx.setLineDash([3 * a.s, 5 * a.s]);
+        fx.strokeStyle = `rgba(255,226,170,${0.35 * pk})`;
+        fx.lineWidth = Math.max(0.8, 0.9 * a.s);
+        fx.beginPath(); fx.moveTo(a.x, a.y); fx.lineTo(lerp(a.x, b.x, smooth(2.5, 3.2, e)), lerp(a.y, b.y, smooth(2.5, 3.2, e))); fx.stroke();
+        fx.setLineDash([]);
+      }
+      // 별자리 선: 천체투영관처럼 가늘고 옅게, 차례로 이어진다
       fx.lineCap = 'round';
-      SEGMENTS.forEach(([i, j]) => {
-        const start = s0 + Math.max(i, j) * per + 0.3;
-        const k = smooth(start, start + 0.7, e);
-        if (k <= 0) return;
-        const p = toScreen(STARS[i].x, STARS[i].y);
-        const q = toScreen(STARS[j].x, STARS[j].y);
-        fx.strokeStyle = `rgba(190,215,255,${0.55 * k})`;
-        fx.lineWidth = Math.max(1, 1.4 * p.s);
-        fx.beginPath();
-        fx.moveTo(p.x, p.y);
-        fx.lineTo(lerp(p.x, q.x, k), lerp(p.y, q.y, k));
-        fx.stroke();
+      CONSTELLATIONS.forEach((c) => {
+        c.lines.forEach(([na, nb], li) => {
+          const st = c.at + 0.15 + li * 0.13;
+          const k = smooth(st, st + 0.4, e);
+          if (k <= 0) return;
+          const a = toScreen(starByName[na].x, starByName[na].y);
+          const b = toScreen(starByName[nb].x, starByName[nb].y);
+          fx.strokeStyle = `rgba(165,198,255,${0.34 * k})`;
+          fx.lineWidth = Math.max(0.8, 0.85 * a.s);
+          fx.beginPath(); fx.moveTo(a.x, a.y); fx.lineTo(lerp(a.x, b.x, k), lerp(a.y, b.y, k)); fx.stroke();
+        });
+        // 별자리 이름은 쓰지 않는다 (선과 별만 보여 주고, 말은 아래 문구가 대신한다)
       });
-      STARS.forEach((st, i) => {
-        const k = a(i);
-        if (k <= 0) return;
+      // 별
+      NORTH_SKY.forEach((st, i) => {
         const p = toScreen(st.x, st.y);
-        const bright = i === 7 ? 1.7 : 1;
-        const r = (6 + 4 * Math.sin(e * 2 + i)) * p.s * bright * (0.5 + 0.5 * k);
-        const g = fx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.2);
-        g.addColorStop(0, `rgba(255,255,255,${0.95 * k})`);
-        g.addColorStop(0.25, `rgba(190,215,255,${0.5 * k})`);
-        g.addColorStop(1, 'rgba(120,160,255,0)');
+        const [r0, g0, b0] = starColor(st.bv);
+        const tw = 0.86 + 0.14 * Math.sin(e * (5.3 + (i % 7)) + i * 2.1) * Math.sin(e * 2.7 + i); // 대기 때문에 반짝임
+        const boost = lit[st.n] ?? 0;
+        const a = night * tw * (0.75 + 0.25 * Math.min(1, boost));
+        const r = Math.max(0.7, (4.6 - st.m) * 0.62) * p.s * (1 + 0.25 * Math.max(0, boost - 1)) * (st.n === 'Polaris' ? 1.25 : 1);
+        const g = fx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3.4);
+        g.addColorStop(0, `rgba(${r0},${g0},${b0},${0.55 * a})`);
+        g.addColorStop(0.35, `rgba(${r0},${g0},${b0},${0.14 * a})`);
+        g.addColorStop(1, `rgba(${r0},${g0},${b0},0)`);
         fx.fillStyle = g;
-        fx.beginPath();
-        fx.arc(p.x, p.y, r * 3.2, 0, Math.PI * 2);
-        fx.fill();
+        fx.beginPath(); fx.arc(p.x, p.y, r * 3.4, 0, Math.PI * 2); fx.fill();
+        fx.fillStyle = `rgba(${Math.min(255, r0 + 30)},${Math.min(255, g0 + 30)},${Math.min(255, b0 + 30)},${Math.min(1, a)})`;
+        fx.beginPath(); fx.arc(p.x, p.y, Math.max(0.6, r * 0.55), 0, Math.PI * 2); fx.fill();
       });
+      // 북극성: 이름을 붙여 한 번 더 짚어 준다 (바다 위에서 길을 찾던 별)
+      const pkN = smooth(3.4, 4.0, e);
+      if (pkN > 0.01) {
+        const p = toScreen(starByName.Polaris.x, starByName.Polaris.y);
+        fx.globalCompositeOperation = 'source-over';
+        fx.font = `${Math.max(11, 12 * p.s)}px "Noto Serif KR", serif`;
+        fx.textAlign = 'left';
+        fx.fillStyle = `rgba(255,232,190,${0.7 * pkN})`;
+        fx.fillText('북극성', p.x + 10 * p.s, p.y - 8 * p.s);
+      }
       fx.restore();
     };
 
@@ -551,7 +565,9 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       const { vw, vh, dpr } = sizeRef.current;
       const s = Math.max(vw / IMG.w, vh / IMG.h);
       const W = IMG.w * s;
-      const e = phase ? (now - t0) / 1000 : 0;
+      // 개발 서버에서만: 콘솔에서 window.__deckT = 1.4 처럼 선택 연출의 시각을 고정해 볼 수 있다
+      const fixE = process.env.NODE_ENV === 'development' ? (window as unknown as { __deckT?: number }).__deckT : undefined;
+      const e = phase ? (typeof fixE === 'number' ? fixE : (now - t0) / 1000) : 0;
       const t = reduce ? 0 : now / 1000;
 
       // 좌우로 둘러보기 (그림이 화면보다 넓을 때)
@@ -584,6 +600,8 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       // 선택 연출
       let fgA = 1;
       let fgY = 0;
+      let fgMask = 0; // 0~1: 앞쪽 그림의 위쪽 가장자리를 하늘로 녹여 지우는 정도
+      let fgBlur = 0; // 갑판이 빠르게 밀려 내려갈 때의 흐림(px)
       let whale: { x: number; y: number; rot: number; a: number } | null = null;
       let tail: { x: number; y: number; rot: number } | null = null;
       if (chosenRef.current && !phase && !reduce) startPhase(chosenRef.current);
@@ -599,11 +617,16 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         } else if (phase === 'stability') {
           // 고개를 드는 연출: 갑판은 아래로 완전히 밀려 나가고, 하늘이 올라온다 (사진이 잘려 보이지 않도록 흐리게 지우지 않는다)
           const z = smooth(0.2, 3.4, e);
-          view.cx = 860; view.cy = 200; view.zoom = lerp(1, 1.45, z);
+          // 북쪽 하늘(deck/northSky.ts): 북두칠성이 화면 위 진행 막대에 가리지 않도록 조금 더 높이 올려다본다
+          view.cx = 760; view.cy = 80; view.zoom = lerp(1, 1.3, z);
           fgA = 1;
           fgY = smooth(0.15, 2.7, e) * (vh + 140);
+          // 그림 위쪽 끝(굴뚝·윗갑판)이 곧은 선으로 잘려 보이지 않게, 내려가는 동안 위쪽을 점점 투명하게 녹인다
+          fgMask = smooth(0.05, 1.3, e);
+          // 고개를 드는 가장 빠른 순간에만 살짝 흐리게 (움직임 흐림)
+          fgBlur = 2.2 * Math.pow(Math.sin(Math.PI * clamp01((e - 0.15) / 2.55)), 3);
           cur.night = smooth(0.1, 2.6, e);
-          cur.star = smooth(0.2, 2.6, e);
+          cur.star = 0.72 * smooth(0.2, 2.6, e); // 배경의 무수한 잔별 (실제 별자리가 돋보이도록 조금 덜)
           cur.milky = 0.9 * smooth(0.6, 3.6, e);
           cur.calm = lerp(0.55, 1, smooth(0, 2, e));
         } else {
@@ -626,15 +649,11 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         }
       }
       // 폭죽 에너지는 살아 있는 파티클 수에서 부드럽게 구한다
-      energy += (Math.min(1, fw.length / 520) - energy) * Math.min(1, dt * 6);
+      show.update(dt);
+      energy = show.light;
 
       // 파티클 갱신
-      for (let i = rockets.length - 1; i >= 0; i--) {
-        const r = rockets[i];
-        r.y -= r.vy * dt;
-        if (r.y <= r.ty) { r.burst(); rockets.splice(i, 1); }
-      }
-      for (const arr of [fw, spray]) {
+      for (const arr of [spray]) {
         for (let i = arr.length - 1; i >= 0; i--) {
           const p = arr[i];
           p.life += dt;
@@ -642,7 +661,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
           p.hist.push([p.x, p.y]);
           if (p.hist.length > 6) p.hist.shift();
           p.vx *= 1 - p.drag * dt;
-          p.vy = p.vy * (1 - p.drag * dt) + (arr === fw ? 70 : 380) * dt;
+          p.vy = p.vy * (1 - p.drag * dt) + 380 * dt;
           p.x += p.vx * dt;
           p.y += p.vy * dt;
         }
@@ -682,41 +701,7 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
       fx.setTransform(dpr, 0, 0, dpr, 0, 0);
       fx.clearRect(0, 0, vw, vh);
       fx.globalCompositeOperation = 'lighter';
-      for (const r of rockets) {
-        const p = toScreen(r.x, r.y);
-        fx.fillStyle = `rgba(${r.col},0.9)`;
-        fx.beginPath();
-        fx.arc(p.x, p.y, Math.max(1.4, 1.8 * p.s), 0, Math.PI * 2);
-        fx.fill();
-        const q = toScreen(r.x, r.y + 28);
-        const g = fx.createLinearGradient(p.x, p.y, q.x, q.y);
-        g.addColorStop(0, `rgba(${r.col},0.6)`);
-        g.addColorStop(1, `rgba(${r.col},0)`);
-        fx.strokeStyle = g;
-        fx.lineWidth = Math.max(1, 1.4 * p.s);
-        fx.beginPath();
-        fx.moveTo(p.x, p.y);
-        fx.lineTo(q.x, q.y);
-        fx.stroke();
-      }
-      for (const p of fw) {
-        const a = 1 - p.life / p.max;
-        const sp = toScreen(p.x, p.y);
-        fx.strokeStyle = `rgba(${p.col},${0.75 * a})`;
-        fx.lineWidth = Math.max(1, p.size * sp.s * 1.1);
-        fx.lineCap = 'round';
-        fx.beginPath();
-        const h0 = p.hist[0] ?? [p.x, p.y];
-        const hs = toScreen(h0[0], h0[1]);
-        fx.moveTo(hs.x, hs.y);
-        fx.lineTo(sp.x, sp.y);
-        fx.stroke();
-        const g = fx.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, 6 * sp.s);
-        g.addColorStop(0, `rgba(255,255,255,${0.7 * a})`);
-        g.addColorStop(1, `rgba(${p.col},0)`);
-        fx.fillStyle = g;
-        fx.fillRect(sp.x - 7 * sp.s, sp.y - 7 * sp.s, 14 * sp.s, 14 * sp.s);
-      }
+      show.draw(fx, toScreen, t);
       fx.globalCompositeOperation = 'source-over';
       for (const p of spray) {
         const a = Math.max(0, 1 - p.life / p.max);
@@ -763,7 +748,13 @@ export default function DeckView({ question, onAnswer, onBack }: DeckViewProps) 
         fg.style.transform = `translate(${layout.ox + sh + fgPx - IMG.w * s * ex / 2}px, ${layout.oy + sh + fgPy + fgY - IMG.h * s * ex / 2}px) scale(${s * (1 + ex)})`;
         fg.style.opacity = String(fgA);
         // 밤이 되면 노을빛을 받던 갑판도 함께 어두워진다
-        fg.style.filter = cur.night > 0.01 ? `brightness(${(1 - 0.55 * cur.night).toFixed(3)}) saturate(${(1 - 0.4 * cur.night).toFixed(3)})` : 'none';
+        const fl: string[] = [];
+        if (cur.night > 0.01) fl.push(`brightness(${(1 - 0.55 * cur.night).toFixed(3)})`, `saturate(${(1 - 0.4 * cur.night).toFixed(3)})`);
+        if (fgBlur > 0.15) fl.push(`blur(${fgBlur.toFixed(2)}px)`);
+        fg.style.filter = fl.length ? fl.join(' ') : 'none';
+        // 위쪽 가장자리 녹이기 (별자리를 고를 때만). 다른 장면과 대기 화면에서는 마스크를 쓰지 않는다
+        const mk = fgMask > 0.005 ? `linear-gradient(to bottom, transparent 0%, transparent ${(fgMask * 12).toFixed(1)}%, #000 ${(fgMask * 42).toFixed(1)}%)` : '';
+        if (fg.style.maskImage !== mk) { fg.style.maskImage = mk; fg.style.setProperty('-webkit-mask-image', mk); }
       }
     };
     raf = requestAnimationFrame(frame);
