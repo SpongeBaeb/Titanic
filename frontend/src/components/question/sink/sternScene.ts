@@ -16,6 +16,8 @@
  *  → 물속 불빛 → 물보라 → 비네트와 필름 입자.
  */
 
+import { createFrameBudget } from '@/lib/frameBudget';
+
 export type Mood = 'afraid' | 'sob' | 'calm';
 export interface SternSceneOptions {
   /** 개발용: true 인 동안 시간이 흐르지 않는다 (디버그 일시정지) */
@@ -91,15 +93,18 @@ export function createSternScene(canvas: HTMLCanvasElement, opts: SternSceneOpti
   const g = canvas.getContext('2d')!;
   const R = rng(1912);
   let W = 1, H = 1, dpr = 1;
+  // 느린 기기: 해상도를 낮추고, 수면 반사의 띠를 굵게 하고, 필름 입자와 연기를 줄인다
+  let low = false;
   const resize = () => {
     const r = canvas.getBoundingClientRect();
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = Math.min(low ? 1 : 2, window.devicePixelRatio || 1);
     W = Math.max(1, r.width);
     H = Math.max(1, r.height);
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
   };
   resize();
+  const budget = createFrameBudget(() => { low = true; resize(); });
   const ro = new ResizeObserver(resize);
   ro.observe(canvas);
 
@@ -436,6 +441,7 @@ export function createSternScene(canvas: HTMLCanvasElement, opts: SternSceneOpti
   const frame = (now: number) => {
     if (dead) return;
     raf = requestAnimationFrame(frame);
+    if (last !== null) budget((now - last) / 1000);
     const dt = last === null || opts.isPaused?.() ? 0 : Math.min(0.05, (now - last) / 1000);
     last = now;
     t += dt;
@@ -598,7 +604,7 @@ export function createSternScene(canvas: HTMLCanvasElement, opts: SternSceneOpti
       while (smokeAcc > 1) {
         smokeAcc -= 1;
         const q = s2w(FUNNELS[Math.floor(R() * 3)], FUNNEL_TOP);
-        if (q.y < -3 && smoke.length < 70) smoke.push({ x: q.x + (R() - 0.5) * 2, y: q.y, vx: 0.8 + R() * 1.6, vy: -(2.2 + R() * 2.2), r: 2.6 + R() * 2, life: 0, max: 7 + R() * 5, pale: 0 });
+        if (q.y < -3 && smoke.length < (low ? 24 : 70)) smoke.push({ x: q.x + (R() - 0.5) * 2, y: q.y, vx: 0.8 + R() * 1.6, vy: -(2.2 + R() * 2.2), r: 2.6 + R() * 2, life: 0, max: 7 + R() * 5, pale: 0 });
       }
     }
     for (let i = smoke.length - 1; i >= 0; i--) {
@@ -683,7 +689,7 @@ export function createSternScene(canvas: HTMLCanvasElement, opts: SternSceneOpti
     screen();
     if (seaSy < H) {
       const top = Math.max(0, seaSy);
-      const hgt = 2;
+      const hgt = low ? 5 : 2;
       g.globalAlpha = 0.62;
       for (let d = 0; top + d < H; d += hgt) {
         const dd = top - seaSy + d;
@@ -736,7 +742,7 @@ export function createSternScene(canvas: HTMLCanvasElement, opts: SternSceneOpti
     const vg = g.createRadialGradient(W / 2, H * 0.42, Math.min(W, H) * 0.28, W / 2, H * 0.42, Math.max(W, H) * 0.78);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.78)');
     g.fillStyle = vg; g.fillRect(0, 0, W, H);
-    if (!opts.reduce) {
+    if (!opts.reduce && !low) {
       g.globalAlpha = 0.055; g.globalCompositeOperation = 'overlay';
       const gx = Math.floor(R() * 160), gy = Math.floor(R() * 160);
       for (let y = -gy; y < H; y += 160) for (let x = -gx; x < W; x += 160) g.drawImage(grain, x, y);

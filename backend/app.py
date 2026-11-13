@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from engine.survival_engine import SurvivalEngine
 from engine.historical_matcher import HistoricalMatcher
-from engine.db import save_result, get_result
+from engine.db import save_result, get_result, save_events, funnel
 import json
 import os
 import subprocess
@@ -167,6 +167,41 @@ def get_quiz_result(result_id):
         return jsonify({"status": "error", "message": "Result not found"}), 404
 
 # --- 개별 테스트용 API ---
+@app.route('/api/track', methods=['POST'])
+def track():
+    """장면 도달과 선택의 익명 기록. 화면을 막지 않도록 언제나 204 로 답한다."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        sid = str(data.get('sid', ''))[:40]
+        events = data.get('events')
+        if sid and isinstance(events, list):
+            rows = []
+            for e in events[:30]:
+                if not isinstance(e, dict) or e.get('kind') not in ('enter', 'pick'):
+                    continue
+                ms = e.get('ms')
+                rows.append({
+                    "sid": sid,
+                    "run": int(e.get('run') or 1),
+                    "kind": e['kind'],
+                    "scene": str(e.get('scene', ''))[:24],
+                    "value": None if e.get('value') is None else str(e.get('value'))[:48],
+                    "ms": int(ms) if isinstance(ms, (int, float)) else None,
+                })
+            if rows:
+                save_events(rows)
+    except Exception as e:
+        print(f"track error: {e}")
+    return ('', 204)
+
+@app.route('/api/admin/funnel', methods=['GET'])
+def admin_funnel():
+    # 운영에서는 ADMIN_TOKEN 환경 변수와 같은 ?token= 값이 있어야 볼 수 있다. 개발 모드에서는 그냥 열린다.
+    token = os.environ.get('ADMIN_TOKEN')
+    if not DEV_MODE and (not token or request.args.get('token') != token):
+        return jsonify({"status": "error", "message": "Not found"}), 404
+    return jsonify(funnel(first_run_only=request.args.get('all') != '1'))
+
 @app.route('/api/survival/predict', methods=['POST'])
 def predict_survival():
     features = parse_user_features(request.json)

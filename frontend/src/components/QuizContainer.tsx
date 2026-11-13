@@ -18,6 +18,7 @@ import { loadRuns, completeRun } from '@/engine/memory';
 import { onRunCompleted, onRunStarted, unlock } from '@/engine/achievements';
 import { AchievementToast, AchievementsButton } from '@/components/ui/Achievements';
 import { emitPick } from '@/engine/events';
+import { startTracking, trackEnter } from '@/lib/track';
 import { assetsFor, bgFor, nextSceneId } from '@/engine/resolve';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { preloadImages } from '@/lib/preloadImages';
@@ -79,6 +80,9 @@ export default function QuizContainer() {
 
   const enteredAt = useRef(0);
   useEffect(() => { enteredAt.current = Date.now(); }, [currentStep]);
+  // 장면 도달 기록(익명): 어느 장면에서 떠나는지 본다
+  useEffect(() => { startTracking(); }, []);
+  useEffect(() => { trackEnter(currentStep, runIndex); }, [currentStep, runIndex]);
   useEffect(() => { setMix(mixFor(currentStep)); }, [currentStep]);
   // 지난 결과 주소(?result=...)가 남은 채로 새 판을 시작하면 이번 판의 결과가 '공유 링크'로 오인되어 인쇄 연출이 건너뛰어진다.
   // 결과 화면이 아닌 장면으로 넘어오면 남은 결과 주소를 지운다 (공유 링크로 들어온 사람은 곧바로 결과 장면이라 영향이 없다)

@@ -12,6 +12,8 @@
  *    머리는 치는 팔 쪽으로 기울고(수평선이 기운다), 물이 눈 위로 흘러 시야가 잠깐 일그러진다.
  */
 
+import { createFrameBudget } from '@/lib/frameBudget';
+
 export interface SwimSeaOptions {
   reduce: boolean;
   skyUrl: string;
@@ -234,15 +236,20 @@ export function createSwimSea(glCanvas: HTMLCanvasElement, fxCanvas: HTMLCanvasE
   const fx = fxCanvas.getContext('2d')!;
   const gl = glCanvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' });
   let W = 1, H = 1, dprFx = 1, dprGl = 1;
+  let low = false; // 느린 기기: 해상도를 낮추고 물덩이의 번짐을 끈다
+  // 캔버스 번짐을 못 쓰는 브라우저(Safari)에서는 물덩이를 더 옅게 그려 또렷한 도형으로 보이지 않게 한다
+  const canBlur = typeof CanvasRenderingContext2D !== 'undefined' && 'filter' in CanvasRenderingContext2D.prototype;
   const resize = () => {
     const r = fxCanvas.getBoundingClientRect();
     W = Math.max(1, r.width); H = Math.max(1, r.height);
-    dprFx = Math.min(2, window.devicePixelRatio || 1);
-    dprGl = Math.min(1.5, window.devicePixelRatio || 1);
+    dprFx = Math.min(low ? 1 : 2, window.devicePixelRatio || 1);
+    // 셰이더는 화소마다 물결을 계산하므로, 느린 기기에서는 절반 남짓한 해상도로 그리고 늘려 보여 준다
+    dprGl = low ? 0.6 : Math.min(1.5, window.devicePixelRatio || 1);
     fxCanvas.width = Math.round(W * dprFx); fxCanvas.height = Math.round(H * dprFx);
     glCanvas.width = Math.round(W * dprGl); glCanvas.height = Math.round(H * dprGl);
   };
   resize();
+  const budget = createFrameBudget(() => { low = true; resize(); });
   const ro = new ResizeObserver(resize);
   ro.observe(fxCanvas);
 
@@ -326,6 +333,7 @@ export function createSwimSea(glCanvas: HTMLCanvasElement, fxCanvas: HTMLCanvasE
   const frame = (now: number) => {
     if (dead) return;
     raf = requestAnimationFrame(frame);
+    if (last !== null) budget((now - last) / 1000);
     const dt = last === null ? 0 : Math.min(0.05, (now - last) / 1000);
     last = now; t += dt;
     const k = H / 900;
@@ -460,15 +468,16 @@ export function createSwimSea(glCanvas: HTMLCanvasElement, fxCanvas: HTMLCanvasE
       gr.addColorStop(0.86, `rgba(204,222,234,${0.46 * fade})`);
       gr.addColorStop(1, 'rgba(204,222,234,0)');
       // 부옇게: 물의 막은 또렷한 도형이 아니라 빛이 흩어지는 덩어리다
-      fx.filter = `blur(${(5 * k).toFixed(1)}px)`;
+      const soft = canBlur && !low;
+      if (soft) fx.filter = `blur(${(5 * k).toFixed(1)}px)`; else fx.globalAlpha = 0.6;
       path(); fx.closePath(); fx.fillStyle = gr; fx.fill();
-      fx.filter = `blur(${(1.2 * k).toFixed(1)}px)`;
+      if (soft) fx.filter = `blur(${(1.2 * k).toFixed(1)}px)`;
       // 윗선: 얇아진 물의 가장자리에 빛이 걸린다
       fx.strokeStyle = `rgba(232,242,250,${0.18 * fade})`; fx.lineWidth = 3 * k;
       fx.beginPath(); fx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) { const mx = (pts[i - 1][0] + pts[i][0]) / 2, my = (pts[i - 1][1] + pts[i][1]) / 2; fx.quadraticCurveTo(pts[i - 1][0], pts[i - 1][1], mx, my); }
       fx.stroke();
-      fx.filter = 'none';
+      if (soft) fx.filter = 'none'; else fx.globalAlpha = 1;
     }
     // 물방울: 지난 자리와 지금 자리를 이어 그려 빠른 것은 줄로 번진다. 빛나는 불꽃처럼 보이지 않게 더하지 않고 겹쳐 그린다
     fx.lineCap = 'round';
