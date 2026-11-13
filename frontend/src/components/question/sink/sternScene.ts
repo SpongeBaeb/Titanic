@@ -49,15 +49,15 @@ const PIV = { x: 150, y: 0 };
 const TH = [6, 12, 19, 28, 47];
 const SINK = [2, 5, 8, 11, 20];
 /** 배 그림이 놓이는 자리(배 좌표, 미터): 그림 속 수면선이 y=0, 뱃머리 끝이 x=0 */
-const IMG = { x: -3.394, y: -72.55, w: 274.93, h: 87.4 };
-const DECK_Y = -17.2;
-const RAIL_Y = -18.3;
+const IMG = { x: -8.73, y: -58.1, w: 281.6, h: 70.53 };
+const DECK_Y = -16.4;
+const RAIL_Y = -17.5;
 const ME_X = 258;
 const HER_X = 259;
 const POOP_X0 = 233;
 /** 굴뚝 꼭대기(배 좌표) */
-const FUNNELS = [77.8, 112.9, 148];
-const FUNNEL_TOP = -47.5;
+const FUNNELS = [77.9, 112.3, 147.4];
+const FUNNEL_TOP = -42.6;
 /** 배가 갈라지는 자리와, 찢어진 단면의 들쭉날쭉한 선 */
 const BREAK_X = 165;
 const JAG: [number, number][] = [[166, -80], [166, -24], [163.4, -20.5], [167.2, -16.5], [164, -12], [168, -7.5], [163.2, -2.5], [166.6, 3.5], [163.8, 8.5], [165.4, 20]];
@@ -588,7 +588,7 @@ export function createSternScene(canvas: HTMLCanvasElement, opts: SternSceneOpti
       pieces(() => {
         slices(imLight, imLight.naturalWidth, imLight.naturalHeight, 1 - brown);
         if (lightDim && brown > 0.01) slices(lightDim, lightDim.width, lightDim.height, brown);
-        if (ready(imGlow)) slices(imGlow, imGlow.naturalWidth, imGlow.naturalHeight, 0.6);
+        if (ready(imGlow)) slices(imGlow, imGlow.naturalWidth, imGlow.naturalHeight, 0.85);
       });
       g.globalCompositeOperation = 'source-over';
     }

@@ -7,21 +7,27 @@ import type { Mood } from './sternScene';
 /**
  * 난간 장면(W1)의 가까운 컷: 난간을 붙든 내 눈으로 본 1인칭.
  *
- * 얼굴을 그리지 않고 "손"으로 연기한다. 난간 위에 내 두 손이 있고, 오른쪽에 곁의 승객(노라)의 두 손이 있다.
- *  - 노라의 손은 기분에 따라 다르게 떤다(두려움: 잘게 빠르게, 흐느낌: 크게 들썩임, 가라앉음: 거의 멎음).
- *  - 갑판이 가팔라질수록 손이 난간에서 미끄러졌다가 다시 움켜쥔다.
- *  - 손을 잡으면 내 오른손이 건너가 노라의 손등을 덮어 쥔다. 모진 말을 하면 노라의 손이 움찔 물러난다.
- *  - 노라가 손을 놓으면 손가락이 펴지며 난간 아래로 사라진다. 내가 떨어지면 내 손이 펴지고 난간이 위로 날아간다.
+ * 난간 위에 내 두 손이 있고, 오른쪽에 곁의 승객(노라)이 난간을 쥐고 서 있다.
+ *  - 노라는 기분에 따라 그림이 바뀐다(두려움, 흐느낌, 가라앉음). 몸과 손은 같은 그림이라 얼굴만 바뀌어 보인다.
+ *  - 손을 잡으면 노라가 한 손을 내밀고, 내 오른손이 건너가 노라의 손을 덮어 쥔다. 모진 말을 하면 노라가 조금씩 물러난다.
+ *  - 노라가 손을 놓으면 두 손이 펴지며 뒤로 넘어가 사라진다. 내가 떨어지면 내 손이 펴지고 난간이 위로 날아간다.
  * 난간 너머로는 밤바다와 수평선이 보이고, 배가 기울수록 수평선이 크게 기운다. 수평선에는 멀어진 구명선의 등불 하나가 떠 있다.
  * 배의 불이 켜져 있는 동안에는 손과 난간에 따뜻한 빛이 닿고, 불이 꺼지면 차가운 별빛만 남는다.
  *
- * 그림은 이미 있는 것을 쓴다: q7/rail_grip(난간), ui/hand_*_r(내 손), ui/hand_*_f(노라의 손), swim/sea_plate(W2 와 같은 밤하늘과 바다).
+ * 그림: sink/nora_pov_*(노라 다섯 자세. 손이 쥔 난간 토막이 함께 그려져 있어, 그 토막을 눈앞의 난간에 겹쳐 놓는다),
+ *  q7/rail_grip(난간), ui/hand_*_r(내 손), swim/sea_plate(W2 와 같은 밤하늘과 바다).
  */
 
 /** 단계별 갑판의 기울기(도). 수평선과 난간이 서로 반대로 기울어 합이 이만큼 벌어진다 */
 const TILT = [5, 10, 16, 23, 33];
 
 type Kind = 'grab' | 'open' | 'reach';
+/** 노라의 자세 그림(896x1200). 다섯 장 모두 난간 토막이 같은 높이(RAIL_FY)에 그려져 있다 */
+const NORA = ['afraid', 'sob', 'calm', 'reach', 'letgo'] as const;
+type NoraPose = (typeof NORA)[number];
+const NORA_RAIL_FY = 745 / 1200;
+/** 그림 안에서 노라의 가까운 쪽 주먹이 있는 가로 자리 */
+const NORA_FIST_FX = 0.16;
 /** 손 그림의 크기와, 그림 안에서 "쥐는 자리"(난간에 놓일 점)의 비율 */
 const META: Record<'m' | 'f', Record<Kind, { src: string; w: number; h: number; ax: number; ay: number; k: number }>> = {
   m: {
@@ -83,36 +89,34 @@ export default function RailPov({ show, beat, hand, mood, gone, falling, togethe
 
   // 손을 잡는 순간: 잠깐 뻗는 손 모양을 거쳐 쥔 모양으로 바뀐다
   const [reaching, setReaching] = useState(false);
+  const [offering, setOffering] = useState(false); // 노라가 손을 내밀고 있는 동안
   const wasHand = useRef(false);
   useEffect(() => {
     if (hand && !wasHand.current) {
       wasHand.current = true;
       const a = setTimeout(() => setReaching(true), 0);
       const id = setTimeout(() => setReaching(false), 520);
-      return () => { clearTimeout(a); clearTimeout(id); };
+      const b = setTimeout(() => setOffering(true), 0);
+      const c = setTimeout(() => setOffering(false), 1500);
+      return () => { clearTimeout(a); clearTimeout(id); clearTimeout(b); clearTimeout(c); };
     }
     if (!hand) wasHand.current = false;
   }, [hand]);
-  // 모진 말: 그때마다 노라의 손이 조금씩 더 멀어진다
+  // 모진 말: 그때마다 노라가 조금씩 더 물러난다
   const away = Math.min(3, kickKey);
 
-  const hw = S * 0.47, fw = S * 0.29;
-  const herX = S * (0.83 + away * 0.04), herFarX = S * (1.02 + away * 0.045);
+  const hw = S * 0.4;
+  const NW = S * 1.02, NH = NW * (1200 / 896);
+  const noraX = S * (0.29 + away * 0.035);
+  const fistX = noraX + NW * NORA_FIST_FX;
   const holding = hand && !gone;
-  const myR = holding ? { x: herX - S * 0.1, y: -S * 0.03, rotate: -36 } : { x: S * 0.47, y: 0, rotate: -14 };
-  // 노라의 손이 떠는 모양
-  const calmer = holding ? 0.45 : 1;
-  const shiver = reduce ? {} : mood === 'afraid'
-    ? { x: [0, 1.8 * calmer, -1.3 * calmer, 1.5 * calmer, -1.9 * calmer, 0], y: [0, -1.1 * calmer, 1.4 * calmer, -0.8 * calmer, 1.0 * calmer, 0] }
-    : mood === 'sob' ? { x: [0, 0.6, 0, -0.5, 0], y: [0, 4.2 * calmer, 0.6, 3.2 * calmer, 0] } : { x: [0, 0.4, 0], y: [0, 0.9, 0] };
-  const shiverT = mood === 'afraid' ? { duration: 0.26, repeat: Infinity, ease: 'linear' as const } : mood === 'sob' ? { duration: 1.5, repeat: Infinity, ease: 'easeInOut' as const } : { duration: 3.2, repeat: Infinity, ease: 'easeInOut' as const };
-  // 가팔라질수록 자주, 더 많이 미끄러진다
-  const slip = reduce || beat < 1 || holding ? {} : { y: [0, 0, 5 + beat * 3, -1, 0], rotate: [0, 0, 3, 0, 0] };
-  const slipT = { duration: 5.4 - beat * 0.7, repeat: Infinity, times: [0, 0.8, 0.87, 0.94, 1], ease: 'easeOut' as const };
+  const pose: NoraPose = gone ? 'letgo' : offering ? 'reach' : mood;
+  // 내밀어진 손은 난간 아래에 있다: 그 손을 잡으러 내려갔다가, 함께 난간으로 돌아온다
+  const myR = holding ? (offering ? { x: noraX + NW * 0.56, y: NW * 0.13, rotate: -40 } : { x: fistX - S * 0.02, y: -S * 0.02, rotate: -32 }) : { x: S * 0.24, y: 0, rotate: -14 };
   const flyRail = falling ? { y: -vp.h * 1.5 } : { y: 0 };
   const flyT = { duration: 0.6, ease: 'easeIn' as const };
 
-  const railW = S * 5.2, railH = railW * (496 / 2000);
+  const railW = S * 3.1, railH = railW * (496 / 2000);
 
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 z-[5] overflow-hidden bg-[#02050b]" style={{ opacity: show ? 1 : 0, transition: 'opacity .14s linear' }}>
@@ -135,54 +139,46 @@ export default function RailPov({ show, beat, hand, mood, gone, falling, togethe
             transition={!lit ? { duration: 0.25 } : beat === 2 ? { duration: 2.3, repeat: Infinity, ease: 'linear' } : { duration: 0.6 }} />
 
           {/* 난간과 손: 난간의 윗대가 이 묶음의 원점(0,0)을 지난다 */}
-          <motion.div className="absolute left-1/2 top-[41%]" style={{ width: 0, height: 0 }} initial={false} animate={{ rotate: tilt * 0.38 }} transition={{ duration: 5, ease: 'easeInOut' }}>
+          <motion.div className="absolute left-1/2 top-[47%]" style={{ width: 0, height: 0 }} initial={false} animate={{ rotate: tilt * 0.38 }} transition={{ duration: 5, ease: 'easeInOut' }}>
             <div className="absolute" style={{ left: -S / 2, top: 0, width: 0, height: 0 }}>
               <motion.div className="absolute" initial={false} animate={flyRail} transition={flyT}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/q7/rail_grip.webp" alt="" draggable={false} className="absolute max-w-none"
-                  style={{ left: S / 2 - railW / 2 + S * 0.31, top: -railH * (90 / 496), width: railW, height: railH, filter: lit ? 'brightness(.62) sepia(.45) saturate(1.2) hue-rotate(-12deg)' : 'brightness(.42) saturate(.7)', transition: 'filter 1.4s ease' }} />
-                {/* 노라의 두 손 (함께 떨어질 때 가까운 손은 내 손과 함께 남는다) */}
-                {[0, 1].map((far) => {
-                  if (far === 0 && falling && together) return null;
-                  return (
-                    <motion.div key={far} className="absolute" style={{ width: 0, height: 0, opacity: far ? 0.82 : 1 }} initial={false}
-                      animate={gone ? { x: (far ? herFarX : herX) + S * 0.16, y: S * 0.95, rotate: 46, opacity: 0 } : { x: far ? herFarX : herX, y: 0, rotate: far ? 15 : 9 }}
-                      transition={gone ? { duration: far ? 0.95 : 1.25, ease: 'easeIn', delay: far ? 0 : 0.35 } : { type: 'spring', stiffness: 160, damping: 13 }}>
-                      <motion.div animate={gone ? {} : slip} transition={{ ...slipT, delay: far ? 1.3 : 0 }}>
-                        <motion.div animate={gone ? {} : shiver} transition={shiverT}>
-                          <motion.div key={far ? 'far' : `near-${squeezeKey}`} initial={{ scale: far || squeezeKey === 0 ? 1 : 0.92 }} animate={{ scale: 1 }} transition={{ duration: 0.5 }}>
-                            <Hand who="f" kind={gone ? 'open' : 'grab'} flip w={far ? fw * 0.86 : fw} lit={lit} />
-                          </motion.div>
-                        </motion.div>
-                      </motion.div>
-                    </motion.div>
-                  );
-                })}
+                  style={{ left: S / 2 - railW / 2 + S * 0.31, top: -railH * (90 / 496), width: railW, height: railH, filter: lit ? 'grayscale(.8) brightness(.66) sepia(.2)' : 'grayscale(.9) brightness(.42)', transition: 'filter 1.4s ease' }} />
+              </motion.div>
+
+              {/* 노라: 자세 그림 다섯 장을 겹쳐 두고 지금 것만 보인다. 손을 놓으면 뒤로 넘어가 사라지고, 내가 혼자 떨어지면 난간과 함께 위로 멀어진다 */}
+              <motion.div className="absolute" style={{ width: 0, height: 0, transformOrigin: `${NW * 0.6}px ${NH * 0.2}px` }} initial={false}
+                animate={gone ? { x: noraX + S * 0.3, y: S * 0.55, rotate: 16, opacity: [1, 1, 0] }
+                  : falling && !together ? { x: noraX, y: -vp.h * 1.5, rotate: 0, opacity: 1 }
+                  : falling ? { x: noraX - S * 0.04, y: S * 0.12, rotate: -5, opacity: 1 } : { x: noraX, y: 0, rotate: 0, opacity: 1 }}
+                transition={gone ? { duration: 1.5, ease: 'easeIn', delay: 0.7, times: [0, 0.55, 1] } : falling ? flyT : { type: 'spring', stiffness: 120, damping: 15 }}>
+                <motion.div animate={reduce || gone || falling ? {} : mood === 'sob' ? { y: [0, 2.4, 0.4, 1.8, 0] } : mood === 'afraid' ? { x: [0, 0.5, -0.4, 0] } : {}} transition={mood === 'sob' ? { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.24, repeat: Infinity, ease: 'linear' }}>
+                  {NORA.map((k) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={k} src={`/sink/nora_pov_${k}.webp`} alt="" draggable={false} className="absolute max-w-none select-none"
+                      style={{ left: 0, top: -NH * NORA_RAIL_FY, width: NW, height: NH, opacity: pose === k ? 1 : 0, transition: `opacity ${k === 'letgo' ? 0.2 : 0.4}s ease, filter 1.4s ease`,
+                        filter: lit ? 'brightness(.96) sepia(.16) saturate(1.05)' : 'brightness(.6) saturate(.8)' }} />
+                  ))}
+                </motion.div>
               </motion.div>
 
               {/* 어깨와 외투의 어둠: 팔뚝이 바다 위에 떠 보이지 않도록, 손 아래를 몸의 그림자로 채운다 */}
-              <span className="absolute rounded-[50%]" style={{ left: -S * 0.36, top: S * 0.07, width: S * 1.32, height: S * 1.5, background: 'radial-gradient(closest-side, rgba(2,4,8,.98) 74%, rgba(2,4,8,0) 100%)' }} />
-              {!gone && !falling && <span className="absolute rounded-[50%]" style={{ left: herX - S * 0.22, top: S * 0.05, width: S * 0.9, height: S * 1.3, background: 'radial-gradient(closest-side, rgba(2,4,8,.97) 74%, rgba(2,4,8,0) 100%)' }} />}
-              {/* 함께 떨어질 때: 노라의 손은 내 손 아래에 그대로 쥐여 있다 */}
-              {falling && together && (
-                <motion.div className="absolute" style={{ width: 0, height: 0 }} initial={{ x: herX, y: 0, rotate: 9 }} animate={{ x: herX - S * 0.05, y: S * 0.1, rotate: 2 }} transition={{ duration: 0.6 }}>
-                  <Hand who="f" kind="grab" flip w={fw} lit={lit} />
-                </motion.div>
-              )}
+              <span className="absolute rounded-[50%]" style={{ left: -S * 0.5, top: S * 0.07, width: S * 1.22, height: S * 1.5, background: 'radial-gradient(closest-side, rgba(2,4,8,.98) 74%, rgba(2,4,8,0) 100%)' }} />
               {/* 내 왼손 */}
               <motion.div className="absolute" style={{ width: 0, height: 0 }} initial={false}
-                animate={falling ? { x: S * 0.16, y: S * 0.14, rotate: 4 } : { x: S * 0.17, y: 0, rotate: 20 }} transition={falling ? { duration: 0.5 } : { duration: 0.4 }}>
+                animate={falling ? { x: S * 0.02, y: S * 0.14, rotate: 4 } : { x: S * 0.03, y: 0, rotate: 20 }} transition={falling ? { duration: 0.5 } : { duration: 0.4 }}>
                 <motion.div animate={reduce || falling ? {} : { x: [0, 0.7, -0.6, 0], y: [0, 0.6, -0.5, 0] }} transition={{ duration: 0.4, repeat: Infinity, ease: 'linear' }}>
                   <Hand who="m" kind={falling ? 'open' : 'grab'} flip w={hw} lit={lit} />
                 </motion.div>
               </motion.div>
               {/* 내 오른손: 손을 잡으면 노라의 손등 위로 건너간다 */}
               <motion.div className="absolute" style={{ width: 0, height: 0 }} initial={false}
-                animate={falling ? (together ? { x: herX - S * 0.085, y: S * 0.07, rotate: -32 } : { x: S * 0.56, y: S * 0.16, rotate: -6 }) : myR}
+                animate={falling ? (together ? { x: fistX - S * 0.06, y: S * 0.1, rotate: -32 } : { x: S * 0.34, y: S * 0.16, rotate: -6 }) : myR}
                 transition={falling ? { duration: 0.5 } : { type: 'spring', stiffness: 90, damping: 14 }}>
                 <motion.div animate={reduce || falling ? {} : { x: [0, -0.7, 0.6, 0], y: [0, -0.5, 0.6, 0] }} transition={{ duration: 0.36, repeat: Infinity, ease: 'linear' }}>
                   <motion.div key={`sq-${squeezeKey}`} initial={{ scale: squeezeKey === 0 ? 1 : 0.9 }} animate={{ scale: 1 }} transition={{ duration: 0.55 }}>
-                    <Hand who="m" kind={falling && !together ? 'open' : reaching ? 'reach' : 'grab'} flip={false} w={hw} lit={lit} />
+                    <Hand who="m" kind={falling && !together ? 'open' : reaching || (holding && offering) ? 'reach' : 'grab'} flip={false} w={hw} lit={lit} />
                   </motion.div>
                 </motion.div>
               </motion.div>
